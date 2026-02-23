@@ -716,6 +716,113 @@ class UpdateService:
             if progress_tracker:
                 progress_tracker.step_complete('Update Sudoers Configuration')
 
+            # Step 7.5: Install/Update Scheduler Service
+            if progress_tracker:
+                progress_tracker.step_start('Configure Task Scheduler')
+
+            logger.info("Checking scheduler service installation...")
+            try:
+                scheduler_service = os.path.join(self.base_dir, 'deploy', 'itdocs-scheduler.service')
+                scheduler_timer = os.path.join(self.base_dir, 'deploy', 'itdocs-scheduler.timer')
+
+                if os.path.exists(scheduler_service) and os.path.exists(scheduler_timer):
+                    # Check if scheduler timer is installed and running
+                    timer_check = subprocess.run(
+                        ['/usr/bin/systemctl', 'is-enabled', 'itdocs-scheduler.timer'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+
+                    needs_install = timer_check.returncode != 0
+
+                    if needs_install:
+                        logger.info("Scheduler service not found - installing...")
+                        result['output'].append("")
+                        result['output'].append("⚙️  Installing Task Scheduler Service...")
+
+                        # Update service file with correct paths
+                        with open(scheduler_service, 'r') as f:
+                            service_content = f.read()
+
+                        # Replace placeholder paths with actual installation paths
+                        service_content = service_content.replace(
+                            'WorkingDirectory=/home/administrator',
+                            f'WorkingDirectory={self.base_dir}'
+                        )
+                        service_content = service_content.replace(
+                            'Environment="PATH=/home/administrator/venv/bin"',
+                            f'Environment="PATH={os.path.join(self.base_dir, "venv", "bin")}"'
+                        )
+                        service_content = service_content.replace(
+                            'EnvironmentFile=/home/administrator/.env',
+                            f'EnvironmentFile={os.path.join(self.base_dir, ".env")}'
+                        )
+                        service_content = service_content.replace(
+                            'ExecStart=/home/administrator/venv/bin/python manage.py run_scheduler',
+                            f'ExecStart={os.path.join(self.base_dir, "venv", "bin", "python")} manage.py run_scheduler'
+                        )
+
+                        # Get current user
+                        import pwd
+                        current_user = pwd.getpwuid(os.getuid()).pw_name
+                        service_content = service_content.replace('User=administrator', f'User={current_user}')
+                        service_content = service_content.replace('Group=administrator', f'Group={current_user}')
+
+                        # Write updated service file to temp location
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.service') as temp_service:
+                            temp_service.write(service_content)
+                            temp_service_path = temp_service.name
+
+                        try:
+                            # Copy service files to systemd directory
+                            copy_service = self._run_command([
+                                '/usr/bin/sudo', '/usr/bin/cp',
+                                temp_service_path,
+                                '/etc/systemd/system/itdocs-scheduler.service'
+                            ])
+
+                            copy_timer = self._run_command([
+                                '/usr/bin/sudo', '/usr/bin/cp',
+                                scheduler_timer,
+                                '/etc/systemd/system/itdocs-scheduler.timer'
+                            ])
+
+                            # Reload systemd
+                            self._run_command(['/usr/bin/sudo', '/usr/bin/systemctl', 'daemon-reload'])
+
+                            # Enable and start timer
+                            self._run_command(['/usr/bin/sudo', '/usr/bin/systemctl', 'enable', 'itdocs-scheduler.timer'])
+                            self._run_command(['/usr/bin/sudo', '/usr/bin/systemctl', 'start', 'itdocs-scheduler.timer'])
+
+                            result['output'].append("  ✓ Scheduler service installed and started")
+                            result['output'].append(f"  ✓ Scheduled tasks will now run automatically")
+                            logger.info("Scheduler service installed successfully")
+
+                        except Exception as e:
+                            logger.warning(f"Failed to install scheduler service: {e}")
+                            result['output'].append(f"  ⚠ Scheduler install failed: {str(e)[:70]}")
+                            result['output'].append("  → Manual fix: See issue #88 on GitHub")
+                        finally:
+                            # Clean up temp file
+                            try:
+                                os.unlink(temp_service_path)
+                            except:
+                                pass
+                    else:
+                        logger.info("Scheduler service already installed")
+                        result['output'].append("✓ Task Scheduler service already running")
+                else:
+                    logger.warning("Scheduler service files not found in deploy/")
+
+            except Exception as e:
+                logger.warning(f"Scheduler service check failed (non-critical): {e}")
+                result['output'].append(f"⚠ Scheduler check skipped: {str(e)[:80]}")
+
+            if progress_tracker:
+                progress_tracker.step_complete('Configure Task Scheduler')
+
             # Step 8: Service restart - DISABLED
             # The UpdateService runs INSIDE gunicorn and cannot reliably restart itself.
             # This is a fundamental design flaw - a process cannot restart itself.
