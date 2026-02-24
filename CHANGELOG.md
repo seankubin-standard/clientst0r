@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.9] - 2026-02-24
+
+### Bug Fixes
+
+**Update script: exact failure location now logged (exit code 1 debugging):**
+- Added `trap 'log "ERROR: command failed at line $LINENO: $BASH_COMMAND"' ERR` so the exact failing command and line number appear in the progress log when the script exits non-zero
+
+**Update script: wider venv detection:**
+- Now checks `.venv` and `env` directory names in addition to `venv` — common on dev servers and tools like Poetry/PDM
+
+**auto_heal_version: no longer kills itself:**
+- Changed from `systemctl stop` + `pkill -9 gunicorn` (which kills the process running the command) to `systemd-run --on-active=2 --system systemctl restart` — the timer fires in system scope after the command returns, so the response can be sent before the restart
+- Fallback to `start_new_session=True` Popen if systemd-run is unavailable
+- Makes the `/emergency-restart/` webhook usable as an alternative to SSH
+
 ## [3.12.8] - 2026-02-24
 
 ### Bug Fixes

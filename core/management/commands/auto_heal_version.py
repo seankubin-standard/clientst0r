@@ -68,40 +68,45 @@ class Command(BaseCommand):
 
             self.stdout.write(f'Using service: {gunicorn_service}')
 
-            # Restart services with full cleanup
-            self.stdout.write('Stopping service...')
-            subprocess.run(['sudo', 'systemctl', 'stop', gunicorn_service], check=True)
+            # Schedule restart via systemd-run --system so the timer lives in
+            # the system D-Bus scope and fires even if the launching process
+            # (gunicorn worker) exits first.  This avoids the suicide problem
+            # where stop+pkill kills the process running this command.
+            import shutil
+            systemd_run = shutil.which('systemd-run')
+            systemctl = shutil.which('systemctl') or 'systemctl'
 
-            self.stdout.write('Killing lingering processes...')
-            subprocess.run(['sudo', 'pkill', '-9', '-f', 'gunicorn'], check=False)
+            if systemd_run:
+                self.stdout.write('Scheduling restart via systemd-run --system (2-second delay)...')
+                result = subprocess.run(
+                    ['sudo', systemd_run, '--on-active=2', '--system',
+                     systemctl, 'restart', gunicorn_service],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    self.stdout.write(self.style.SUCCESS(
+                        f'✓ Restart of {gunicorn_service} scheduled. '
+                        f'Service will reload version {file_version} in ~2 seconds.'
+                    ))
+                    return
+                else:
+                    self.stdout.write(self.style.WARNING(
+                        f'systemd-run failed ({result.stderr.strip()}), falling back to nohup...'
+                    ))
 
-            import time
-            time.sleep(2)
-
-            self.stdout.write('Clearing Python cache...')
-            subprocess.run([
-                'find', str(settings.BASE_DIR), '-type', 'd', '-name', '__pycache__',
-                '-not', '-path', '*/venv/*', '-exec', 'rm', '-rf', '{}', '+'
-            ], check=False)
-
-            self.stdout.write('Starting service...')
-            subprocess.run(['sudo', 'systemctl', 'start', gunicorn_service], check=True)
-
-            time.sleep(3)
-
-            # Verify service started
-            result = subprocess.run(
-                ['sudo', 'systemctl', 'is-active', gunicorn_service],
-                capture_output=True,
-                text=True
+            # Fallback: nohup detached restart (survives parent process death)
+            self.stdout.write('Scheduling restart via nohup (3-second delay)...')
+            import os
+            subprocess.Popen(
+                ['sudo', systemctl, 'restart', gunicorn_service],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL, start_new_session=True,
+                preexec_fn=lambda: __import__('time').sleep(3)
             )
-
-            if result.stdout.strip() == 'active':
-                self.stdout.write(self.style.SUCCESS(f'✓ Auto-heal complete! Service restarted.'))
-                self.stdout.write(self.style.SUCCESS(f'✓ Version {file_version} should now be running'))
-            else:
-                self.stdout.write(self.style.ERROR('✗ Service failed to start'))
-                sys.exit(1)
+            self.stdout.write(self.style.SUCCESS(
+                f'✓ Restart of {gunicorn_service} scheduled via nohup. '
+                f'Service will reload version {file_version} in ~3 seconds.'
+            ))
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'✗ Auto-heal failed: {e}'))

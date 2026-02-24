@@ -13,6 +13,9 @@ SERVICE="${CLIENTST0R_SERVICE_NAME:-}"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
 
+# Trap: log exactly which command failed and on which line
+trap 'log "ERROR: command failed at line $LINENO: $BASH_COMMAND (exit $?)"' ERR
+
 log "=================================================="
 log "Client St0r Update Instructions"
 log "=================================================="
@@ -27,12 +30,16 @@ if [ -z "$GIT" ]; then
 fi
 log "Using git: $GIT"
 
-# --- Venv detection (mirrors Python _find_venv_python logic) ---
+# --- Venv detection (checks common names and locations) ---
 VENV_DIR=""
 for candidate in \
     "$BASE_DIR/venv" \
+    "$BASE_DIR/.venv" \
+    "$BASE_DIR/env" \
     "$BASE_DIR/clientst0r/venv" \
-    "$(dirname "$BASE_DIR")/venv"; do
+    "$BASE_DIR/clientst0r/.venv" \
+    "$(dirname "$BASE_DIR")/venv" \
+    "$(dirname "$BASE_DIR")/.venv"; do
     if [ -f "$candidate/bin/python" ]; then
         VENV_DIR="$candidate"
         break
@@ -40,7 +47,7 @@ for candidate in \
 done
 
 if [ -z "$VENV_DIR" ]; then
-    VENV_DIR=$(find "$BASE_DIR" -maxdepth 2 -type d -name "venv" 2>/dev/null | head -1 || true)
+    VENV_DIR=$(find "$BASE_DIR" -maxdepth 2 -type d \( -name "venv" -o -name ".venv" -o -name "env" \) 2>/dev/null | head -1 || true)
 fi
 
 if [ -z "$VENV_DIR" ] || [ ! -f "$VENV_DIR/bin/python" ]; then
