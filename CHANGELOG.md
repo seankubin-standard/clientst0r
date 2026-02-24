@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.8] - 2026-02-24
+
+### Bug Fixes
+
+**Service restart not firing after GUI update:**
+- `update_instructions.sh` now uses `systemd-run --system` (system D-Bus scope) instead of default user scope — without `--system`, the transient timer unit is owned by the gunicorn worker's cgroup and can be silently dropped when that worker exits before the 5-second delay elapses
+- Added belt-and-suspenders nohup fallback: a detached `nohup bash -c "sleep 7 && systemctl restart $SERVICE"` is launched alongside systemd-run so the restart fires even if the systemd-run timer doesn't. Uses `disown` to ensure it fully outlives the parent process.
+- No-systemd path also converted to nohup to survive parent process exit
+
 ## [3.12.7] - 2026-02-24
 
 ### Bug Fixes

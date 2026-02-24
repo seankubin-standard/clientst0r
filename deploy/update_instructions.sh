@@ -167,22 +167,35 @@ log "Step 5/5: Scheduling service restart..."
 SYSTEMD_RUN=$(command -v systemd-run 2>/dev/null || true)
 SYSTEMCTL=$(command -v systemctl 2>/dev/null || true)
 
-if [ -n "$SERVICE" ] && [ -n "$SYSTEMD_RUN" ] && [ -n "$SYSTEMCTL" ]; then
-    ( sudo "$SYSTEMD_RUN" --on-active=5 "$SYSTEMCTL" restart "$SERVICE" \
-        && log "Step 5/5: Restart of '$SERVICE' scheduled (5-second delay)" ) \
-        || log "[WARN] Scheduled restart failed — run: sudo systemctl restart $SERVICE"
-elif [ -n "$SERVICE" ] && [ -n "$SYSTEMCTL" ]; then
-    log "Step 5/5: systemd-run not found, restarting directly..."
-    ( sudo "$SYSTEMCTL" restart "$SERVICE" \
-        && log "Step 5/5: '$SERVICE' restarted directly" ) \
-        || log "[WARN] Direct restart failed — run: sudo systemctl restart $SERVICE"
+if [ -n "$SERVICE" ] && [ -n "$SYSTEMCTL" ]; then
+    # Belt-and-suspenders restart: try systemd-run (--system scope so the timer
+    # survives when the gunicorn worker that launched it exits), then also launch
+    # a nohup background job as fallback in case systemd-run doesn't fire.
+    RESTART_SCHEDULED=0
+
+    if [ -n "$SYSTEMD_RUN" ]; then
+        if sudo "$SYSTEMD_RUN" --on-active=5 --system "$SYSTEMCTL" restart "$SERVICE" 2>/dev/null; then
+            log "Step 5/5: Restart of '$SERVICE' scheduled via systemd-run (5-second delay)"
+            RESTART_SCHEDULED=1
+        else
+            log "[WARN] systemd-run failed or unavailable"
+        fi
+    fi
+
+    # Nohup fallback: runs in its own session, survives parent process death.
+    # Delay is 7 seconds so it wins only if the systemd-run timer didn't fire.
+    nohup sudo bash -c "sleep 7 && $SYSTEMCTL restart $SERVICE" >/dev/null 2>&1 &
+    disown 2>/dev/null || true
+    if [ "$RESTART_SCHEDULED" -eq 0 ]; then
+        log "Step 5/5: Restart of '$SERVICE' scheduled via nohup (7-second delay)"
+    else
+        log "Step 5/5: Nohup fallback also armed (fires at 7s if needed)"
+    fi
 else
-    # No systemd service — signal gunicorn directly
-    ( sudo "$SYSTEMD_RUN" --on-active=5 \
-        /usr/bin/pkill -USR2 -f "gunicorn.*config.wsgi:application" ) 2>/dev/null || true
-    ( sudo "$SYSTEMD_RUN" --on-active=7 \
-        /usr/bin/pkill -HUP -f "gunicorn" ) 2>/dev/null || true
-    log "Step 5/5: Gunicorn restart signals scheduled (USR2 + HUP)"
+    # No systemd service — signal gunicorn master directly
+    nohup sudo bash -c "sleep 5 && pkill -USR2 -f 'gunicorn.*config.wsgi:application'; sleep 2 && pkill -HUP -f gunicorn" >/dev/null 2>&1 &
+    disown 2>/dev/null || true
+    log "Step 5/5: Gunicorn restart signals scheduled (USR2 + HUP via nohup)"
 fi
 
 log ""
