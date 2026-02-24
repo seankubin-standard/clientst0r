@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.12] - 2026-02-24
+
+### Bug Fixes
+
+**Update progress bar now tracks steps correctly:**
+- `perform_update()` now parses shell script log output line-by-line and fires `step_start`/`step_complete` for the five named steps the UI expects (`Git Pull`, `Install Dependencies`, `Run Migrations`, `Collect Static Files`, `Restart Service`)
+- Removed the generic `Download Update Script` / `Execute Update` step names that the UI had no mapping for — those consumed progress slots without lighting up any step indicators
+
+**Navbar logo no longer clipped on the left:**
+- Added `padding-left: 1rem; padding-right: 1rem` to `.navbar-container` in `custom.css`; Bootstrap's container-fluid gutter was being zeroed by theme resets, leaving the logo flush against the viewport edge
+
 ## [3.12.11] - 2026-02-24
 
 ### New Features

@@ -352,9 +352,6 @@ class UpdateService:
                     )
 
             # Step 1: Download update instructions from GitHub
-            if progress_tracker:
-                progress_tracker.step_start('Download Update Script')
-
             script_url = (
                 f'https://raw.githubusercontent.com/'
                 f'{self.repo_owner}/{self.repo_name}/main/deploy/update_instructions.sh'
@@ -372,9 +369,6 @@ class UpdateService:
             result['output'].append("Update instructions downloaded successfully")
             result['steps_completed'].append('download_script')
 
-            if progress_tracker:
-                progress_tracker.step_complete('Download Update Script')
-
             # Step 2: Write to temp file and make executable
             script_path = f'/tmp/clientst0r_update_{os.getpid()}.sh'
             with open(script_path, 'w') as f:
@@ -383,8 +377,6 @@ class UpdateService:
             logger.info(f"Update script written to: {script_path}")
 
             # Step 3: Execute — pass context via environment variables
-            if progress_tracker:
-                progress_tracker.step_start('Execute Update')
 
             # Clear cache NOW — before the subprocess runs and restarts the service.
             # The service restart (scheduled inside the script) kills this process,
@@ -403,6 +395,21 @@ class UpdateService:
             )
             result['output'].append(f"Base directory: {self.base_dir}")
 
+            # Map shell script log markers to the step names the UI progress bar expects.
+            # Each tuple: (substring to match, 'start'|'complete', step_name)
+            step_triggers = [
+                ('Step 1/5: Fetching',               'start',    'Git Pull'),
+                ('Step 1/5: Code updated',           'complete', 'Git Pull'),
+                ('Step 2/5: Installing',             'start',    'Install Dependencies'),
+                ('Step 2/5: Core dependencies',      'complete', 'Install Dependencies'),
+                ('Step 3/5: Running database',       'start',    'Run Migrations'),
+                ('Step 3/5: Migrations completed',   'complete', 'Run Migrations'),
+                ('Step 4/5: Collecting static',      'start',    'Collect Static Files'),
+                ('Step 4/5: Static files collected', 'complete', 'Collect Static Files'),
+                ('Step 5/5: Scheduling',             'start',    'Restart Service'),
+                ('Update complete!',                 'complete', 'Restart Service'),
+            ]
+
             process = subprocess.Popen(
                 ['/bin/bash', script_path],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -410,9 +417,17 @@ class UpdateService:
             )
             for line in iter(process.stdout.readline, ''):
                 stripped = line.rstrip()
-                if stripped and progress_tracker:
-                    progress_tracker.add_log(stripped)
-                result['output'].append(stripped)
+                if stripped:
+                    if progress_tracker:
+                        progress_tracker.add_log(stripped)
+                        for marker, action, step_name in step_triggers:
+                            if marker in stripped:
+                                if action == 'start':
+                                    progress_tracker.step_start(step_name)
+                                else:
+                                    progress_tracker.step_complete(step_name)
+                                break
+                    result['output'].append(stripped)
             process.wait()
 
             if process.returncode != 0:
@@ -421,9 +436,6 @@ class UpdateService:
                 )
 
             result['steps_completed'].append('execute_script')
-
-            if progress_tracker:
-                progress_tracker.step_complete('Execute Update')
 
             result['success'] = True
 

@@ -199,6 +199,8 @@ h6 { font-size: 1rem; }
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
+    padding-left: 1rem;
+    padding-right: 1rem;
 }
 
 /* Ensure dropdowns are visible and positioned correctly */
