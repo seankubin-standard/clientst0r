@@ -1,4 +1,4 @@
-const CACHE_NAME = 'clientst0r-v2';
+const CACHE_NAME = 'clientst0r-v3';
 const urlsToCache = [
   '/',
   '/static/manifest.json',

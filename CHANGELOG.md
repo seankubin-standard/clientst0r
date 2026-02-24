@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.5] - 2026-02-24
+
+### 🔧 Fixes
+
+**Duplicate Service Worker Fix (Version Flickering Fix):**
+- Removed duplicate `service-worker.js` registration — both `sw.js` and `service-worker.js` were being registered for the same scope, and `service-worker.js` (registered last) was becoming the active controller with a cache-first strategy, causing it to serve stale cached HTML with old version numbers
+- Added automatic unregistration of the legacy `service-worker.js` SW from any browser that already has it installed
+- Bumped service worker cache name from `clientst0r-v2` to `clientst0r-v3` to clear any stale HTML content cached by the old duplicate SW
+
+### ✨ Features
+
+**Live Clock in Navbar:**
+- Added a live HH:MM:SS clock to the right side of the navigation bar (hidden on mobile to save space)
+- Clock shows full date on hover and updates every second
+
 ## [3.12.4] - 2026-02-24
 
 ### 🔧 Fixes

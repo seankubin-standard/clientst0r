@@ -1,7 +1,7 @@
 // Client St0r Service Worker
 // Provides offline support and caching for PWA
 
-const CACHE_NAME = 'clientst0r-v2';
+const CACHE_NAME = 'clientst0r-v3';
 const OFFLINE_URL = '/offline/';
 
 // Assets to cache immediately on install
