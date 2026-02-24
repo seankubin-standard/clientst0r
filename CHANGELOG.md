@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.1] - 2026-02-24
+
+### Bug Fixes
+
+**GUI updater: sudo check no longer fails due to service name mismatch in sudoers**
+- `_check_passwordless_sudo()` was testing `sudo systemctl status <service-name>` — if the sudoers file was created on an older version that used `clientst0r-gunicorn.service` as a fallback, the test would fail even though sudo itself was correctly configured for `huduglue-gunicorn.service` or another service name
+- Now tests against `sudo systemd-run --version` which is always present in the sudoers config and does not depend on a specific service name — falls back to the service-specific check only as a secondary test
+- Fixes: GUI updater showing "Passwordless sudo not configured" even after setting up the sudoers file correctly (issue #91)
+
 ## [3.13.0] - 2026-02-24
 
 ### Security & Performance Hardening Release

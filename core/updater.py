@@ -568,28 +568,42 @@ class UpdateService:
         """
         Check if passwordless sudo is configured for service restart.
 
+        Tests against systemd-run (always present in the sudoers config) rather
+        than 'systemctl status <service>' — avoids false negatives when the
+        sudoers file was created with a different service name than the one
+        currently detected.
+
         Returns:
             bool: True if passwordless sudo works, False otherwise
         """
         try:
-            # Use auto-detected service name or fallback
-            service_name = self.service_name or 'clientst0r-gunicorn.service'
+            import shutil
+            systemd_run = shutil.which('systemd-run') or '/usr/bin/systemd-run'
 
-            # Test if we can run sudo without password using -n (non-interactive)
+            # Test with systemd-run --version — this is always in the sudoers
+            # config and doesn't depend on a specific service name being correct.
             result = subprocess.run(
-                ['/usr/bin/sudo', '-n', '/usr/bin/systemctl', 'status', service_name],
+                ['/usr/bin/sudo', '-n', systemd_run, '--version'],
                 capture_output=True,
                 text=True,
                 timeout=5
             )
-            # If returncode is 0, passwordless sudo is working
-            # If it's 1 but no password error in stderr, sudo works but service might not exist
             if result.returncode == 0:
                 return True
-            # Check if the error is specifically about needing a password
             if 'password is required' in result.stderr or 'a terminal is required' in result.stderr:
                 return False
-            # Other errors (like service not found) still mean sudo itself works
+
+            # Fallback: try systemctl status with detected service name
+            service_name = self.service_name or 'clientst0r-gunicorn.service'
+            systemctl = shutil.which('systemctl') or '/usr/bin/systemctl'
+            result2 = subprocess.run(
+                ['/usr/bin/sudo', '-n', systemctl, 'status', service_name],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if 'password is required' in result2.stderr or 'a terminal is required' in result2.stderr:
+                return False
             return True
         except Exception as e:
             logger.warning(f"Failed to check passwordless sudo: {e}")
