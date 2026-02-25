@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load asset_tags %}
 
 {% block title %}{{ rack.name }} - Client St0r{% endblock %}
 
@@ -876,8 +877,8 @@
                                 <h6><i class="fas fa-server"></i> Available Assets</h6>
                                 <div id="available-assets">
                                     {% for asset in available_rack_assets %}
-                                    <div class="asset-item" data-asset-id="{{ asset.id }}" data-units="{{ asset.rack_units|default:'1' }}">
-                                        <i class="fas fa-grip-vertical"></i>
+                                    <div class="asset-item" data-asset-id="{{ asset.id }}" data-units="{{ asset.rack_units|default:'1' }}" data-asset-type="{{ asset.asset_type }}">
+                                        {% asset_type_icon asset.asset_type %}
                                         <span class="asset-name">{{ asset.name }}</span>
                                         <small class="text-muted asset-units">{{ asset.rack_units|default:'1' }}U</small>
                                     </div>
@@ -2623,12 +2624,40 @@ function hideRackDeviceTooltip() {
     _tt.style.display = 'none';
 }
 
+// ── Asset type icon map (mirrors assets/templatetags/asset_tags.py) ───────────
+const DEVICE_ICONS = {
+    access_control:'fa-shield-alt', appliance:'fa-blender', av_receiver:'fa-volume-up',
+    backup_appliance:'fa-database', badge_printer:'fa-id-card', biometric_scanner:'fa-fingerprint',
+    bridge:'fa-project-diagram', card_reader:'fa-credit-card', conference_phone:'fa-phone-square',
+    console_server:'fa-terminal', copier:'fa-copy', desktop:'fa-desktop',
+    digital_signage:'fa-tv', display:'fa-desktop', door_controller:'fa-door-open',
+    dvr:'fa-video', environmental_monitor:'fa-thermometer-half', fiber_panel:'fa-ethernet',
+    firewall:'fa-fire-alt', gateway:'fa-exchange-alt', generator:'fa-bolt',
+    handheld:'fa-barcode', hvac:'fa-wind', iot_device:'fa-microchip',
+    kvm:'fa-keyboard', label_printer:'fa-tag', laptop:'fa-laptop',
+    lighting_control:'fa-lightbulb', load_balancer:'fa-balance-scale', mobile:'fa-mobile-alt',
+    modem:'fa-broadcast-tower', nas:'fa-hdd', nvr:'fa-video',
+    paging_system:'fa-bullhorn', patch_panel:'fa-ethernet', pbx:'fa-phone',
+    pda:'fa-mobile-alt', pdu:'fa-plug', phone:'fa-phone',
+    plotter:'fa-drafting-compass', printer:'fa-print', projector:'fa-film',
+    rack:'fa-server', router:'fa-route', san:'fa-database',
+    scanner:'fa-barcode', security_camera:'fa-video', sensor:'fa-satellite-dish',
+    server:'fa-server', switch:'fa-network-wired', tablet:'fa-tablet-alt',
+    tape_drive:'fa-tape', terminal:'fa-terminal', thermostat:'fa-thermometer-three-quarters',
+    thin_client:'fa-desktop', ups:'fa-battery-three-quarters', video_conferencing:'fa-video',
+    voip_gateway:'fa-phone-volume', wireless_ap:'fa-wifi', wireless_controller:'fa-wifi',
+    workstation:'fa-desktop', other:'fa-box',
+};
+function deviceIcon(assetType) {
+    return DEVICE_ICONS[assetType] || 'fa-box';
+}
+
 // ── Device detail modal ───────────────────────────────────────────────────────
 function showDeviceDetailModal(device) {
     hideRackDeviceTooltip();
 
     document.getElementById('deviceDetailModalTitle').innerHTML =
-        `<i class="fas fa-server me-2"></i>${device.name}`;
+        `<i class="fas ${deviceIcon(device.asset_type)} me-2"></i>${device.name}`;
 
     const editBtn   = document.getElementById('deviceDetailEditLink');
     const assetLink = document.getElementById('deviceDetailAssetLink');
@@ -2677,7 +2706,7 @@ function showDeviceEditModal(device) {
 
     // Update title
     document.getElementById('deviceEditModalTitle').innerHTML =
-        `<i class="fas fa-edit me-2"></i>${device.name}`;
+        `<i class="fas ${deviceIcon(device.asset_type)} me-2"></i>${device.name}`;
 
     // Pre-fill Details tab
     document.getElementById('editDeviceId').value        = device.id;

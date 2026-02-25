@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load asset_tags %}
 
 {% block title %}{{ closet.name }} - Client St0r{% endblock %}
 
@@ -555,7 +556,7 @@
                          data-asset-type="{{ asset.asset_type }}"
                          data-rack-units="{{ asset.rack_units|default:'1' }}"
                          data-port-count="{{ asset.port_count|default:'' }}">
-                        <i class="fas fa-cube"></i>
+                        {% asset_type_icon asset.asset_type %}
                         <span title="{{ asset.name }}">{{ asset.name }}</span>
                         {% if asset.rack_units %}<span class="sidebar-asset-units">{{ asset.rack_units }}U</span>{% endif %}
                     </div>
@@ -817,9 +818,27 @@ function loadClosetBoardDevices() {
 
 // ── Create a board device element ─────────────────────────────────
 const DEVICE_ICONS = {
-    switch: 'fa-network-wired', router: 'fa-route', firewall: 'fa-shield-alt',
-    server: 'fa-server', patch_panel: 'fa-th', wireless_ap: 'fa-wifi',
-    ups: 'fa-bolt', pdu: 'fa-plug', other: 'fa-cube',
+    access_control:'fa-shield-alt', appliance:'fa-blender', av_receiver:'fa-volume-up',
+    backup_appliance:'fa-database', badge_printer:'fa-id-card', biometric_scanner:'fa-fingerprint',
+    bridge:'fa-project-diagram', card_reader:'fa-credit-card', conference_phone:'fa-phone-square',
+    console_server:'fa-terminal', copier:'fa-copy', desktop:'fa-desktop',
+    digital_signage:'fa-tv', display:'fa-desktop', door_controller:'fa-door-open',
+    dvr:'fa-video', environmental_monitor:'fa-thermometer-half', fiber_panel:'fa-ethernet',
+    firewall:'fa-fire-alt', gateway:'fa-exchange-alt', generator:'fa-bolt',
+    handheld:'fa-barcode', hvac:'fa-wind', iot_device:'fa-microchip',
+    kvm:'fa-keyboard', label_printer:'fa-tag', laptop:'fa-laptop',
+    lighting_control:'fa-lightbulb', load_balancer:'fa-balance-scale', mobile:'fa-mobile-alt',
+    modem:'fa-broadcast-tower', nas:'fa-hdd', nvr:'fa-video',
+    paging_system:'fa-bullhorn', patch_panel:'fa-ethernet', pbx:'fa-phone',
+    pda:'fa-mobile-alt', pdu:'fa-plug', phone:'fa-phone',
+    plotter:'fa-drafting-compass', printer:'fa-print', projector:'fa-film',
+    rack:'fa-server', router:'fa-route', san:'fa-database',
+    scanner:'fa-barcode', security_camera:'fa-video', sensor:'fa-satellite-dish',
+    server:'fa-server', switch:'fa-network-wired', tablet:'fa-tablet-alt',
+    tape_drive:'fa-tape', terminal:'fa-terminal', thermostat:'fa-thermometer-three-quarters',
+    thin_client:'fa-desktop', ups:'fa-battery-three-quarters', video_conferencing:'fa-video',
+    voip_gateway:'fa-phone-volume', wireless_ap:'fa-wifi', wireless_controller:'fa-wifi',
+    workstation:'fa-desktop', other:'fa-box',
 };
 
 function createBoardDevice(item) {
@@ -953,7 +972,7 @@ function openClosetEditModal(item) {
     _closetPorts      = [];
     _closetActivePort = null;
 
-    document.getElementById('closetEditModalTitle').innerHTML = `<i class="fas fa-edit me-2"></i>${item.name}`;
+    document.getElementById('closetEditModalTitle').innerHTML = `<i class="fas ${DEVICE_ICONS[item.asset_type] || 'fa-box'} me-2"></i>${item.name}`;
     document.getElementById('closetEditDeviceId').value   = item.id;
     document.getElementById('closetEditName').value       = item.name || '';
     document.getElementById('closetEditStartUnit').value  = item.start_unit || 1;

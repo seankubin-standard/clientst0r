@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load asset_tags %}
 
 {% block title %}Assets{% endblock %}
 
@@ -81,13 +82,7 @@
                 <tr>
                     <td><a href="{% url 'assets:asset_detail' asset.pk %}">{{ asset.name }}</a></td>
                     <td>
-                        {% if asset.asset_type == 'laptop' %}<i class="fas fa-laptop text-primary"></i>
-                        {% elif asset.asset_type == 'desktop' %}<i class="fas fa-desktop text-info"></i>
-                        {% elif asset.asset_type == 'server' %}<i class="fas fa-server text-danger"></i>
-                        {% elif asset.asset_type == 'network' %}<i class="fas fa-network-wired text-success"></i>
-                        {% elif asset.asset_type == 'phone' %}<i class="fas fa-mobile-alt text-warning"></i>
-                        {% elif asset.asset_type == 'printer' %}<i class="fas fa-print text-secondary"></i>
-                        {% else %}<i class="fas fa-box text-muted"></i>{% endif %}
+                        {% asset_type_icon asset.asset_type "me-1" %}
                         {{ asset.get_asset_type_display }}
                     </td>
                     <td>{{ asset.manufacturer|default:"—" }}</td>

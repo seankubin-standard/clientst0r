@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load asset_tags %}
 
 {% block title %}Search: {{ query }} - Client St0r{% endblock %}
 
@@ -32,7 +33,7 @@
         {% for asset in assets %}
         <a href="{% url 'assets:asset_detail' asset.pk %}" class="list-group-item list-group-item-action">
             <div class="d-flex w-100 justify-content-between">
-                <h6 class="mb-1"><i class="fas fa-server text-primary"></i> {{ asset.name }}</h6>
+                <h6 class="mb-1">{% asset_type_icon asset.asset_type "me-1" %} {{ asset.name }}</h6>
                 <small class="text-muted">{{ asset.get_asset_type_display }}</small>
             </div>
             {% if asset.asset_tag %}
