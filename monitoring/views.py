@@ -171,7 +171,11 @@ def website_monitor_check(request, pk):
 def expiration_list(request):
     """List all expirations."""
     org = get_request_organization(request)
-    expirations = Expiration.objects.filter(organization=org).order_by('expires_at')
+    is_staff = getattr(request.user, 'is_staff', False)
+    if not org and (request.user.is_superuser or is_staff):
+        expirations = Expiration.objects.all().select_related('organization').order_by('expires_at')
+    else:
+        expirations = Expiration.objects.filter(organization=org).order_by('expires_at')
 
     return render(request, 'monitoring/expiration_list.html', {
         'expirations': expirations,
@@ -255,15 +259,21 @@ def expiration_delete(request, pk):
 def rack_list(request):
     """List all racks."""
     org = get_request_organization(request)
-    racks = Rack.objects.filter(organization=org)
+    is_staff = getattr(request.user, 'is_staff', False)
+    if not org and (request.user.is_superuser or is_staff):
+        racks = Rack.objects.all().select_related('organization')
+    else:
+        racks = Rack.objects.filter(organization=org)
 
     return render(request, 'monitoring/rack_list.html', {
         'racks': racks,
+        'in_global_view': not org,
     })
 
 
 @login_required
 @require_write
+@require_organization_context
 def rack_create(request):
     """Create rack."""
     org = get_request_organization(request)
@@ -481,7 +491,11 @@ def rack_device_delete(request, pk):
 def subnet_list(request):
     """List all subnets."""
     org = get_request_organization(request)
-    subnets = Subnet.objects.filter(organization=org)
+    is_staff = getattr(request.user, 'is_staff', False)
+    if not org and (request.user.is_superuser or is_staff):
+        subnets = Subnet.objects.all().select_related('organization')
+    else:
+        subnets = Subnet.objects.filter(organization=org)
 
     return render(request, 'monitoring/subnet_list.html', {
         'subnets': subnets,
@@ -675,10 +689,16 @@ def ip_address_delete(request, pk):
 def network_closet_list(request):
     """List all network closets and data closets."""
     org = get_request_organization(request)
-    closets = Rack.objects.filter(
-        organization=org,
-        rack_type__in=['network_closet', 'data_closet']
-    )
+    is_staff = getattr(request.user, 'is_staff', False)
+    if not org and (request.user.is_superuser or is_staff):
+        closets = Rack.objects.filter(
+            rack_type__in=['network_closet', 'data_closet']
+        ).select_related('organization')
+    else:
+        closets = Rack.objects.filter(
+            organization=org,
+            rack_type__in=['network_closet', 'data_closet']
+        )
 
     # Search
     query = request.GET.get('q')
@@ -699,14 +719,10 @@ def network_closet_list(request):
 
 @login_required
 @require_write
+@require_organization_context
 def network_closet_create(request):
     """Create network closet."""
     org = get_request_organization(request)
-
-    # Require organization context for creating network closets
-    if not org:
-        messages.error(request, 'Organization context required to create network closets.')
-        return redirect('accounts:organization_list')
 
     if request.method == 'POST':
         form = RackForm(request.POST, organization=org)
