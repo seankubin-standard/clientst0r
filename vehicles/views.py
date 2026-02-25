@@ -379,10 +379,14 @@ def damage_report_create(request, vehicle_id):
             messages.success(request, 'Damage report created successfully.')
             return redirect('vehicles:vehicle_detail', pk=vehicle.pk)
     else:
-        form = VehicleDamageReportForm(initial={
+        initial = {
             'reported_by': request.user,
             'incident_date': timezone.now().date()
-        })
+        }
+        location = request.GET.get('location', '').strip()
+        if location:
+            initial['damage_location'] = location
+        form = VehicleDamageReportForm(initial=initial)
 
     return render(request, 'vehicles/damage_report_form.html', {
         'form': form,

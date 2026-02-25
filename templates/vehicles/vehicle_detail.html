@@ -470,14 +470,15 @@
 </style>
 
 <script>
-// Highlight damaged areas on the inline vehicle diagram
 document.addEventListener('DOMContentLoaded', function() {
+    const vehicleId = {{ vehicle.pk }};
     const damageReports = [
         {% for report in damage_reports %}
         {
             id: {{ report.id }},
             location: '{{ report.damage_location|escapejs }}',
             severity: '{{ report.severity }}',
+            severityLabel: '{{ report.get_severity_display|escapejs }}',
             date: '{{ report.incident_date }}',
             description: '{{ report.description|truncatewords:10|escapejs }}'
         }{% if not forloop.last %},{% endif %}
@@ -489,31 +490,66 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     const severityOrder = ['total_loss', 'major', 'moderate', 'minor'];
 
-    // Highlight damaged areas directly on the inline SVG
+    // Build popover element
+    const popover = document.createElement('div');
+    popover.id = 'damage-popover';
+    popover.style.cssText = 'display:none;position:fixed;z-index:9999;background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:8px;padding:12px 14px;min-width:200px;max-width:280px;box-shadow:0 4px 20px rgba(0,0,0,0.4);font-size:0.85rem;';
+    document.body.appendChild(popover);
+
+    // Close popover on outside click
+    document.addEventListener('click', function(e) {
+        if (!popover.contains(e.target) && !e.target.closest('#damage-svg')) {
+            popover.style.display = 'none';
+        }
+    });
+
+    // Wire up all SVG areas
     document.querySelectorAll('#damage-svg [data-area]').forEach(area => {
         const areaName = area.getAttribute('data-area');
         const damageInArea = damageReports.filter(d => d.location === areaName);
+        area.style.cursor = 'pointer';
 
+        // Highlight damaged areas
         if (damageInArea.length > 0) {
             const worstSeverity = severityOrder.find(s => damageInArea.some(d => d.severity === s)) || 'minor';
             const color = severityColors[worstSeverity];
             area.style.setProperty('--damage-color', color);
             area.classList.add('damaged');
-
-            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-            title.textContent = `${damageInArea.length} report(s) — worst: ${worstSeverity.replace('_',' ')}`;
-            area.appendChild(title);
-
-            area.style.cursor = 'pointer';
-            area.addEventListener('click', function() {
-                const firstReport = document.querySelector(`[data-damage-id="${damageInArea[0].id}"]`);
-                if (firstReport) {
-                    firstReport.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    firstReport.classList.add('highlight-flash');
-                    setTimeout(() => firstReport.classList.remove('highlight-flash'), 2000);
-                }
-            });
         }
+
+        // Click: show popover
+        area.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const createUrl = `/vehicles/vehicles/${vehicleId}/damage/create/?location=${encodeURIComponent(areaName)}`;
+            let html = `<div style="font-weight:700;margin-bottom:8px;border-bottom:1px solid #475569;padding-bottom:6px;">${areaName}</div>`;
+
+            if (damageInArea.length > 0) {
+                html += `<div style="margin-bottom:8px;">`;
+                damageInArea.forEach(d => {
+                    const color = severityColors[d.severity] || '#94a3b8';
+                    html += `<div style="margin-bottom:5px;padding:4px 6px;background:#0f172a;border-radius:4px;border-left:3px solid ${color};">
+                        <span style="color:${color};font-weight:600;">${d.severityLabel}</span>
+                        <span style="color:#94a3b8;font-size:0.78rem;margin-left:6px;">${d.date}</span><br>
+                        <span style="color:#cbd5e1;">${d.description}</span>
+                        <br><a href="/vehicles/damage/${d.id}/edit/" style="color:#60a5fa;font-size:0.75rem;">Edit report</a>
+                    </div>`;
+                });
+                html += `</div>`;
+                html += `<a href="${createUrl}" class="btn btn-sm btn-danger" style="width:100%;text-align:center;display:block;padding:5px;border-radius:4px;background:#dc3545;color:#fff;text-decoration:none;font-size:0.8rem;">+ Add Another Report Here</a>`;
+            } else {
+                html += `<div style="color:#94a3b8;margin-bottom:10px;">No damage reported for this area.</div>`;
+                html += `<a href="${createUrl}" class="btn btn-sm btn-danger" style="width:100%;text-align:center;display:block;padding:5px;border-radius:4px;background:#dc3545;color:#fff;text-decoration:none;font-size:0.8rem;">+ Report Damage Here</a>`;
+            }
+
+            popover.innerHTML = html;
+            popover.style.display = 'block';
+
+            // Position near click
+            const x = Math.min(e.clientX + 12, window.innerWidth - 300);
+            const y = Math.min(e.clientY + 12, window.innerHeight - 200);
+            popover.style.left = x + 'px';
+            popover.style.top = y + 'px';
+        });
     });
 });
 </script>
