@@ -4,6 +4,8 @@ Assets views
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
 from core.middleware import get_request_organization
 from core.decorators import require_write, require_organization_context
 from core.webhook_sender import send_webhook
@@ -386,6 +388,67 @@ def contact_delete(request, pk):
     return render(request, 'assets/contact_confirm_delete.html', {
         'contact': contact,
     })
+
+
+@csrf_exempt
+@login_required
+def asset_api_detail(request, pk):
+    """
+    GET  /assets/api/assets/<pk>/  — return asset info as JSON
+    PATCH /assets/api/assets/<pk>/ — update editable fields
+    """
+    import json
+
+    org = get_request_organization(request)
+    if org:
+        asset = get_object_or_404(Asset, pk=pk, organization=org)
+    else:
+        asset = get_object_or_404(Asset, pk=pk)
+
+    if request.method == 'GET':
+        return JsonResponse({
+            'id': asset.id,
+            'name': asset.name,
+            'asset_type': asset.asset_type,
+            'asset_type_display': asset.get_asset_type_display(),
+            'hostname': asset.hostname,
+            'ip_address': str(asset.ip_address) if asset.ip_address else '',
+            'mac_address': asset.mac_address,
+            'os_name': asset.os_name,
+            'os_version': asset.os_version,
+            'cpu': asset.cpu,
+            'ram_gb': asset.ram_gb,
+            'storage': asset.storage,
+            'manufacturer': asset.manufacturer,
+            'model': asset.model,
+            'serial_number': asset.serial_number,
+            'port_count': asset.port_count,
+        })
+
+    if request.method == 'PATCH':
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+        allowed = ['hostname', 'ip_address', 'mac_address', 'os_name', 'os_version',
+                   'cpu', 'ram_gb', 'storage']
+        for field in allowed:
+            if field in data:
+                val = data[field]
+                if field == 'ip_address' and val == '':
+                    val = None
+                if field == 'ram_gb':
+                    val = int(val) if val else None
+                setattr(asset, field, val)
+        try:
+            asset.save()
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+        return JsonResponse({'success': True})
+
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 
 @login_required
