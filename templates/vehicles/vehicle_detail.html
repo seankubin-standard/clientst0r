@@ -586,6 +586,19 @@
 
 {% block extra_js %}
 <style>
+/* Increase tab contrast */
+.nav-tabs .nav-link {
+    color: #343a40;
+    font-weight: 500;
+}
+.nav-tabs .nav-link:hover {
+    color: #000;
+}
+.nav-tabs .nav-link.active {
+    color: #0d6efd;
+    font-weight: 600;
+}
+
 #damage-diagram-container [data-area].damaged {
     filter: brightness(1.5) drop-shadow(0 0 8px var(--damage-color, #dc3545));
     stroke: var(--damage-color, #dc3545) !important;
