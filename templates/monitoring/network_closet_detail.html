@@ -777,6 +777,7 @@ let _dragEl        = null;
 let _dragItem      = null;
 let _dragOffX      = 0;
 let _dragOffY      = 0;
+let _lastBoardDragEnd = 0;  // timestamp of last drag release, used to suppress post-drag clicks
 let _resizeEl      = null;
 let _resizeItem    = null;
 let _resizeStartX  = 0;
@@ -846,10 +847,11 @@ function createBoardDevice(item) {
         openClosetEditModal(item);
     });
 
-    // Click body → also open edit (ignore click fired immediately after drop)
+    // Click body → also open edit (ignore click fired immediately after drop or drag)
     const _created = Date.now();
     el.addEventListener('click', function(e) {
-        if (Date.now() - _created < 400) return; // ignore accidental mouseup-click on drop
+        if (Date.now() - _created < 400) return;       // ignore click right after element creation
+        if (Date.now() - _lastBoardDragEnd < 400) return; // ignore click right after drag release
         if (e.target.classList.contains('board-resize-handle')) return;
         if (e.target.closest('.board-device-edit-btn')) return;
         openClosetEditModal(item);
@@ -916,6 +918,7 @@ document.addEventListener('mouseup', function() {
         saveBoardPosition(_dragItem.id, x, y, w, h);
         _dragItem.board_position_x = x;
         _dragItem.board_position_y = y;
+        _lastBoardDragEnd = Date.now(); // suppress click event that fires right after mouseup
         _isDragging = false; _dragEl = null; _dragItem = null;
     }
     if (_isResizing && _resizeEl) {
