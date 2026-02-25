@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.db.models import Q
 from core.middleware import get_request_organization
 from core.decorators import require_write, require_organization_context
-from .models import WebsiteMonitor, Expiration, Rack, RackDevice, Subnet, IPAddress
+from .models import WebsiteMonitor, Expiration, Rack, RackDevice, RackConnection, Subnet, IPAddress
 from .forms import (
     WebsiteMonitorForm, ExpirationForm, RackForm, RackDeviceForm,
     SubnetForm, IPAddressForm
@@ -738,6 +738,7 @@ def network_closet_create(request):
 @login_required
 def network_closet_detail(request, pk):
     """View network closet details."""
+    import re
     org = get_request_organization(request)
     closet = get_object_or_404(
         Rack,
@@ -753,16 +754,76 @@ def network_closet_detail(request, pk):
     unit_map = {}
     for u in range(1, closet.units + 1):
         unit_map[u] = None
-
-    # Map devices to their units
     for device in devices:
         for u in range(device.start_unit, device.end_unit + 1):
             unit_map[u] = device
+
+    # Get all connections for devices in this closet
+    device_ids = list(devices.values_list('id', flat=True))
+    connections = RackConnection.objects.filter(
+        from_device_id__in=device_ids
+    ).select_related('from_device', 'to_device')
+
+    # Build patch panel port data for port map visualization
+    # Index connections by (device_id, port)
+    conn_from = {}   # (device_id, port_str) -> connection
+    conn_to = {}     # (device_id, port_str) -> connection
+    for c in connections:
+        if c.from_port:
+            conn_from[(c.from_device_id, c.from_port)] = c
+        if c.to_port:
+            conn_to[(c.to_device_id, c.to_port)] = c
+
+    patch_panels = []
+    for device in devices:
+        name_lower = device.name.lower()
+        if 'patch' in name_lower or 'panel' in name_lower:
+            match = re.search(r'\((\d+)-(\d+)\)', device.name)
+            if match:
+                port_start = int(match.group(1))
+                port_end = int(match.group(2))
+            else:
+                port_start = 1
+                port_end = 24
+
+            ports = []
+            for p in range(port_start, port_end + 1):
+                port_str = str(p)
+                if (device.id, port_str) in conn_from:
+                    c = conn_from[(device.id, port_str)]
+                    ports.append({
+                        'number': p, 'status': 'connected',
+                        'color': c.cable_color or '#0d6efd',
+                        'label': f"{c.to_device.name} port {c.to_port or '?'}",
+                    })
+                elif (device.id, port_str) in conn_to:
+                    c = conn_to[(device.id, port_str)]
+                    ports.append({
+                        'number': p, 'status': 'connected',
+                        'color': c.cable_color or '#0d6efd',
+                        'label': f"{c.from_device.name} port {c.from_port or '?'}",
+                    })
+                else:
+                    ports.append({'number': p, 'status': 'empty', 'color': None, 'label': 'Empty'})
+
+            patch_panels.append({'device': device, 'ports': ports,
+                                  'port_start': port_start, 'port_end': port_end})
+
+    import json
+    patch_panels_json = json.dumps([{
+        'device_id': pp['device'].id,
+        'ports': pp['ports'],
+        'port_start': pp['port_start'],
+        'port_end': pp['port_end'],
+    } for pp in patch_panels])
 
     return render(request, 'monitoring/network_closet_detail.html', {
         'closet': closet,
         'devices': devices,
         'unit_map': unit_map,
+        'patch_panels': patch_panels,
+        'patch_panels_json': patch_panels_json,
+        'connections': connections,
     })
 
 

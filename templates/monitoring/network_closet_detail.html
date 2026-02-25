@@ -250,6 +250,79 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- Patch Panel Port Map -->
+        {% if patch_panels %}
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-th"></i> Patch Panel Port Map</h6>
+                <div class="port-legend-inline" style="display:flex;gap:12px;font-size:0.78rem;">
+                    <span><span class="port-legend-dot" style="background:#0d6efd;display:inline-block;width:12px;height:12px;border-radius:3px;"></span> Patched</span>
+                    <span><span class="port-legend-dot" style="background:#343a40;display:inline-block;width:12px;height:12px;border-radius:3px;"></span> Empty</span>
+                </div>
+            </div>
+            <div class="card-body">
+                {% for panel in patch_panels %}
+                <div class="mb-4">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <div style="width:12px;height:12px;border-radius:2px;background:{{ panel.device.color }};"></div>
+                        <strong>{{ panel.device.name }}</strong>
+                        <small class="text-muted">Ports {{ panel.port_start }}–{{ panel.port_end }}</small>
+                        <span class="badge bg-primary">
+                            {{ panel.ports|length }} ports
+                        </span>
+                    </div>
+                    <div id="portmap-{{ panel.device.id }}" class="port-map-grid"></div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if patch_panels %}
+<style>
+.port-map-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 28px);
+    gap: 4px;
+    margin-top: 4px;
+}
+.port-box {
+    width: 28px; height: 28px;
+    border-radius: 4px;
+    border: 2px solid rgba(0,0,0,0.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.6rem; font-weight: 700;
+    cursor: default; color: white;
+    transition: transform 0.1s; position: relative;
+}
+.port-box.connected { border-color: rgba(0,0,0,0.2); }
+.port-box.empty { background: #343a40; color: #6c757d; border-color: #495057; }
+.port-box:hover { transform: scale(1.35); z-index: 10; }
+[data-bs-theme="dark"] .port-box.empty { background: #1a1d23; }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const panels = {{ patch_panels_json|safe }};
+    panels.forEach(function(panel) {
+        const container = document.getElementById('portmap-' + panel.device_id);
+        if (!container) return;
+        panel.ports.forEach(function(port) {
+            const box = document.createElement('div');
+            box.className = 'port-box ' + (port.status === 'connected' ? 'connected' : 'empty');
+            box.textContent = port.number;
+            box.title = 'Port ' + port.number + ': ' + port.label;
+            if (port.status === 'connected') {
+                box.style.background = port.color || '#0d6efd';
+            }
+            container.appendChild(box);
+        });
+    });
+});
+</script>
+{% endif %}
 {% endblock %}

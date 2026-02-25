@@ -507,6 +507,29 @@
     right: 10px;
     z-index: 10;
 }
+
+/* ── Print styles ─────────────────────────────────────── */
+@media print {
+    nav, .breadcrumb, .btn, .btn-group,
+    ul.nav.nav-tabs, .tab-pane:not(.show.active),
+    .sidebar-panel, #available-assets-panel,
+    .toast-container, .modal { display: none !important; }
+
+    .tab-content > .tab-pane.show.active { display: block !important; }
+
+    .rack-visual-container { max-width: 400px; }
+    .rack-visual, .rack-unit { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .rack-device { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+
+    body { font-size: 11pt; }
+    h2 { font-size: 16pt; margin-bottom: 6pt; }
+    .card { border: 1px solid #ccc !important; break-inside: avoid; }
+    .card-header { background: #f8f9fa !important; color: #000 !important; }
+
+    /* Show rack info + visual tab side by side on print */
+    .col-lg-3 { width: 30% !important; float: left; }
+    .col-lg-9 { width: 68% !important; float: right; }
+}
 </style>
 {% endblock %}
 
@@ -516,6 +539,7 @@
     <div>
         <a href="{% url 'monitoring:rack_device_create' rack.pk %}" class="btn btn-success btn-sm"><i class="fas fa-plus"></i> Add Asset to Rack</a>
         <a href="{% url 'assets:asset_create' %}?redirect=rack_{{ rack.pk }}" class="btn btn-outline-success btn-sm"><i class="fas fa-box"></i> Create New Asset</a>
+        <button class="btn btn-outline-secondary btn-sm" onclick="window.print()" title="Print rack sheet"><i class="fas fa-print"></i> Print</button>
         <div class="btn-group btn-group-sm ms-2">
             <a href="{% url 'monitoring:rack_edit' rack.pk %}" class="btn btn-primary"><i class="fas fa-edit"></i></a>
             <a href="{% url 'monitoring:rack_delete' rack.pk %}" class="btn btn-danger"><i class="fas fa-trash"></i></a>

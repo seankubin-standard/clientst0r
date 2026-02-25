@@ -191,6 +191,25 @@ def vehicle_detail(request, pk):
     total_fuel_cost = fuel_logs.aggregate(total=Sum('total_cost'))['total'] or 0
     avg_mpg = vehicle.get_recent_fuel_mpg() or 0
 
+    # Compute vehicle health score (0-100)
+    condition_scores = {'excellent': 100, 'good': 80, 'fair': 60, 'poor': 40, 'needs_repair': 20}
+    health_score = condition_scores.get(vehicle.condition, 60)
+    health_score -= (pending_damage * 10)
+    health_score -= (overdue_maintenance * 15)
+    health_score = max(0, min(100, health_score))
+    if health_score >= 80:
+        vehicle_health_label = 'Excellent'
+        vehicle_health_color = 'success'
+    elif health_score >= 60:
+        vehicle_health_label = 'Good'
+        vehicle_health_color = 'primary'
+    elif health_score >= 40:
+        vehicle_health_label = 'Fair'
+        vehicle_health_color = 'warning'
+    else:
+        vehicle_health_label = 'Poor'
+        vehicle_health_color = 'danger'
+
     context = {
         'vehicle': vehicle,
         'inventory_items': inventory_items,
@@ -205,7 +224,11 @@ def vehicle_detail(request, pk):
         'total_maintenance_cost': total_maintenance_cost,
         'overdue_maintenance': overdue_maintenance,
         'total_fuel_cost': total_fuel_cost,
-        'avg_mpg': avg_mpg
+        'avg_mpg': avg_mpg,
+        'vehicle_health_score': health_score,
+        'vehicle_health_remainder': 100 - health_score,
+        'vehicle_health_label': vehicle_health_label,
+        'vehicle_health_color': vehicle_health_color,
     }
 
     return render(request, 'vehicles/vehicle_detail.html', context)
