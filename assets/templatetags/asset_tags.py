@@ -52,7 +52,7 @@ ASSET_TYPE_ICONS = {
     'printer':            ('fa-print',                   'text-secondary'),
     'projector':          ('fa-film',                    'text-secondary'),
     'rack':               ('fa-server',                  'text-secondary'),
-    'router':             ('fa-random',                  'text-success'),
+    'router':             ('fa-code-branch',              'text-success'),
     'san':                ('fa-database',                'text-warning'),
     'scanner':            ('fa-barcode',                 'text-secondary'),
     'security_camera':    ('fa-video',                   'text-danger'),
