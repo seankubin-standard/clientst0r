@@ -6,7 +6,10 @@
 set -e
 
 SERVICE_FILE="/etc/systemd/system/clientst0r-gunicorn.service"
-ENV_FILE="/home/administrator/.env"
+# Detect install directory from this script's location (works for any username/path)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(dirname "$SCRIPT_DIR")"
+ENV_FILE="$APP_DIR/.env"
 TEMP_FILE="/tmp/clientst0r-service-$$.tmp"
 
 echo "🔧 Checking Gunicorn service configuration..."
@@ -34,7 +37,7 @@ echo "📝 Adding EnvironmentFile to Gunicorn service..."
 
 # Read the service file and add EnvironmentFile line
 # Use awk to insert the line after Environment="PATH=..."
-awk '/Environment="PATH=/ { print; print "EnvironmentFile=/home/administrator/.env"; next }1' "$SERVICE_FILE" > "$TEMP_FILE"
+awk -v env_file="$ENV_FILE" '/Environment="PATH=/ { print; print "EnvironmentFile=" env_file; next }1' "$SERVICE_FILE" > "$TEMP_FILE"
 
 # Check if the modification was successful
 if ! grep -q "EnvironmentFile=$ENV_FILE" "$TEMP_FILE"; then

@@ -15,6 +15,7 @@ from .sync import PSASync
 from .providers import get_provider
 from .providers.rmm import get_rmm_provider
 from vault.encryption import EncryptionError
+from django.conf import settings
 import logging
 
 logger = logging.getLogger('integrations')
@@ -87,7 +88,7 @@ def integration_create(request):
                         "The Gunicorn service is not loading your .env file with the APP_MASTER_KEY. "
                         "This is a common setup issue that's easy to fix!<br><br>"
                         "<strong>Quick Fix:</strong><br>"
-                        "<code>cd /home/administrator<br>"
+                        f"<code>cd {settings.BASE_DIR}<br>"
                         "./scripts/fix_gunicorn_env.sh</code><br><br>"
                         "<strong>Or run diagnostic to see what's wrong:</strong><br>"
                         "<code>./diagnose_gunicorn_fix.sh</code><br><br>"
@@ -151,7 +152,7 @@ def integration_edit(request, pk):
                         "The Gunicorn service is not loading your .env file with the APP_MASTER_KEY. "
                         "This is a common setup issue that's easy to fix!<br><br>"
                         "<strong>Quick Fix:</strong><br>"
-                        "<code>cd /home/administrator<br>"
+                        f"<code>cd {settings.BASE_DIR}<br>"
                         "./scripts/fix_gunicorn_env.sh</code><br><br>"
                         "<strong>Or run diagnostic to see what's wrong:</strong><br>"
                         "<code>./diagnose_gunicorn_fix.sh</code><br><br>"
@@ -429,7 +430,7 @@ def rmm_create(request):
                         "The Gunicorn service is not loading your .env file with the APP_MASTER_KEY. "
                         "This is a common setup issue that's easy to fix!<br><br>"
                         "<strong>Quick Fix:</strong><br>"
-                        "<code>cd /home/administrator<br>"
+                        f"<code>cd {settings.BASE_DIR}<br>"
                         "./scripts/fix_gunicorn_env.sh</code><br><br>"
                         "<strong>Or run diagnostic to see what's wrong:</strong><br>"
                         "<code>./diagnose_gunicorn_fix.sh</code><br><br>"
@@ -490,7 +491,7 @@ def rmm_edit(request, pk):
                         "The Gunicorn service is not loading your .env file with the APP_MASTER_KEY. "
                         "This is a common setup issue that's easy to fix!<br><br>"
                         "<strong>Quick Fix:</strong><br>"
-                        "<code>cd /home/administrator<br>"
+                        f"<code>cd {settings.BASE_DIR}<br>"
                         "./scripts/fix_gunicorn_env.sh</code><br><br>"
                         "<strong>Or run diagnostic to see what's wrong:</strong><br>"
                         "<code>./diagnose_gunicorn_fix.sh</code><br><br>"

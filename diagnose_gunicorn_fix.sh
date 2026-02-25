@@ -8,7 +8,9 @@ echo "=========================================="
 echo ""
 
 SERVICE_FILE="/etc/systemd/system/clientst0r-gunicorn.service"
-ENV_FILE="/home/administrator/.env"
+# Detect install directory from this script's location (works for any username/path)
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$APP_DIR/.env"
 
 # Check 1: Does .env file exist and have APP_MASTER_KEY?
 echo "Check 1: .env file"
@@ -61,9 +63,10 @@ else
         echo "✅ sudo systemctl works"
     else
         echo "❌ sudo systemctl needs password"
+        CURRENT_USER="$(whoami)"
         echo "   Configure sudo with:"
         echo "   sudo tee /etc/sudoers.d/clientst0r-auto-update > /dev/null <<'SUDOERS'"
-        echo "administrator ALL=(ALL) NOPASSWD: /bin/systemctl restart clientst0r-gunicorn.service, /bin/systemctl status clientst0r-gunicorn.service, /bin/systemctl daemon-reload, /usr/bin/systemd-run, /usr/bin/tee /etc/systemd/system/clientst0r-gunicorn.service"
+        echo "$CURRENT_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart clientst0r-gunicorn.service, /bin/systemctl status clientst0r-gunicorn.service, /bin/systemctl daemon-reload, /usr/bin/systemd-run, /usr/bin/tee /etc/systemd/system/clientst0r-gunicorn.service"
         echo "SUDOERS"
         echo ""
         echo "   sudo chmod 0440 /etc/sudoers.d/clientst0r-auto-update"
@@ -82,8 +85,9 @@ else
         echo ""
         echo "You need to configure sudo permissions first:"
         echo ""
+        CURRENT_USER="$(whoami)"
         echo "sudo tee /etc/sudoers.d/clientst0r-auto-update > /dev/null <<'SUDOERS'"
-        echo "administrator ALL=(ALL) NOPASSWD: /bin/systemctl restart clientst0r-gunicorn.service, /bin/systemctl status clientst0r-gunicorn.service, /bin/systemctl daemon-reload, /usr/bin/systemd-run, /usr/bin/tee /etc/systemd/system/clientst0r-gunicorn.service"
+        echo "$CURRENT_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart clientst0r-gunicorn.service, /bin/systemctl status clientst0r-gunicorn.service, /bin/systemctl daemon-reload, /usr/bin/systemd-run, /usr/bin/tee /etc/systemd/system/clientst0r-gunicorn.service"
         echo "SUDOERS"
         echo ""
         echo "sudo chmod 0440 /etc/sudoers.d/clientst0r-auto-update"

@@ -16,6 +16,7 @@ from .models import Password, PasswordBreachCheck
 from .forms import PasswordForm
 from .breach_checker import PasswordBreachChecker
 from .encryption import EncryptionError
+from django.conf import settings
 
 # Initialize logger for this module
 logger = logging.getLogger('vault')
@@ -344,7 +345,7 @@ def password_create(request):
                         request,
                         "🔐 Encryption Key Error: Your APP_MASTER_KEY is malformed. "
                         "Please regenerate it using the following commands:<br><br>"
-                        "<code>cd ~/clientst0r<br>"
+                        f"<code>cd {settings.BASE_DIR}<br>"
                         "source venv/bin/activate<br>"
                         "NEW_KEY=$(python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\")<br>"
                         "sed -i \"s|^APP_MASTER_KEY=.*|APP_MASTER_KEY=${NEW_KEY}|\" .env<br>"
@@ -390,7 +391,7 @@ def password_edit(request, pk):
                         request,
                         "🔐 Encryption Key Error: Your APP_MASTER_KEY is malformed. "
                         "Please regenerate it using the following commands:<br><br>"
-                        "<code>cd ~/clientst0r<br>"
+                        f"<code>cd {settings.BASE_DIR}<br>"
                         "source venv/bin/activate<br>"
                         "NEW_KEY=$(python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\")<br>"
                         "sed -i \"s|^APP_MASTER_KEY=.*|APP_MASTER_KEY=${NEW_KEY}|\" .env<br>"
