@@ -641,7 +641,17 @@ function getCookie(name) {
 // ── Sidebar drag-and-drop ─────────────────────────────────────────
 let _draggedSidebarAsset = null;
 
+// Asset IDs already placed in the rack (server-rendered)
+const _rackPlacedAssetIds = new Set([{% for device in devices %}{% if device.asset_id %}{{ device.asset_id }},{% endif %}{% endfor %}]);
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Hide rack sidebar items already in the rack
+    document.querySelectorAll('#closet-rack-section .sidebar-asset-item').forEach(el => {
+        if (_rackPlacedAssetIds.has(parseInt(el.dataset.assetId))) {
+            el.style.display = 'none';
+        }
+    });
+
     document.querySelectorAll('.sidebar-asset-item').forEach(el => {
         el.addEventListener('dragstart', function(e) {
             _draggedSidebarAsset = {
@@ -707,6 +717,12 @@ function addAssetToBoard(asset, x, y) {
         if (placeholder) placeholder.remove();
         _boardDevices.push(item);
         createBoardDevice(item);
+        // Hide this asset from board sidebar
+        if (asset.id) {
+            document.querySelectorAll('#closet-board-section .sidebar-asset-item').forEach(el => {
+                if (parseInt(el.dataset.assetId) === asset.id) el.style.display = 'none';
+            });
+        }
     })
     .catch(e => alert('Request failed: ' + e.message));
 }
@@ -768,21 +784,18 @@ function loadClosetBoardDevices() {
     .then(r => r.json())
     .then(data => {
         canvas.innerHTML = '';
-        _boardDevices = data.devices || [];
+        // Board view only shows devices that have been explicitly placed on the board
+        _boardDevices = (data.devices || []).filter(d => d.board_position_x !== null && d.board_position_x !== undefined);
         if (_boardDevices.length === 0) {
             canvas.innerHTML = '<div class="text-center text-muted py-5" style="pointer-events:none;"><i class="fas fa-arrows-alt fa-2x mb-2 d-block"></i>Drag an asset from the sidebar to place it here</div>';
-            return;
+        } else {
+            _boardDevices.forEach(item => createBoardDevice(item));
         }
-        // Place devices without board positions in a grid
-        let autoX = 20, autoY = 20;
-        _boardDevices.forEach(item => {
-            if (!item.board_position_x && !item.board_position_y) {
-                item.board_position_x = autoX;
-                item.board_position_y = autoY;
-                autoX += 180;
-                if (autoX > 700) { autoX = 20; autoY += 130; }
-            }
-            createBoardDevice(item);
+        // Update board sidebar: hide assets already placed on board
+        const boardAssetIds = new Set(_boardDevices.map(d => d.asset_id).filter(Boolean));
+        document.querySelectorAll('#closet-board-section .sidebar-asset-item').forEach(el => {
+            const id = parseInt(el.dataset.assetId);
+            el.style.display = boardAssetIds.has(id) ? 'none' : '';
         });
     })
     .catch(e => {

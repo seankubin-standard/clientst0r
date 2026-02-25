@@ -457,6 +457,8 @@ def rack_device_edit(request, pk):
         if form.is_valid():
             form.save()
             messages.success(request, f'Asset "{device.name}" updated.')
+            if device.rack.rack_type in ('network_closet', 'data_closet'):
+                return redirect('monitoring:network_closet_detail', pk=device.rack.pk)
             return redirect('monitoring:rack_detail', pk=device.rack.pk)
     else:
         form = RackDeviceForm(instance=device, rack=device.rack, organization=org)
@@ -773,8 +775,8 @@ def network_closet_detail(request, pk):
     closet = get_object_or_404(Rack, **_closet_kwargs
     )
 
-    # Get devices in this closet
-    devices = RackDevice.objects.filter(rack=closet).order_by('start_unit')
+    # Get devices in this closet — rack devices only (no board_position)
+    devices = RackDevice.objects.filter(rack=closet, board_position_x__isnull=True).order_by('start_unit')
 
     # Build unit map for visual representation
     unit_map = {}
