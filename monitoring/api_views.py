@@ -267,7 +267,11 @@ def create_rack_device(request, pk):
             units = asset.rack_units
 
         if board_only:
-            start_unit = 1  # placeholder; board view doesn't use rack units
+            # Find first unused start_unit (board devices still need a unique slot)
+            used = set(RackDevice.objects.filter(rack=rack).values_list('start_unit', flat=True))
+            start_unit = 1
+            while start_unit in used:
+                start_unit += 1
         else:
             start_unit = int(start_unit)
             end_unit   = start_unit + units - 1
