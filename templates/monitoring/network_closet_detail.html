@@ -4,6 +4,7 @@
 
 {% block extra_css %}
 <style>
+/* ── Rack view ─────────────────────────────────────────────────── */
 .closet-visual {
     border: 2px solid #495057;
     background: #212529;
@@ -29,35 +30,123 @@
     font-size: 0.65rem;
     color: #f8f9fa;
 }
-.closet-device {
-    color: white;
+.closet-device { color: white; cursor: pointer; }
+.closet-device:hover { opacity: 0.9; }
+.closet-device-multi { border-bottom: none; margin-bottom: 0; }
+.closet-unit-empty { cursor: pointer; transition: all 0.15s ease; }
+.closet-unit-empty:hover { background: #495057 !important; border-color: #6c757d !important; }
+[data-bs-theme="dark"] .closet-visual { background: #0d1117; }
+[data-bs-theme="dark"] .closet-unit { background: #1a1d23; color: #e6edf3; }
+[data-bs-theme="dark"] .closet-unit-number { color: #f0f6fc; }
+
+/* ── View toggle ───────────────────────────────────────────────── */
+.closet-view-toggle .btn { min-width: 130px; }
+
+/* ── Board canvas ──────────────────────────────────────────────── */
+#closet-board-canvas {
+    position: relative;
+    width: 100%;
+    min-height: 600px;
+    background: #141922;
+    border-radius: 6px;
+    border: 1px solid #374151;
+    overflow: hidden;
+    cursor: default;
+    background-image:
+        linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* ── Board devices ─────────────────────────────────────────────── */
+.board-device {
+    position: absolute;
+    border-radius: 4px;
+    cursor: grab;
+    border: 2px solid rgba(255,255,255,.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    user-select: none;
+    box-sizing: border-box;
+    min-width: 80px;
+    min-height: 50px;
+}
+.board-device:hover { border-color: rgba(255,255,255,.45); box-shadow: 0 4px 12px rgba(0,0,0,.4); z-index: 5; }
+.board-device.dragging { cursor: grabbing; opacity: .85; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,.6); }
+.board-device-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #fff;
+    text-align: center;
+    padding: 2px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    text-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+.board-device-icon {
+    font-size: 1.4rem;
+    color: rgba(255,255,255,.8);
+    margin-bottom: 2px;
+}
+.board-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 14px;
+    height: 14px;
+    cursor: se-resize;
+    background: rgba(255,255,255,.2);
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+.board-resize-handle:hover { background: rgba(255,255,255,.5); }
+
+/* Edit button on board device */
+.board-device-edit-btn {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    z-index: 20;
+    background: rgba(0,0,0,.55);
+    border: none;
+    border-radius: 3px;
+    color: #fff;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    opacity: 0;
+    transition: opacity .15s;
     cursor: pointer;
+    padding: 0;
 }
-.closet-device:hover {
-    opacity: 0.9;
+.board-device:hover .board-device-edit-btn { opacity: 1; }
+
+/* ── Edit modal tabs ───────────────────────────────────────────── */
+#closetDeviceEditModal.show { background: rgba(0,0,0,0) !important; }
+#closetDeviceEditModal .modal-content { box-shadow: 0 8px 40px rgba(0,0,0,.45); }
+
+/* ── Port grid ─────────────────────────────────────────────────── */
+.rack-port-faceplate { background:#1a1f2e; border:2px solid #374151; border-radius:6px; padding:12px 14px 10px; }
+.rack-port-brand { font-size:.7rem; color:#94a3b8; letter-spacing:.08em; text-transform:uppercase; margin-bottom:8px; }
+.rack-port-grid { display:flex; flex-wrap:wrap; gap:4px; }
+.rack-port-square {
+    width:30px; height:24px; border-radius:3px; cursor:pointer;
+    border:2px solid transparent; display:flex; align-items:center; justify-content:center;
+    font-size:8px; color:rgba(255,255,255,.85); font-weight:700;
+    transition:border-color .15s,transform .1s; user-select:none;
 }
-.closet-device-multi {
-    border-bottom: none;
-    margin-bottom: 0;
-}
-.closet-unit-empty {
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-.closet-unit-empty:hover {
-    background: #495057 !important;
-    border-color: #6c757d !important;
-}
-[data-bs-theme="dark"] .closet-visual {
-    background: #0d1117;
-}
-[data-bs-theme="dark"] .closet-unit {
-    background: #1a1d23;
-    color: #e6edf3;
-}
-[data-bs-theme="dark"] .closet-unit-number {
-    color: #f0f6fc;
-}
+.rack-port-square:hover { border-color:#60a5fa; transform:scale(1.1); z-index:1; }
+.rack-port-square.selected { border-color:#f8fafc !important; box-shadow:0 0 0 2px rgba(248,250,252,.35); transform:scale(1.15); z-index:2; }
+.rack-port-legend { font-size:.75rem; color:#94a3b8; }
+.rack-port-legend-item { display:flex; align-items:center; gap:5px; }
+.rack-port-legend-item span { display:inline-block; width:12px; height:12px; border-radius:2px; flex-shrink:0; }
 </style>
 {% endblock %}
 
@@ -71,6 +160,88 @@
             <a href="{% url 'monitoring:network_closet_delete' closet.pk %}" class="btn btn-danger"><i class="fas fa-trash"></i></a>
         </div>
     </div>
+</div>
+
+<!-- Device Inline Edit Modal -->
+<div class="modal fade" id="closetDeviceEditModal" tabindex="-1" data-bs-backdrop="false" data-bs-keyboard="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1e293b;color:#e2e8f0;">
+        <h5 class="modal-title" id="closetEditModalTitle"><i class="fas fa-edit me-2"></i>Edit Device</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <input type="hidden" id="closetEditDeviceId">
+        <ul class="nav nav-tabs px-3 pt-2" id="closetEditTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="closetEditDetailsTabBtn" data-bs-toggle="tab" data-bs-target="#closetEditDetailsPane" type="button" role="tab">
+              <i class="fas fa-sliders-h me-1"></i>Details
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="closetEditPortsTabBtn" data-bs-toggle="tab" data-bs-target="#closetEditPortsPane" type="button" role="tab">
+              <i class="fas fa-ethernet me-1"></i>Ports <span id="closetEditPortsBadge" class="badge bg-secondary ms-1 d-none"></span>
+            </button>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active p-3" id="closetEditDetailsPane" role="tabpanel">
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Name</label>
+              <input type="text" id="closetEditName" class="form-control">
+            </div>
+            <div class="row">
+              <div class="col-6 mb-3">
+                <label class="form-label fw-semibold">Start Unit (U)</label>
+                <input type="number" id="closetEditStartUnit" class="form-control" min="1">
+              </div>
+              <div class="col-6 mb-3">
+                <label class="form-label fw-semibold">Height (U)</label>
+                <input type="number" id="closetEditUnits" class="form-control" min="1">
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Power Draw (W)</label>
+              <input type="number" id="closetEditPower" class="form-control" min="0" placeholder="Leave blank if unknown">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Color</label>
+              <input type="color" id="closetEditColor" class="form-control form-control-color" style="height:38px;width:60px;">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Linked Asset</label>
+              <select id="closetEditAsset" class="form-select">
+                <option value="">-- No Asset (Label Only) --</option>
+                {% for asset in all_org_assets %}
+                <option value="{{ asset.id }}">{{ asset.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Notes</label>
+              <textarea id="closetEditNotes" class="form-control" rows="3"></textarea>
+            </div>
+            <div id="closetEditError" class="alert alert-danger d-none"></div>
+          </div>
+          <div class="tab-pane fade p-3" id="closetEditPortsPane" role="tabpanel">
+            <div id="closetEditPortsContent">
+              <div class="text-center text-muted py-4">
+                <i class="fas fa-ethernet fa-2x mb-2 d-block"></i>
+                <span>Loading ports…</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="closetSaveEditBtn">
+          <span id="closetSaveEditText"><i class="fas fa-save me-1"></i>Save Changes</span>
+          <span id="closetSaveEditSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="row g-3">
@@ -155,135 +326,156 @@
 
     <!-- Main Content (Right) -->
     <div class="col-lg-8 col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-server"></i> Mounted Devices <span class="badge bg-secondary">{{ devices.count }}</span></h5>
-            </div>
-            <div class="card-body">
-                {% if devices %}
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover">
-                        <thead>
-                            <tr>
-                                <th>Position</th>
-                                <th>Device Name</th>
-                                <th>Height</th>
-                                <th>Power Draw</th>
-                                <th>Asset</th>
-                                <th width="80">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for device in devices %}
-                            <tr>
-                                <td><span class="badge bg-secondary">U{{ device.start_unit }}{% if device.units > 1 %}-U{{ device.end_unit }}{% endif %}</span></td>
-                                <td>
-                                    <div style="border-left: 4px solid {{ device.color }}; padding-left: 8px;">
-                                        <strong>{{ device.name }}</strong>
-                                    </div>
-                                </td>
-                                <td><span class="badge bg-info">{{ device.units }}U</span></td>
-                                <td>
-                                    {% if device.power_draw_watts %}
-                                    {{ device.power_draw_watts }}W
-                                    {% else %}—{% endif %}
-                                </td>
-                                <td>
-                                    {% if device.asset %}
-                                    <a href="{% url 'assets:asset_detail' device.asset.pk %}">{{ device.asset.name }}</a>
-                                    {% elif device.equipment_model %}
-                                    <small class="text-muted">{{ device.equipment_model.vendor.name }} {{ device.equipment_model.model_name }}</small>
-                                    {% else %}—{% endif %}
-                                </td>
-                                <td>
-                                    <div class="btn-group btn-group-sm">
-                                        <a href="{% url 'monitoring:rack_device_edit' device.pk %}" class="btn btn-outline-secondary" title="Edit">
-                                            <i class="fas fa-edit"></i>
-                                        </a>
-                                        <a href="{% url 'monitoring:rack_device_delete' device.pk %}" class="btn btn-outline-danger" title="Delete">
-                                            <i class="fas fa-trash"></i>
-                                        </a>
-                                    </div>
-                                </td>
-                            </tr>
+
+        <!-- View toggle -->
+        <div class="d-flex gap-2 mb-3 closet-view-toggle">
+            <button id="btn-rack-view" class="btn btn-sm btn-primary" onclick="showClosetRackView()">
+                <i class="fas fa-th-list me-1"></i>Rack View
+            </button>
+            <button id="btn-board-view" class="btn btn-sm btn-outline-primary" onclick="showClosetBoardView()">
+                <i class="fas fa-border-all me-1"></i>Mounted Board
+            </button>
+        </div>
+
+        <!-- ── RACK VIEW ── -->
+        <div id="closet-rack-section">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-server"></i> Mounted Devices <span class="badge bg-secondary">{{ devices.count }}</span></h5>
+                </div>
+                <div class="card-body">
+                    {% if devices %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Position</th>
+                                    <th>Device Name</th>
+                                    <th>Height</th>
+                                    <th>Power Draw</th>
+                                    <th>Asset</th>
+                                    <th width="80">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for device in devices %}
+                                <tr>
+                                    <td><span class="badge bg-secondary">U{{ device.start_unit }}{% if device.units > 1 %}-U{{ device.end_unit }}{% endif %}</span></td>
+                                    <td>
+                                        <div style="border-left: 4px solid {{ device.color }}; padding-left: 8px;">
+                                            <strong>{{ device.name }}</strong>
+                                        </div>
+                                    </td>
+                                    <td><span class="badge bg-info">{{ device.units }}U</span></td>
+                                    <td>
+                                        {% if device.power_draw_watts %}
+                                        {{ device.power_draw_watts }}W
+                                        {% else %}—{% endif %}
+                                    </td>
+                                    <td>
+                                        {% if device.asset %}
+                                        <a href="{% url 'assets:asset_detail' device.asset.pk %}">{{ device.asset.name }}</a>
+                                        {% elif device.equipment_model %}
+                                        <small class="text-muted">{{ device.equipment_model.vendor.name }} {{ device.equipment_model.model_name }}</small>
+                                        {% else %}—{% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{% url 'monitoring:rack_device_edit' device.pk %}" class="btn btn-outline-secondary" title="Edit">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                            <a href="{% url 'monitoring:rack_device_delete' device.pk %}" class="btn btn-outline-danger" title="Delete">
+                                                <i class="fas fa-trash"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Visual Representation -->
+                    <div class="mt-4">
+                        <h6><i class="fas fa-th"></i> Visual Layout</h6>
+                        <div class="closet-visual">
+                            {% for unit_num, device in unit_map.items reversed %}
+                            {% if device %}
+                            <a href="{% url 'monitoring:rack_device_edit' device.pk %}" style="text-decoration: none; display: block;">
+                                <div class="closet-unit closet-device {% if device.units > 1 %}closet-device-multi{% endif %}"
+                                     style="background-color: {{ device.color }};"
+                                     title="{{ device.name }} - Click to edit">
+                                    <span class="closet-unit-number">{{ unit_num }}</span>
+                                    <span class="flex-grow-1 text-truncate">{{ device.name }}</span>
+                                </div>
+                            </a>
+                            {% else %}
+                            <a href="{% url 'monitoring:rack_device_create' closet.pk %}?start_unit={{ unit_num }}" style="text-decoration: none; display: block;">
+                                <div class="closet-unit closet-unit-empty">
+                                    <span class="closet-unit-number">{{ unit_num }}</span>
+                                    <span class="flex-grow-1 text-end" style="font-size: 0.6rem; opacity: 0.5;">
+                                        <i class="fas fa-plus"></i>
+                                    </span>
+                                </div>
+                            </a>
+                            {% endif %}
                             {% endfor %}
-                        </tbody>
-                    </table>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="empty-state">
+                        <i class="fas fa-server"></i>
+                        <h5>No Devices Mounted</h5>
+                        <p>Start adding network equipment to this closet.</p>
+                        <a href="{% url 'monitoring:rack_device_create' closet.pk %}" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Add Device
+                        </a>
+                    </div>
+                    {% endif %}
                 </div>
+            </div>
 
-                <!-- Visual Representation -->
-                <div class="mt-4">
-                    <h6><i class="fas fa-th"></i> Visual Layout</h6>
-                    <div class="closet-visual">
-                        {% for unit_num, device in unit_map.items reversed %}
-                        {% if device %}
-                        <a href="{% url 'monitoring:rack_device_edit' device.pk %}" style="text-decoration: none; display: block;">
-                            <div class="closet-unit closet-device {% if device.units > 1 %}closet-device-multi{% endif %}"
-                                 style="background-color: {{ device.color }};"
-                                 title="{{ device.name }} - Click to edit">
-                                <span class="closet-unit-number">{{ unit_num }}</span>
-                                <span class="flex-grow-1 text-truncate">{{ device.name }}</span>
-                            </div>
-                        </a>
-                        {% else %}
-                        <a href="{% url 'monitoring:rack_device_create' closet.pk %}?start_unit={{ unit_num }}" style="text-decoration: none; display: block;">
-                            <div class="closet-unit closet-unit-empty">
-                                <span class="closet-unit-number">{{ unit_num }}</span>
-                                <span class="flex-grow-1 text-end" style="font-size: 0.6rem; opacity: 0.5;">
-                                    <i class="fas fa-plus"></i>
-                                </span>
-                            </div>
-                        </a>
-                        {% endif %}
-                        {% endfor %}
+            <!-- Patch Panel Port Map -->
+            {% if patch_panels %}
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-th"></i> Patch Panel Port Map</h6>
+                    <div class="port-legend-inline" style="display:flex;gap:12px;font-size:0.78rem;">
+                        <span><span class="port-legend-dot" style="background:#0d6efd;display:inline-block;width:12px;height:12px;border-radius:3px;"></span> Patched</span>
+                        <span><span class="port-legend-dot" style="background:#343a40;display:inline-block;width:12px;height:12px;border-radius:3px;"></span> Empty</span>
                     </div>
                 </div>
-                {% else %}
-                <div class="empty-state">
-                    <i class="fas fa-server"></i>
-                    <h5>No Devices Mounted</h5>
-                    <p>Start adding network equipment to this closet.</p>
-                    <a href="{% url 'monitoring:rack_device_create' closet.pk %}" class="btn btn-primary">
-                        <i class="fas fa-plus"></i> Add Device
-                    </a>
+                <div class="card-body">
+                    {% for panel in patch_panels %}
+                    <div class="mb-4">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <div style="width:12px;height:12px;border-radius:2px;background:{{ panel.device.color }};"></div>
+                            <strong>{{ panel.device.name }}</strong>
+                            <small class="text-muted">Ports {{ panel.port_start }}–{{ panel.port_end }}</small>
+                            <span class="badge bg-primary">{{ panel.ports|length }} ports</span>
+                        </div>
+                        <div id="portmap-{{ panel.device.id }}" class="port-map-grid"></div>
+                    </div>
+                    {% endfor %}
                 </div>
-                {% endif %}
             </div>
+            {% endif %}
+        </div><!-- /closet-rack-section -->
+
+        <!-- ── MOUNTED BOARD VIEW ── -->
+        <div id="closet-board-section" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <small class="text-muted"><i class="fas fa-arrows-alt me-1"></i>Drag to reposition &nbsp;·&nbsp; <i class="fas fa-expand-arrows-alt me-1"></i>Drag corner to resize &nbsp;·&nbsp; <i class="fas fa-pencil-alt me-1"></i>Hover &amp; click pencil to edit</small>
+                <button class="btn btn-sm btn-outline-secondary" onclick="loadClosetBoardDevices()"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+            </div>
+            <div id="closet-board-canvas"></div>
         </div>
 
-        <!-- Patch Panel Port Map -->
-        {% if patch_panels %}
-        <div class="card mt-3">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0"><i class="fas fa-th"></i> Patch Panel Port Map</h6>
-                <div class="port-legend-inline" style="display:flex;gap:12px;font-size:0.78rem;">
-                    <span><span class="port-legend-dot" style="background:#0d6efd;display:inline-block;width:12px;height:12px;border-radius:3px;"></span> Patched</span>
-                    <span><span class="port-legend-dot" style="background:#343a40;display:inline-block;width:12px;height:12px;border-radius:3px;"></span> Empty</span>
-                </div>
-            </div>
-            <div class="card-body">
-                {% for panel in patch_panels %}
-                <div class="mb-4">
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                        <div style="width:12px;height:12px;border-radius:2px;background:{{ panel.device.color }};"></div>
-                        <strong>{{ panel.device.name }}</strong>
-                        <small class="text-muted">Ports {{ panel.port_start }}–{{ panel.port_end }}</small>
-                        <span class="badge bg-primary">
-                            {{ panel.ports|length }} ports
-                        </span>
-                    </div>
-                    <div id="portmap-{{ panel.device.id }}" class="port-map-grid"></div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-    </div>
+    </div><!-- /col-lg-8 -->
 </div>
 {% endblock %}
 
 {% block extra_js %}
-{% if patch_panels %}
 <style>
 .port-map-grid {
     display: grid;
@@ -306,6 +498,8 @@
 [data-bs-theme="dark"] .port-box.empty { background: #1a1d23; }
 </style>
 <script>
+// ── Patch panel port map ──────────────────────────────────────────
+{% if patch_panels %}
 document.addEventListener('DOMContentLoaded', function() {
     const panels = {{ patch_panels_json|safe }};
     panels.forEach(function(panel) {
@@ -316,13 +510,462 @@ document.addEventListener('DOMContentLoaded', function() {
             box.className = 'port-box ' + (port.status === 'connected' ? 'connected' : 'empty');
             box.textContent = port.number;
             box.title = 'Port ' + port.number + ': ' + port.label;
-            if (port.status === 'connected') {
-                box.style.background = port.color || '#0d6efd';
-            }
+            if (port.status === 'connected') box.style.background = port.color || '#0d6efd';
             container.appendChild(box);
         });
     });
 });
-</script>
 {% endif %}
+
+// ── View toggle ───────────────────────────────────────────────────
+function showClosetRackView() {
+    document.getElementById('closet-rack-section').style.display = '';
+    document.getElementById('closet-board-section').style.display = 'none';
+    document.getElementById('btn-rack-view').className = 'btn btn-sm btn-primary';
+    document.getElementById('btn-board-view').className = 'btn btn-sm btn-outline-primary';
+}
+
+function showClosetBoardView() {
+    document.getElementById('closet-rack-section').style.display = 'none';
+    document.getElementById('closet-board-section').style.display = '';
+    document.getElementById('btn-rack-view').className = 'btn btn-sm btn-outline-primary';
+    document.getElementById('btn-board-view').className = 'btn btn-sm btn-primary';
+    loadClosetBoardDevices();
+}
+
+// ── CSRF helper ───────────────────────────────────────────────────
+function getCookie(name) {
+    let v = null;
+    if (document.cookie && document.cookie !== '') {
+        document.cookie.split(';').forEach(c => {
+            c = c.trim();
+            if (c.startsWith(name + '=')) v = decodeURIComponent(c.slice(name.length + 1));
+        });
+    }
+    return v;
+}
+
+// ── Board state ───────────────────────────────────────────────────
+let _boardDevices  = [];
+let _isDragging    = false;
+let _isResizing    = false;
+let _dragEl        = null;
+let _dragItem      = null;
+let _dragOffX      = 0;
+let _dragOffY      = 0;
+let _resizeEl      = null;
+let _resizeItem    = null;
+let _resizeStartX  = 0;
+let _resizeStartY  = 0;
+let _resizeStartW  = 0;
+let _resizeStartH  = 0;
+
+// ── Load devices onto board ───────────────────────────────────────
+function loadClosetBoardDevices() {
+    const canvas = document.getElementById('closet-board-canvas');
+    canvas.innerHTML = '<div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>';
+
+    fetch('/monitoring/api/racks/{{ closet.pk }}/devices/', {
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+    })
+    .then(r => r.json())
+    .then(data => {
+        canvas.innerHTML = '';
+        _boardDevices = data.devices || [];
+        if (_boardDevices.length === 0) {
+            canvas.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x mb-2 d-block"></i>No devices — add some from Rack View.</div>';
+            return;
+        }
+        // Place devices without board positions in a grid
+        let autoX = 20, autoY = 20;
+        _boardDevices.forEach(item => {
+            if (!item.board_position_x && !item.board_position_y) {
+                item.board_position_x = autoX;
+                item.board_position_y = autoY;
+                autoX += 180;
+                if (autoX > 700) { autoX = 20; autoY += 130; }
+            }
+            createBoardDevice(item);
+        });
+    })
+    .catch(e => {
+        canvas.innerHTML = `<div class="alert alert-danger m-3">Failed to load: ${e.message}</div>`;
+    });
+}
+
+// ── Create a board device element ─────────────────────────────────
+const DEVICE_ICONS = {
+    switch: 'fa-network-wired', router: 'fa-route', firewall: 'fa-shield-alt',
+    server: 'fa-server', patch_panel: 'fa-th', wireless_ap: 'fa-wifi',
+    ups: 'fa-bolt', pdu: 'fa-plug', other: 'fa-cube',
+};
+
+function createBoardDevice(item) {
+    const canvas = document.getElementById('closet-board-canvas');
+    const el = document.createElement('div');
+    el.className = 'board-device';
+    el.dataset.deviceId = item.id;
+    el.style.left   = (item.board_position_x || 20) + 'px';
+    el.style.top    = (item.board_position_y || 20) + 'px';
+    el.style.width  = (item.board_width  || 150) + 'px';
+    el.style.height = (item.board_height || 100) + 'px';
+    el.style.backgroundColor = item.color || '#475569';
+
+    const icon = DEVICE_ICONS[item.asset_type] || DEVICE_ICONS.other;
+    el.innerHTML = `
+        <button class="board-device-edit-btn" title="Edit"><i class="fas fa-pencil-alt"></i></button>
+        <i class="fas ${icon} board-device-icon"></i>
+        <div class="board-device-label">${item.name}</div>
+        <div class="board-resize-handle"></div>
+    `;
+
+    // Edit button
+    el.querySelector('.board-device-edit-btn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        openClosetEditModal(item);
+    });
+
+    // Click body → also open edit
+    el.addEventListener('click', function(e) {
+        if (e.target.classList.contains('board-resize-handle')) return;
+        if (e.target.closest('.board-device-edit-btn')) return;
+        openClosetEditModal(item);
+    });
+
+    // Drag start
+    el.addEventListener('mousedown', function(e) {
+        if (e.target.classList.contains('board-resize-handle')) {
+            // Resize
+            e.preventDefault();
+            _isResizing   = true;
+            _resizeEl     = el;
+            _resizeItem   = item;
+            _resizeStartX = e.clientX;
+            _resizeStartY = e.clientY;
+            _resizeStartW = parseInt(el.style.width);
+            _resizeStartH = parseInt(el.style.height);
+            el.style.zIndex = 100;
+            return;
+        }
+        if (e.target.closest('.board-device-edit-btn')) return;
+        e.preventDefault();
+        _isDragging = true;
+        _dragEl     = el;
+        _dragItem   = item;
+        const rect = el.getBoundingClientRect();
+        const canvasRect = document.getElementById('closet-board-canvas').getBoundingClientRect();
+        _dragOffX   = e.clientX - rect.left;
+        _dragOffY   = e.clientY - rect.top;
+        el.classList.add('dragging');
+        el.style.zIndex = 100;
+    });
+
+    canvas.appendChild(el);
+}
+
+// ── Global mouse move / up ────────────────────────────────────────
+document.addEventListener('mousemove', function(e) {
+    if (_isDragging && _dragEl) {
+        const canvasRect = document.getElementById('closet-board-canvas').getBoundingClientRect();
+        let x = e.clientX - canvasRect.left - _dragOffX;
+        let y = e.clientY - canvasRect.top  - _dragOffY;
+        x = Math.max(0, x);
+        y = Math.max(0, y);
+        _dragEl.style.left = x + 'px';
+        _dragEl.style.top  = y + 'px';
+    }
+    if (_isResizing && _resizeEl) {
+        const dx = e.clientX - _resizeStartX;
+        const dy = e.clientY - _resizeStartY;
+        _resizeEl.style.width  = Math.max(80,  _resizeStartW + dx) + 'px';
+        _resizeEl.style.height = Math.max(50, _resizeStartH + dy) + 'px';
+    }
+});
+
+document.addEventListener('mouseup', function() {
+    if (_isDragging && _dragEl) {
+        const x = parseInt(_dragEl.style.left);
+        const y = parseInt(_dragEl.style.top);
+        const w = parseInt(_dragEl.style.width);
+        const h = parseInt(_dragEl.style.height);
+        _dragEl.classList.remove('dragging');
+        _dragEl.style.zIndex = '';
+        saveBoardPosition(_dragItem.id, x, y, w, h);
+        _dragItem.board_position_x = x;
+        _dragItem.board_position_y = y;
+        _isDragging = false; _dragEl = null; _dragItem = null;
+    }
+    if (_isResizing && _resizeEl) {
+        const x = parseInt(_resizeEl.style.left);
+        const y = parseInt(_resizeEl.style.top);
+        const w = parseInt(_resizeEl.style.width);
+        const h = parseInt(_resizeEl.style.height);
+        _resizeEl.style.zIndex = '';
+        saveBoardPosition(_resizeItem.id, x, y, w, h);
+        _resizeItem.board_width  = w;
+        _resizeItem.board_height = h;
+        _isResizing = false; _resizeEl = null; _resizeItem = null;
+    }
+});
+
+function saveBoardPosition(deviceId, x, y, w, h) {
+    fetch(`/monitoring/api/rack-devices/${deviceId}/update-board-position/`, {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body:    JSON.stringify({x, y, width: w, height: h}),
+    });
+    // fire-and-forget; errors silently ignored
+}
+
+// ── Edit modal ────────────────────────────────────────────────────
+let _closetEditDevice = null;
+let _closetPorts      = [];
+let _closetActivePort = null;
+
+function openClosetEditModal(item) {
+    _closetEditDevice = item;
+    _closetPorts      = [];
+    _closetActivePort = null;
+
+    document.getElementById('closetEditModalTitle').innerHTML = `<i class="fas fa-edit me-2"></i>${item.name}`;
+    document.getElementById('closetEditDeviceId').value   = item.id;
+    document.getElementById('closetEditName').value       = item.name || '';
+    document.getElementById('closetEditStartUnit').value  = item.start_unit || 1;
+    document.getElementById('closetEditUnits').value      = item.units || 1;
+    document.getElementById('closetEditPower').value      = item.power_draw_watts != null ? item.power_draw_watts : '';
+    document.getElementById('closetEditColor').value      = item.color || '#475569';
+    document.getElementById('closetEditAsset').value      = item.asset_id || '';
+    document.getElementById('closetEditNotes').value      = item.notes || '';
+    document.getElementById('closetEditError').classList.add('d-none');
+
+    // Reset to details tab
+    bootstrap.Tab.getOrCreateInstance(document.getElementById('closetEditDetailsTabBtn')).show();
+
+    // Ports tab visibility
+    const portsBtn   = document.getElementById('closetEditPortsTabBtn');
+    const portsBadge = document.getElementById('closetEditPortsBadge');
+    if (item.asset_id && item.port_count) {
+        portsBtn.classList.remove('d-none');
+        portsBadge.textContent = item.port_count;
+        portsBadge.classList.remove('d-none');
+    } else {
+        portsBtn.classList.add('d-none');
+        portsBadge.classList.add('d-none');
+    }
+
+    document.getElementById('closetEditPortsContent').innerHTML =
+        `<div class="text-center text-muted py-4"><i class="fas fa-ethernet fa-2x mb-2 d-block"></i>Click the Ports tab to load.</div>`;
+
+    new bootstrap.Modal(document.getElementById('closetDeviceEditModal')).show();
+}
+
+// Load ports when Ports tab activated
+document.getElementById('closetEditPortsTabBtn').addEventListener('shown.bs.tab', function() {
+    if (!_closetEditDevice || !_closetEditDevice.asset_id) return;
+    const container = document.getElementById('closetEditPortsContent');
+    container.innerHTML = `<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Loading ports…</div>`;
+    fetch(`/monitoring/api/rack-devices/${_closetEditDevice.id}/ports/`, {
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        _closetPorts = data.ports;
+        renderClosetPortsPanel(data.device, data.ports);
+    })
+    .catch(e => { container.innerHTML = `<div class="alert alert-danger">Failed: ${e.message}</div>`; });
+});
+
+function renderClosetPortsPanel(deviceInfo, ports) {
+    const container = document.getElementById('closetEditPortsContent');
+    const statusColors = { 'active':'#22c55e','in-use':'#f59e0b','inactive':'#475569','error':'#ef4444','disabled':'#64748b','available':'#22c55e' };
+    let squares = '';
+    ports.forEach(port => {
+        const color = statusColors[port.status] || '#475569';
+        squares += `<div class="rack-port-square" data-port="${port.port_number}"
+            title="Port ${port.port_number}${port.description ? ': '+port.description : ''}"
+            style="background:${color};" onclick="selectClosetPort(${port.port_number})">${port.port_number}</div>`;
+    });
+    container.innerHTML = `
+      <div class="rack-port-faceplate mb-3">
+        <div class="rack-port-brand">${deviceInfo.asset_name}</div>
+        <div class="rack-port-grid">${squares}</div>
+      </div>
+      <div class="rack-port-legend mb-3 d-flex gap-3 flex-wrap">
+        <span class="rack-port-legend-item"><span style="background:#22c55e"></span> Active</span>
+        <span class="rack-port-legend-item"><span style="background:#f59e0b"></span> In Use</span>
+        <span class="rack-port-legend-item"><span style="background:#475569"></span> Inactive</span>
+        <span class="rack-port-legend-item"><span style="background:#ef4444"></span> Error</span>
+      </div>
+      <div id="closetPortEditSection" class="d-none">
+        <hr class="my-2">
+        <h6 class="mb-3" id="closetPortEditHeading">Edit Port</h6>
+        <input type="hidden" id="closetPortEditNum">
+        <div class="row g-2 mb-2">
+          <div class="col-12 col-sm-6">
+            <label class="form-label form-label-sm fw-semibold mb-1">Description</label>
+            <input type="text" id="closetPortEditDesc" class="form-control form-control-sm">
+          </div>
+          <div class="col-6 col-sm-3">
+            <label class="form-label form-label-sm fw-semibold mb-1">Status</label>
+            <select id="closetPortEditStatus" class="form-select form-select-sm">
+              <option value="inactive">Inactive</option><option value="active">Active</option>
+              <option value="in-use">In Use</option><option value="error">Error</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </div>
+          <div class="col-6 col-sm-3">
+            <label class="form-label form-label-sm fw-semibold mb-1">Type</label>
+            <select id="closetPortEditType" class="form-select form-select-sm">
+              <option value="access">Access</option><option value="trunk">Trunk</option>
+              <option value="uplink">Uplink</option><option value="management">Management</option>
+            </select>
+          </div>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6 col-sm-3">
+            <label class="form-label form-label-sm fw-semibold mb-1">VLAN</label>
+            <input type="text" id="closetPortEditVlan" class="form-control form-control-sm" placeholder="e.g. 10">
+          </div>
+          <div class="col-6 col-sm-3">
+            <label class="form-label form-label-sm fw-semibold mb-1">Speed</label>
+            <select id="closetPortEditSpeed" class="form-select form-select-sm">
+              <option value="">Unknown</option><option value="100Mbps">100 Mbps</option>
+              <option value="1Gbps">1 Gbps</option><option value="10Gbps">10 Gbps</option>
+              <option value="SFP">SFP</option><option value="SFP+">SFP+</option>
+            </select>
+          </div>
+          <div class="col-12 col-sm-6">
+            <label class="form-label form-label-sm fw-semibold mb-1">Connected To</label>
+            <input type="text" id="closetPortEditConnectedTo" class="form-control form-control-sm" placeholder="e.g. Patch Panel Port 3">
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label form-label-sm fw-semibold mb-1">Notes</label>
+          <input type="text" id="closetPortEditNotes" class="form-control form-control-sm">
+        </div>
+        <div id="closetPortEditError" class="alert alert-danger d-none py-1 mb-2"></div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveClosetPortEdit()"><i class="fas fa-save me-1"></i>Save Port</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearClosetPortSelection()">Cancel</button>
+        </div>
+      </div>`;
+}
+
+function selectClosetPort(portNum) {
+    _closetActivePort = portNum;
+    const port = _closetPorts.find(p => p.port_number === portNum);
+    document.querySelectorAll('#closetEditPortsContent .rack-port-square').forEach(sq => {
+        sq.classList.toggle('selected', parseInt(sq.dataset.port) === portNum);
+    });
+    document.getElementById('closetPortEditNum').value          = portNum;
+    document.getElementById('closetPortEditDesc').value         = port ? (port.description||'') : '';
+    document.getElementById('closetPortEditStatus').value       = port ? (port.status||'inactive') : 'inactive';
+    document.getElementById('closetPortEditType').value         = port ? (port.type||'access') : 'access';
+    document.getElementById('closetPortEditVlan').value         = port ? (port.vlan||'') : '';
+    document.getElementById('closetPortEditSpeed').value        = port ? (port.speed||'') : '';
+    document.getElementById('closetPortEditConnectedTo').value  = port ? (port.connected_to||'') : '';
+    document.getElementById('closetPortEditNotes').value        = port ? (port.notes||'') : '';
+    document.getElementById('closetPortEditError').classList.add('d-none');
+    document.getElementById('closetPortEditHeading').textContent = `Edit Port ${portNum}`;
+    document.getElementById('closetPortEditSection').classList.remove('d-none');
+}
+
+function clearClosetPortSelection() {
+    _closetActivePort = null;
+    document.getElementById('closetPortEditSection').classList.add('d-none');
+    document.querySelectorAll('#closetEditPortsContent .rack-port-square').forEach(sq => sq.classList.remove('selected'));
+}
+
+function saveClosetPortEdit() {
+    if (!_closetActivePort || !_closetEditDevice) return;
+    const payload = {
+        description:  document.getElementById('closetPortEditDesc').value,
+        status:       document.getElementById('closetPortEditStatus').value,
+        type:         document.getElementById('closetPortEditType').value,
+        vlan:         document.getElementById('closetPortEditVlan').value,
+        speed:        document.getElementById('closetPortEditSpeed').value,
+        connected_to: document.getElementById('closetPortEditConnectedTo').value,
+        notes:        document.getElementById('closetPortEditNotes').value,
+    };
+    const btn = document.querySelector('[onclick="saveClosetPortEdit()"]');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+    fetch(`/monitoring/api/rack-devices/${_closetEditDevice.id}/ports/${_closetActivePort}/`, {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')},
+        body: JSON.stringify(payload),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const idx = _closetPorts.findIndex(p => p.port_number === _closetActivePort);
+            if (idx >= 0) _closetPorts[idx] = data.port; else _closetPorts.push(data.port);
+            renderClosetPortsPanel({asset_name: _closetEditDevice.asset_name || _closetEditDevice.name}, _closetPorts);
+            setTimeout(() => selectClosetPort(_closetActivePort), 50);
+        } else {
+            document.getElementById('closetPortEditError').textContent = data.error || 'Save failed';
+            document.getElementById('closetPortEditError').classList.remove('d-none');
+        }
+    })
+    .catch(e => {
+        document.getElementById('closetPortEditError').textContent = 'Request failed: ' + e.message;
+        document.getElementById('closetPortEditError').classList.remove('d-none');
+    })
+    .finally(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Port'; });
+}
+
+// ── Save device details ───────────────────────────────────────────
+document.getElementById('closetSaveEditBtn').addEventListener('click', function() {
+    const deviceId = document.getElementById('closetEditDeviceId').value;
+    const powerVal = document.getElementById('closetEditPower').value;
+    const assetVal = document.getElementById('closetEditAsset').value;
+    const payload  = {
+        name:             document.getElementById('closetEditName').value,
+        start_unit:       parseInt(document.getElementById('closetEditStartUnit').value) || 1,
+        units:            parseInt(document.getElementById('closetEditUnits').value) || 1,
+        power_draw_watts: powerVal !== '' ? parseInt(powerVal) : null,
+        color:            document.getElementById('closetEditColor').value,
+        notes:            document.getElementById('closetEditNotes').value,
+        asset_id:         assetVal ? parseInt(assetVal) : null,
+    };
+    const btn = this;
+    const spinner = document.getElementById('closetSaveEditSpinner');
+    const text    = document.getElementById('closetSaveEditText');
+    btn.disabled = true; spinner.classList.remove('d-none'); text.textContent = 'Saving…';
+
+    fetch(`/monitoring/api/rack-devices/${deviceId}/`, {
+        method:  'PATCH',
+        headers: {'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')},
+        body:    JSON.stringify(payload),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('closetDeviceEditModal')).hide();
+            // Update label on board if in board view
+            const el = document.querySelector(`[data-device-id="${deviceId}"]`);
+            if (el) {
+                const labelEl = el.querySelector('.board-device-label');
+                if (labelEl) labelEl.textContent = payload.name;
+                el.style.backgroundColor = payload.color;
+                // update cached item
+                const item = _boardDevices.find(d => d.id == deviceId);
+                if (item) { item.name = payload.name; item.color = payload.color; }
+            }
+        } else {
+            document.getElementById('closetEditError').textContent = data.error || 'Save failed';
+            document.getElementById('closetEditError').classList.remove('d-none');
+        }
+    })
+    .catch(e => {
+        document.getElementById('closetEditError').textContent = 'Request failed: ' + e.message;
+        document.getElementById('closetEditError').classList.remove('d-none');
+    })
+    .finally(() => {
+        btn.disabled = false; spinner.classList.add('d-none');
+        text.innerHTML = '<i class="fas fa-save me-1"></i>Save Changes';
+    });
+});
+</script>
 {% endblock %}

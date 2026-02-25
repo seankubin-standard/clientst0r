@@ -843,6 +843,9 @@ def network_closet_detail(request, pk):
         'port_end': pp['port_end'],
     } for pp in patch_panels])
 
+    from assets.models import Asset
+    all_org_assets = Asset.objects.filter(organization=closet.organization).order_by('name').values('id', 'name')
+
     return render(request, 'monitoring/network_closet_detail.html', {
         'closet': closet,
         'devices': devices,
@@ -850,6 +853,7 @@ def network_closet_detail(request, pk):
         'patch_panels': patch_panels,
         'patch_panels_json': patch_panels_json,
         'connections': connections,
+        'all_org_assets': list(all_org_assets),
     })
 
 
