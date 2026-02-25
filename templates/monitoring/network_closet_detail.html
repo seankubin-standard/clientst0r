@@ -407,7 +407,7 @@
                      data-asset-type="{{ asset.asset_type }}"
                      data-rack-units="{{ asset.rack_units|default:'1' }}"
                      data-port-count="{{ asset.port_count|default:'' }}">
-                    <i class="fas fa-cube"></i>
+                    {% asset_type_icon asset.asset_type %}
                     <span title="{{ asset.name }}">{{ asset.name }}</span>
                     {% if asset.rack_units %}<span class="sidebar-asset-units">{{ asset.rack_units }}U</span>{% endif %}
                 </div>
@@ -439,7 +439,7 @@
                                     <td><span class="badge bg-secondary">U{{ device.start_unit }}{% if device.units > 1 %}-U{{ device.end_unit }}{% endif %}</span></td>
                                     <td>
                                         <div style="border-left: 4px solid {{ device.color }}; padding-left: 8px;">
-                                            <strong>{{ device.name }}</strong>
+                                            {% if device.asset %}{% asset_type_icon device.asset.asset_type "me-1" %}{% else %}<i class="fas fa-box text-muted me-1"></i>{% endif %}<strong>{{ device.name }}</strong>
                                         </div>
                                     </td>
                                     <td><span class="badge bg-info">{{ device.units }}U</span></td>
@@ -482,7 +482,7 @@
                                      style="background-color: {{ device.color }};"
                                      title="{{ device.name }} - Click to edit">
                                     <span class="closet-unit-number">{{ unit_num }}</span>
-                                    <span class="flex-grow-1 text-truncate">{{ device.name }}</span>
+                                    {% if device.asset %}<i class="fas {{ device.asset.asset_type|asset_icon_fa }} me-1" style="opacity:.8;font-size:.75rem;"></i>{% endif %}<span class="flex-grow-1 text-truncate">{{ device.name }}</span>
                                 </div>
                             </a>
                             {% else %}
@@ -828,16 +828,16 @@ const DEVICE_ICONS = {
     handheld:'fa-barcode', hvac:'fa-wind', iot_device:'fa-microchip',
     kvm:'fa-keyboard', label_printer:'fa-tag', laptop:'fa-laptop',
     lighting_control:'fa-lightbulb', load_balancer:'fa-balance-scale', mobile:'fa-mobile-alt',
-    modem:'fa-broadcast-tower', nas:'fa-hdd', nvr:'fa-video',
+    modem:'fa-signal', nas:'fa-hdd', nvr:'fa-video',
     paging_system:'fa-bullhorn', patch_panel:'fa-ethernet', pbx:'fa-phone',
     pda:'fa-mobile-alt', pdu:'fa-plug', phone:'fa-phone',
     plotter:'fa-drafting-compass', printer:'fa-print', projector:'fa-film',
-    rack:'fa-server', router:'fa-route', san:'fa-database',
+    rack:'fa-server', router:'fa-random', san:'fa-database',
     scanner:'fa-barcode', security_camera:'fa-video', sensor:'fa-satellite-dish',
     server:'fa-server', switch:'fa-network-wired', tablet:'fa-tablet-alt',
     tape_drive:'fa-tape', terminal:'fa-terminal', thermostat:'fa-thermometer-three-quarters',
     thin_client:'fa-desktop', ups:'fa-battery-three-quarters', video_conferencing:'fa-video',
-    voip_gateway:'fa-phone-volume', wireless_ap:'fa-wifi', wireless_controller:'fa-wifi',
+    voip_gateway:'fa-phone-volume', wireless_ap:'fa-broadcast-tower', wireless_controller:'fa-broadcast-tower',
     workstation:'fa-desktop', other:'fa-box',
 };
 

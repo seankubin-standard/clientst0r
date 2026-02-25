@@ -907,7 +907,7 @@
                                     <tr>
                                         <td>
                                             <span class="badge" style="background-color: {{ device.color }};">▊</span>
-                                            {{ device.name }}
+                                            {% if device.asset %}{% asset_type_icon device.asset.asset_type "me-1" %}{% else %}<i class="fas fa-box text-muted me-1"></i>{% endif %}{{ device.name }}
                                             {% if device.asset %}
                                             <br><small class="text-muted"><i class="fas fa-link"></i> <a href="{% url 'assets:asset_detail' device.asset.pk %}">{{ device.asset.name }}</a></small>
                                             {% endif %}
@@ -1324,7 +1324,7 @@ function createUnitDiv(unitNumber, device) {
             div.innerHTML = `
                 <span class="rack-unit-number">${unitNumber}</span>
                 ${visual}
-                <span class="device-name">${device.name}</span>
+                <span class="device-name"><i class="fas ${deviceIcon(device.asset_type)}" style="opacity:.7;margin-right:4px;font-size:.75em;"></i>${device.name}</span>
                 <i class="fas fa-edit device-edit-icon" title="Edit device" data-device-id="${device.id}"></i>
                 <div class="device-resize-handle"></div>
             `;
@@ -2636,16 +2636,16 @@ const DEVICE_ICONS = {
     handheld:'fa-barcode', hvac:'fa-wind', iot_device:'fa-microchip',
     kvm:'fa-keyboard', label_printer:'fa-tag', laptop:'fa-laptop',
     lighting_control:'fa-lightbulb', load_balancer:'fa-balance-scale', mobile:'fa-mobile-alt',
-    modem:'fa-broadcast-tower', nas:'fa-hdd', nvr:'fa-video',
+    modem:'fa-signal', nas:'fa-hdd', nvr:'fa-video',
     paging_system:'fa-bullhorn', patch_panel:'fa-ethernet', pbx:'fa-phone',
     pda:'fa-mobile-alt', pdu:'fa-plug', phone:'fa-phone',
     plotter:'fa-drafting-compass', printer:'fa-print', projector:'fa-film',
-    rack:'fa-server', router:'fa-route', san:'fa-database',
+    rack:'fa-server', router:'fa-random', san:'fa-database',
     scanner:'fa-barcode', security_camera:'fa-video', sensor:'fa-satellite-dish',
     server:'fa-server', switch:'fa-network-wired', tablet:'fa-tablet-alt',
     tape_drive:'fa-tape', terminal:'fa-terminal', thermostat:'fa-thermometer-three-quarters',
     thin_client:'fa-desktop', ups:'fa-battery-three-quarters', video_conferencing:'fa-video',
-    voip_gateway:'fa-phone-volume', wireless_ap:'fa-wifi', wireless_controller:'fa-wifi',
+    voip_gateway:'fa-phone-volume', wireless_ap:'fa-broadcast-tower', wireless_controller:'fa-broadcast-tower',
     workstation:'fa-desktop', other:'fa-box',
 };
 function deviceIcon(assetType) {

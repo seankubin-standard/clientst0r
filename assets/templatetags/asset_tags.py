@@ -38,7 +38,7 @@ ASSET_TYPE_ICONS = {
     'lighting_control':   ('fa-lightbulb',               'text-warning'),
     'load_balancer':      ('fa-balance-scale',           'text-info'),
     'mobile':             ('fa-mobile-alt',              'text-primary'),
-    'modem':              ('fa-broadcast-tower',         'text-warning'),
+    'modem':              ('fa-signal',                  'text-warning'),
     'nas':                ('fa-hdd',                     'text-warning'),
     'nvr':                ('fa-video',                   'text-secondary'),
     'other':              ('fa-box',                     'text-muted'),
@@ -52,7 +52,7 @@ ASSET_TYPE_ICONS = {
     'printer':            ('fa-print',                   'text-secondary'),
     'projector':          ('fa-film',                    'text-secondary'),
     'rack':               ('fa-server',                  'text-secondary'),
-    'router':             ('fa-route',                   'text-success'),
+    'router':             ('fa-random',                  'text-success'),
     'san':                ('fa-database',                'text-warning'),
     'scanner':            ('fa-barcode',                 'text-secondary'),
     'security_camera':    ('fa-video',                   'text-danger'),
@@ -67,8 +67,8 @@ ASSET_TYPE_ICONS = {
     'ups':                ('fa-battery-three-quarters',  'text-warning'),
     'video_conferencing': ('fa-video',                   'text-info'),
     'voip_gateway':       ('fa-phone-volume',            'text-info'),
-    'wireless_ap':        ('fa-wifi',                    'text-success'),
-    'wireless_controller':('fa-wifi',                    'text-info'),
+    'wireless_ap':        ('fa-broadcast-tower',         'text-success'),
+    'wireless_controller':('fa-broadcast-tower',         'text-info'),
     'workstation':        ('fa-desktop',                 'text-primary'),
 }
 
@@ -96,3 +96,13 @@ def asset_type_icon_class(asset_type):
     """
     icon, color = ASSET_TYPE_ICONS.get(asset_type, _DEFAULT_ICON)
     return f"fas {icon} {color}"
+
+
+@register.filter(name='asset_icon_fa')
+def asset_icon_fa(asset_type):
+    """
+    Template filter — returns just the fa-xxx class name for a given asset type.
+    Usage: {{ asset.asset_type|asset_icon_fa }}
+    """
+    icon, _ = ASSET_TYPE_ICONS.get(asset_type, _DEFAULT_ICON)
+    return icon
