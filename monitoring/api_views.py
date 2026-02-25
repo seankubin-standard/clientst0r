@@ -589,6 +589,105 @@ def patch_panel_port_update(request, pk, port_num):
         }, status=500)
 
 
+# ============================================================================
+# Rack Device Port Management API
+# ============================================================================
+
+@login_required
+@require_http_methods(["GET"])
+def rack_device_ports_list(request, pk):
+    """
+    GET /api/rack-devices/<id>/ports/
+    Return JSON list of all ports for the linked asset.
+    """
+    org = get_request_organization(request)
+    device = get_object_or_404(RackDevice, pk=pk)
+    if org and device.rack.organization != org:
+        from django.http import Http404
+        raise Http404
+
+    if not device.asset:
+        return JsonResponse({'success': False, 'error': 'This device has no linked asset'}, status=404)
+
+    asset = device.asset
+
+    # Initialize ports if asset has port_count but no ports configured yet
+    if not asset.ports and asset.port_count:
+        asset.initialize_ports(asset.port_count, asset.asset_type)
+        asset.save(update_fields=['ports', 'port_count'])
+
+    return JsonResponse({
+        'success': True,
+        'device': {
+            'id': device.id,
+            'name': device.name,
+            'asset_id': asset.id,
+            'asset_name': asset.name,
+            'asset_type': asset.asset_type,
+            'port_count': asset.port_count or len(asset.ports or []),
+        },
+        'ports': asset.ports or [],
+    })
+
+
+@csrf_exempt
+@login_required
+@require_http_methods(["PATCH"])
+def rack_device_port_update(request, pk, port_num):
+    """
+    PATCH /api/rack-devices/<id>/ports/<port_num>/
+    Update a single port's configuration on the linked asset.
+    """
+    org = get_request_organization(request)
+    device = get_object_or_404(RackDevice, pk=pk)
+    if org and device.rack.organization != org:
+        from django.http import Http404
+        raise Http404
+
+    if not device.asset:
+        return JsonResponse({'success': False, 'error': 'No linked asset'}, status=404)
+
+    try:
+        data = json.loads(request.body)
+        port_num = int(port_num)
+        asset = device.asset
+        ports = list(asset.ports or [])
+
+        # Auto-grow ports list if needed
+        while len(ports) < port_num:
+            i = len(ports) + 1
+            ports.append({
+                'port_number': i,
+                'description': f'Port {i}',
+                'type': 'access',
+                'vlan': '',
+                'speed': '',
+                'status': 'inactive',
+                'connected_to': '',
+                'notes': '',
+            })
+
+        if port_num < 1:
+            return JsonResponse({'success': False, 'error': 'Invalid port number'}, status=400)
+
+        port_index = port_num - 1
+        allowed_fields = ['description', 'type', 'vlan', 'speed', 'status', 'connected_to', 'notes']
+        for field in allowed_fields:
+            if field in data:
+                ports[port_index][field] = data[field]
+
+        asset.ports = ports
+        with transaction.atomic():
+            asset.save(update_fields=['ports'])
+
+        return JsonResponse({'success': True, 'port': ports[port_index]})
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 @login_required
 @require_http_methods(["GET"])
 def rack_resources_list(request, pk):

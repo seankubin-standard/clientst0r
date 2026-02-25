@@ -92,6 +92,10 @@ urlpatterns = [
     path('api/racks/<int:pk>/connections/', api_views.rack_connections_list, name='api_rack_connections_list'),
     path('api/rack-devices/<int:pk>/connections/', api_views.device_connections_list, name='api_device_connections_list'),
 
+    # Rack Device Port API endpoints
+    path('api/rack-devices/<int:pk>/ports/', api_views.rack_device_ports_list, name='api_rack_device_ports'),
+    path('api/rack-devices/<int:pk>/ports/<int:port_num>/', api_views.rack_device_port_update, name='api_rack_device_port_update'),
+
     # Patch Panel Port API endpoints
     path('api/patch-panels/<int:pk>/ports/', api_views.patch_panel_ports_list, name='api_patch_panel_ports_list'),
     path('api/patch-panels/<int:pk>/ports/<int:port_num>/connect/', api_views.patch_panel_port_connect, name='api_patch_panel_port_connect'),

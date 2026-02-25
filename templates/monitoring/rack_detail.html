@@ -541,6 +541,69 @@
 #deviceEditModal .modal-content {
     box-shadow: 0 8px 40px rgba(0,0,0,0.45);
 }
+
+/* Port grid faceplate */
+.rack-port-panel { }
+.rack-port-faceplate {
+    background: #1a1f2e;
+    border: 2px solid #374151;
+    border-radius: 6px;
+    padding: 12px 14px 10px;
+}
+.rack-port-brand {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.rack-port-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.rack-port-square {
+    width: 30px;
+    height: 24px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    color: rgba(255,255,255,0.85);
+    font-weight: 700;
+    transition: border-color .15s, transform .1s;
+    user-select: none;
+}
+.rack-port-square:hover {
+    border-color: #60a5fa;
+    transform: scale(1.1);
+    z-index: 1;
+}
+.rack-port-square.selected {
+    border-color: #f8fafc !important;
+    box-shadow: 0 0 0 2px rgba(248,250,252,.35);
+    transform: scale(1.15);
+    z-index: 2;
+}
+.rack-port-legend {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+.rack-port-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.rack-port-legend-item span {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
 </style>
 {% endblock %}
 
@@ -572,50 +635,77 @@
 
 <!-- Device Inline Edit Modal -->
 <div class="modal fade" id="deviceEditModal" tabindex="-1" data-bs-backdrop="false" data-bs-keyboard="true">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg" id="deviceEditModalDialog">
     <div class="modal-content">
       <div class="modal-header" style="background:#1e293b;color:#e2e8f0;">
-        <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit Device</h5>
+        <h5 class="modal-title" id="deviceEditModalTitle"><i class="fas fa-edit me-2"></i>Edit Device</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body p-0">
         <input type="hidden" id="editDeviceId">
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Name</label>
-          <input type="text" id="editDeviceName" class="form-control">
-        </div>
-        <div class="row">
-          <div class="col-6 mb-3">
-            <label class="form-label fw-semibold">Start Unit (U)</label>
-            <input type="number" id="editDeviceStartUnit" class="form-control" min="1">
+        <!-- Tab nav -->
+        <ul class="nav nav-tabs px-3 pt-2" id="deviceEditTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="editDetailsTabBtn" data-bs-toggle="tab" data-bs-target="#editDetailsPane" type="button" role="tab">
+              <i class="fas fa-sliders-h me-1"></i>Details
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="editPortsTabBtn" data-bs-toggle="tab" data-bs-target="#editPortsPane" type="button" role="tab">
+              <i class="fas fa-ethernet me-1"></i>Ports <span id="editPortsBadge" class="badge bg-secondary ms-1 d-none"></span>
+            </button>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <!-- Details tab -->
+          <div class="tab-pane fade show active p-3" id="editDetailsPane" role="tabpanel">
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Name</label>
+              <input type="text" id="editDeviceName" class="form-control">
+            </div>
+            <div class="row">
+              <div class="col-6 mb-3">
+                <label class="form-label fw-semibold">Start Unit (U)</label>
+                <input type="number" id="editDeviceStartUnit" class="form-control" min="1">
+              </div>
+              <div class="col-6 mb-3">
+                <label class="form-label fw-semibold">Height (U)</label>
+                <input type="number" id="editDeviceUnits" class="form-control" min="1">
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Power Draw (W)</label>
+              <input type="number" id="editDevicePower" class="form-control" min="0" placeholder="Leave blank if unknown">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Color</label>
+              <input type="color" id="editDeviceColor" class="form-control form-control-color" style="height:38px;width:60px;">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Linked Asset</label>
+              <select id="editDeviceAsset" class="form-select">
+                <option value="">-- No Asset (Label Only) --</option>
+                {% for asset in all_org_assets %}
+                <option value="{{ asset.id }}">{{ asset.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Notes</label>
+              <textarea id="editDeviceNotes" class="form-control" rows="3"></textarea>
+            </div>
+            <div id="editDeviceError" class="alert alert-danger d-none"></div>
           </div>
-          <div class="col-6 mb-3">
-            <label class="form-label fw-semibold">Height (U)</label>
-            <input type="number" id="editDeviceUnits" class="form-control" min="1">
+          <!-- Ports tab -->
+          <div class="tab-pane fade p-3" id="editPortsPane" role="tabpanel">
+            <div id="editPortsContent">
+              <div class="text-center text-muted py-4">
+                <i class="fas fa-ethernet fa-2x mb-2 d-block"></i>
+                <span>Loading ports…</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Power Draw (W)</label>
-          <input type="number" id="editDevicePower" class="form-control" min="0" placeholder="Leave blank if unknown">
-        </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Color</label>
-          <input type="color" id="editDeviceColor" class="form-control form-control-color" style="height:38px;width:60px;">
-        </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Linked Asset</label>
-          <select id="editDeviceAsset" class="form-select">
-            <option value="">-- No Asset (Label Only) --</option>
-            {% for asset in all_org_assets %}
-            <option value="{{ asset.id }}">{{ asset.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Notes</label>
-          <textarea id="editDeviceNotes" class="form-control" rows="3"></textarea>
-        </div>
-        <div id="editDeviceError" class="alert alert-danger d-none"></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -2544,23 +2634,279 @@ function showDeviceDetailModal(device) {
     new bootstrap.Modal(document.getElementById('deviceDetailModal')).show();
 }
 
+// ── Device edit modal (tabbed: Details + Ports) ───────────────────────────────
+let _editingDevice = null;   // current device object while modal is open
+let _devicePorts   = [];     // cached ports for current device
+let _activePortNum = null;   // port number currently selected for inline editing
+
 function showDeviceEditModal(device) {
-    // Hide the detail modal first
+    _editingDevice = device;
+    _devicePorts   = [];
+    _activePortNum = null;
+
+    // Hide detail modal first
     const detailModal = bootstrap.Modal.getInstance(document.getElementById('deviceDetailModal'));
     if (detailModal) detailModal.hide();
 
-    // Pre-fill form
-    document.getElementById('editDeviceId').value      = device.id;
-    document.getElementById('editDeviceName').value    = device.name || '';
+    // Update title
+    document.getElementById('deviceEditModalTitle').innerHTML =
+        `<i class="fas fa-edit me-2"></i>${device.name}`;
+
+    // Pre-fill Details tab
+    document.getElementById('editDeviceId').value        = device.id;
+    document.getElementById('editDeviceName').value      = device.name || '';
     document.getElementById('editDeviceStartUnit').value = device.position || device.start_unit || 1;
-    document.getElementById('editDeviceUnits').value   = device.height   || device.units    || 1;
-    document.getElementById('editDevicePower').value   = device.power_draw_watts != null ? device.power_draw_watts : (device.power_watts != null ? device.power_watts : '');
-    document.getElementById('editDeviceColor').value   = device.color || '#0d6efd';
-    document.getElementById('editDeviceAsset').value   = device.asset_id || '';
-    document.getElementById('editDeviceNotes').value   = device.notes || '';
+    document.getElementById('editDeviceUnits').value     = device.height   || device.units    || 1;
+    document.getElementById('editDevicePower').value     = device.power_draw_watts != null ? device.power_draw_watts
+                                                         : (device.power_watts != null ? device.power_watts : '');
+    document.getElementById('editDeviceColor').value     = device.color || '#0d6efd';
+    document.getElementById('editDeviceAsset').value     = device.asset_id || '';
+    document.getElementById('editDeviceNotes').value     = device.notes || '';
     document.getElementById('editDeviceError').classList.add('d-none');
 
+    // Reset to Details tab
+    const detailsTabBtn = document.getElementById('editDetailsTabBtn');
+    bootstrap.Tab.getOrCreateInstance(detailsTabBtn).show();
+
+    // Show/hide Ports tab based on whether asset has ports capability
+    const portsTabBtn = document.getElementById('editPortsTabBtn');
+    const badge       = document.getElementById('editPortsBadge');
+    if (device.asset_id && device.port_count) {
+        portsTabBtn.classList.remove('d-none');
+        badge.textContent = device.port_count;
+        badge.classList.remove('d-none');
+    } else {
+        portsTabBtn.classList.add('d-none');
+        badge.classList.add('d-none');
+    }
+
+    // Reset ports pane
+    document.getElementById('editPortsContent').innerHTML =
+        `<div class="text-center text-muted py-4">
+           <i class="fas fa-ethernet fa-2x mb-2 d-block"></i>
+           <span>Click the Ports tab to load port configuration.</span>
+         </div>`;
+
     new bootstrap.Modal(document.getElementById('deviceEditModal')).show();
+}
+
+// Load ports when Ports tab is activated
+document.getElementById('editPortsTabBtn').addEventListener('shown.bs.tab', function() {
+    if (!_editingDevice || !_editingDevice.asset_id) return;
+    loadDevicePorts(_editingDevice.id);
+});
+
+function loadDevicePorts(deviceId) {
+    const container = document.getElementById('editPortsContent');
+    container.innerHTML = `<div class="text-center text-muted py-4">
+        <span class="spinner-border spinner-border-sm me-2"></span>Loading ports…</div>`;
+
+    fetch(`/monitoring/api/rack-devices/${deviceId}/ports/`, {
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            container.innerHTML = `<div class="alert alert-warning">${data.error || 'Could not load ports'}</div>`;
+            return;
+        }
+        _devicePorts = data.ports;
+        renderPortsPanel(data.device, data.ports);
+    })
+    .catch(e => {
+        container.innerHTML = `<div class="alert alert-danger">Failed to load ports: ${e.message}</div>`;
+    });
+}
+
+function renderPortsPanel(deviceInfo, ports) {
+    const container = document.getElementById('editPortsContent');
+    const portCount = ports.length;
+
+    const statusColors = {
+        'active':   '#22c55e',
+        'in-use':   '#f59e0b',
+        'inactive': '#475569',
+        'error':    '#ef4444',
+        'disabled': '#64748b',
+        'available':'#22c55e',
+    };
+
+    // Build port grid
+    let portSquares = '';
+    for (const port of ports) {
+        const color = statusColors[port.status] || '#475569';
+        const label = String(port.port_number);
+        portSquares += `<div class="rack-port-square"
+            data-port="${port.port_number}"
+            title="Port ${port.port_number}${port.description ? ': ' + port.description : ''}"
+            style="background:${color};"
+            onclick="selectPort(${port.port_number})">
+            ${label}
+          </div>`;
+    }
+
+    container.innerHTML = `
+      <div class="rack-port-panel mb-3">
+        <div class="rack-port-faceplate">
+          <div class="rack-port-brand">${deviceInfo.asset_name}</div>
+          <div class="rack-port-grid" id="portSquareGrid">${portSquares}</div>
+        </div>
+        <div class="rack-port-legend mt-2 d-flex gap-3 flex-wrap">
+          <span class="rack-port-legend-item"><span style="background:#22c55e"></span> Active / Available</span>
+          <span class="rack-port-legend-item"><span style="background:#f59e0b"></span> In Use</span>
+          <span class="rack-port-legend-item"><span style="background:#475569"></span> Inactive</span>
+          <span class="rack-port-legend-item"><span style="background:#ef4444"></span> Error</span>
+        </div>
+      </div>
+      <div id="portEditSection" class="d-none">
+        <hr class="my-2">
+        <h6 class="mb-3" id="portEditHeading">Edit Port</h6>
+        <input type="hidden" id="portEditNum">
+        <div class="row g-2 mb-2">
+          <div class="col-12 col-sm-6">
+            <label class="form-label form-label-sm fw-semibold mb-1">Description / Label</label>
+            <input type="text" id="portEditDesc" class="form-control form-control-sm" placeholder="e.g. Uplink to SW-CORE-01">
+          </div>
+          <div class="col-6 col-sm-3">
+            <label class="form-label form-label-sm fw-semibold mb-1">Status</label>
+            <select id="portEditStatus" class="form-select form-select-sm">
+              <option value="inactive">Inactive</option>
+              <option value="active">Active</option>
+              <option value="in-use">In Use</option>
+              <option value="error">Error</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </div>
+          <div class="col-6 col-sm-3">
+            <label class="form-label form-label-sm fw-semibold mb-1">Type</label>
+            <select id="portEditType" class="form-select form-select-sm">
+              <option value="access">Access</option>
+              <option value="trunk">Trunk</option>
+              <option value="uplink">Uplink</option>
+              <option value="management">Management</option>
+            </select>
+          </div>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6 col-sm-3">
+            <label class="form-label form-label-sm fw-semibold mb-1">VLAN</label>
+            <input type="text" id="portEditVlan" class="form-control form-control-sm" placeholder="e.g. 10">
+          </div>
+          <div class="col-6 col-sm-3">
+            <label class="form-label form-label-sm fw-semibold mb-1">Speed</label>
+            <select id="portEditSpeed" class="form-select form-select-sm">
+              <option value="">Unknown</option>
+              <option value="10Mbps">10 Mbps</option>
+              <option value="100Mbps">100 Mbps</option>
+              <option value="1Gbps">1 Gbps</option>
+              <option value="2.5Gbps">2.5 Gbps</option>
+              <option value="5Gbps">5 Gbps</option>
+              <option value="10Gbps">10 Gbps</option>
+              <option value="25Gbps">25 Gbps</option>
+              <option value="40Gbps">40 Gbps</option>
+              <option value="100Gbps">100 Gbps</option>
+              <option value="SFP">SFP</option>
+              <option value="SFP+">SFP+</option>
+              <option value="QSFP">QSFP</option>
+            </select>
+          </div>
+          <div class="col-12 col-sm-6">
+            <label class="form-label form-label-sm fw-semibold mb-1">Connected To</label>
+            <input type="text" id="portEditConnectedTo" class="form-control form-control-sm" placeholder="e.g. Patch Panel Port 3">
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label form-label-sm fw-semibold mb-1">Notes</label>
+          <input type="text" id="portEditNotes" class="form-control form-control-sm" placeholder="Optional notes">
+        </div>
+        <div id="portEditError" class="alert alert-danger alert-sm d-none py-1 mb-2"></div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-primary btn-sm" id="savePortEditBtn" onclick="savePortEdit()">
+            <i class="fas fa-save me-1"></i>Save Port
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearPortSelection()">
+            Cancel
+          </button>
+        </div>
+      </div>`;
+}
+
+function selectPort(portNum) {
+    _activePortNum = portNum;
+    const port = _devicePorts.find(p => p.port_number === portNum);
+
+    // Highlight selected port square
+    document.querySelectorAll('.rack-port-square').forEach(sq => {
+        sq.classList.toggle('selected', parseInt(sq.dataset.port) === portNum);
+    });
+
+    // Populate edit form
+    document.getElementById('portEditNum').value        = portNum;
+    document.getElementById('portEditDesc').value       = port ? (port.description || '') : '';
+    document.getElementById('portEditStatus').value     = port ? (port.status || 'inactive') : 'inactive';
+    document.getElementById('portEditType').value       = port ? (port.type || 'access') : 'access';
+    document.getElementById('portEditVlan').value       = port ? (port.vlan || '') : '';
+    document.getElementById('portEditSpeed').value      = port ? (port.speed || '') : '';
+    document.getElementById('portEditConnectedTo').value= port ? (port.connected_to || '') : '';
+    document.getElementById('portEditNotes').value      = port ? (port.notes || '') : '';
+    document.getElementById('portEditError').classList.add('d-none');
+    document.getElementById('portEditHeading').textContent = `Edit Port ${portNum}`;
+
+    document.getElementById('portEditSection').classList.remove('d-none');
+}
+
+function clearPortSelection() {
+    _activePortNum = null;
+    document.getElementById('portEditSection').classList.add('d-none');
+    document.querySelectorAll('.rack-port-square').forEach(sq => sq.classList.remove('selected'));
+}
+
+function savePortEdit() {
+    if (!_activePortNum || !_editingDevice) return;
+
+    const payload = {
+        description:  document.getElementById('portEditDesc').value,
+        status:       document.getElementById('portEditStatus').value,
+        type:         document.getElementById('portEditType').value,
+        vlan:         document.getElementById('portEditVlan').value,
+        speed:        document.getElementById('portEditSpeed').value,
+        connected_to: document.getElementById('portEditConnectedTo').value,
+        notes:        document.getElementById('portEditNotes').value,
+    };
+
+    const btn = document.getElementById('savePortEditBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+
+    fetch(`/monitoring/api/rack-devices/${_editingDevice.id}/ports/${_activePortNum}/`, {
+        method:  'PATCH',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body:    JSON.stringify(payload),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // Update local cache and re-render
+            const idx = _devicePorts.findIndex(p => p.port_number === _activePortNum);
+            if (idx >= 0) _devicePorts[idx] = data.port;
+            else _devicePorts.push(data.port);
+
+            renderPortsPanel({asset_name: _editingDevice.asset_name || _editingDevice.name}, _devicePorts);
+            // Re-select the port briefly to show the update
+            setTimeout(() => selectPort(_activePortNum), 50);
+        } else {
+            document.getElementById('portEditError').textContent = data.error || 'Save failed';
+            document.getElementById('portEditError').classList.remove('d-none');
+        }
+    })
+    .catch(e => {
+        document.getElementById('portEditError').textContent = 'Request failed: ' + e.message;
+        document.getElementById('portEditError').classList.remove('d-none');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Port';
+    });
 }
 
 document.getElementById('saveDeviceEditBtn').addEventListener('click', function() {
