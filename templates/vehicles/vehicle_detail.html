@@ -240,24 +240,26 @@
         </div>
 
         <!-- Vehicle Damage Diagram -->
-        <div class="card bg-light p-3 mb-4">
-            <h6 class="mb-3"><i class="fas fa-car"></i> Damage Locations</h6>
+        <div class="card mb-4" style="background:#1e293b;">
+            <div class="card-body py-3">
+            <h6 class="mb-3 text-light"><i class="fas fa-car"></i> Damage Locations</h6>
             <div id="damage-diagram-container" style="max-width: 700px; margin: 0 auto; position: relative;">
                 {% include 'vehicles/van_diagram.html' %}
                 <div id="damage-markers"></div>
             </div>
             <div class="mt-3 text-center">
                 {% if damage_reports %}
-                <small class="text-muted"><i class="fas fa-info-circle"></i> Highlighted areas show damage locations. Click to jump to report.</small>
+                <small style="color:#94a3b8;"><i class="fas fa-info-circle"></i> Click any area to view or report damage.</small>
                 <div class="severity-legend mt-2">
-                    <span class="severity-legend-item"><span class="severity-dot" style="background:#ffc107;"></span> Minor</span>
-                    <span class="severity-legend-item"><span class="severity-dot" style="background:#fd7e14;"></span> Moderate</span>
-                    <span class="severity-legend-item"><span class="severity-dot" style="background:#dc3545;"></span> Major</span>
-                    <span class="severity-legend-item"><span class="severity-dot" style="background:#6f42c1;"></span> Total Loss</span>
+                    <span class="severity-legend-item" style="color:#e2e8f0;"><span class="severity-dot" style="background:#ffc107;"></span> Minor</span>
+                    <span class="severity-legend-item" style="color:#e2e8f0;"><span class="severity-dot" style="background:#fd7e14;"></span> Moderate</span>
+                    <span class="severity-legend-item" style="color:#e2e8f0;"><span class="severity-dot" style="background:#dc3545;"></span> Major</span>
+                    <span class="severity-legend-item" style="color:#e2e8f0;"><span class="severity-dot" style="background:#6f42c1;"></span> Total Loss</span>
                 </div>
                 {% else %}
-                <small class="text-muted"><i class="fas fa-info-circle"></i> No damage reported yet.</small>
+                <small style="color:#94a3b8;"><i class="fas fa-info-circle"></i> Click any area to report damage.</small>
                 {% endif %}
+            </div>
             </div>
         </div>
 
