@@ -1,17 +1,18 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}Edit Profile - Client St0r{% endblock %}
+{% block title %}{% trans "Edit Profile" %} - Client St0r{% endblock %}
 
 {% block content %}
 <div class="mb-4">
-    <h1><i class="fas fa-user-edit"></i> Edit Profile</h1>
+    <h1><i class="fas fa-user-edit"></i> {% trans "Edit Profile" %}</h1>
 </div>
 
 <div class="row">
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Profile Information</h5>
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> {% trans "Profile Information" %}</h5>
             </div>
             <div class="card-body">
                 <form method="post" enctype="multipart/form-data">
@@ -19,14 +20,14 @@
 
                     <div class="row mb-3">
                         <div class="col-md-6">
-                            <label for="{{ form.first_name.id_for_label }}" class="form-label">First Name</label>
+                            <label for="{{ form.first_name.id_for_label }}" class="form-label">{% trans "First Name" %}</label>
                             {{ form.first_name }}
                             {% if form.first_name.errors %}
                             <div class="invalid-feedback d-block">{{ form.first_name.errors }}</div>
                             {% endif %}
                         </div>
                         <div class="col-md-6">
-                            <label for="{{ form.last_name.id_for_label }}" class="form-label">Last Name</label>
+                            <label for="{{ form.last_name.id_for_label }}" class="form-label">{% trans "Last Name" %}</label>
                             {{ form.last_name }}
                             {% if form.last_name.errors %}
                             <div class="invalid-feedback d-block">{{ form.last_name.errors }}</div>
@@ -35,7 +36,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="{{ form.email.id_for_label }}" class="form-label">Email <span class="text-danger">*</span></label>
+                        <label for="{{ form.email.id_for_label }}" class="form-label">{% trans "Email" %} <span class="text-danger">*</span></label>
                         {{ form.email }}
                         {% if form.email.errors %}
                         <div class="invalid-feedback d-block">{{ form.email.errors }}</div>
@@ -44,14 +45,14 @@
 
                     <div class="row mb-3">
                         <div class="col-md-6">
-                            <label for="{{ form.phone.id_for_label }}" class="form-label">Phone</label>
+                            <label for="{{ form.phone.id_for_label }}" class="form-label">{% trans "Phone" %}</label>
                             {{ form.phone }}
                             {% if form.phone.errors %}
                             <div class="invalid-feedback d-block">{{ form.phone.errors }}</div>
                             {% endif %}
                         </div>
                         <div class="col-md-6">
-                            <label for="{{ form.title.id_for_label }}" class="form-label">Job Title</label>
+                            <label for="{{ form.title.id_for_label }}" class="form-label">{% trans "Job Title" %}</label>
                             {{ form.title }}
                             {% if form.title.errors %}
                             <div class="invalid-feedback d-block">{{ form.title.errors }}</div>
@@ -60,7 +61,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="{{ form.department.id_for_label }}" class="form-label">Department</label>
+                        <label for="{{ form.department.id_for_label }}" class="form-label">{% trans "Department" %}</label>
                         {{ form.department }}
                         {% if form.department.errors %}
                         <div class="invalid-feedback d-block">{{ form.department.errors }}</div>
@@ -68,22 +69,22 @@
                     </div>
 
                     <hr class="my-4">
-                    <h6><i class="fas fa-cog"></i> Preferences</h6>
+                    <h6><i class="fas fa-cog"></i> {% trans "Preferences" %}</h6>
 
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="{{ form.timezone.id_for_label }}" class="form-label">
-                                <i class="fas fa-clock"></i> Timezone
+                                <i class="fas fa-clock"></i> {% trans "Timezone" %}
                             </label>
                             {{ form.timezone }}
                             {% if form.timezone.errors %}
                             <div class="invalid-feedback d-block">{{ form.timezone.errors }}</div>
                             {% endif %}
-                            <small class="form-text text-muted">Your local timezone for displaying dates and times</small>
+                            <small class="form-text text-muted">{% trans "Your local timezone for displaying dates and times" %}</small>
                         </div>
                         <div class="col-md-6">
                             <label for="{{ form.locale.id_for_label }}" class="form-label">
-                                <i class="fas fa-language"></i> Language
+                                <i class="fas fa-language"></i> {% trans "Language" %}
                             </label>
                             {{ form.locale }}
                             {% if form.locale.errors %}
@@ -95,30 +96,30 @@
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="{{ form.time_format.id_for_label }}" class="form-label">
-                                <i class="fas fa-clock"></i> Time Format
+                                <i class="fas fa-clock"></i> {% trans "Time Format" %}
                             </label>
                             {{ form.time_format }}
                             {% if form.time_format.errors %}
                             <div class="invalid-feedback d-block">{{ form.time_format.errors }}</div>
                             {% endif %}
-                            <small class="form-text text-muted">Clock display format in the navigation bar</small>
+                            <small class="form-text text-muted">{% trans "Clock display format in the navigation bar" %}</small>
                         </div>
                     </div>
 
                     <div class="mb-3">
                         <label for="{{ form.theme.id_for_label }}" class="form-label">
-                            <i class="fas fa-palette"></i> Color Theme
+                            <i class="fas fa-palette"></i> {% trans "Color Theme" %}
                         </label>
                         {{ form.theme }}
                         {% if form.theme.errors %}
                         <div class="invalid-feedback d-block">{{ form.theme.errors }}</div>
                         {% endif %}
-                        <small class="form-text text-muted">Choose your preferred color palette for the interface</small>
+                        <small class="form-text text-muted">{% trans "Choose your preferred color palette for the interface" %}</small>
                     </div>
 
                     <div class="mb-3">
                         <label for="{{ form.background_mode.id_for_label }}" class="form-label">
-                            <i class="fas fa-image"></i> Background Mode
+                            <i class="fas fa-image"></i> {% trans "Background Mode" %}
                         </label>
                         {{ form.background_mode }}
                         {% if form.background_mode.errors %}
@@ -136,11 +137,11 @@
 
                     <div class="mb-3">
                         <label for="{{ form.background_color.id_for_label }}" class="form-label">
-                            <i class="fas fa-fill-drip"></i> Solid Background Color
+                            <i class="fas fa-fill-drip"></i> {% trans "Solid Background Color" %}
                         </label>
                         <div class="d-flex align-items-center gap-2">
                             {{ form.background_color }}
-                            <span class="text-muted small">Click to choose color</span>
+                            <span class="text-muted small">{% trans "Click to choose color" %}</span>
                         </div>
                         {% if form.background_color.errors %}
                         <div class="invalid-feedback d-block">{{ form.background_color.errors }}</div>
@@ -150,7 +151,7 @@
 
                     <div class="mb-3">
                         <label for="{{ form.preset_background.id_for_label }}" class="form-label">
-                            <i class="fas fa-palette"></i> Preset Background
+                            <i class="fas fa-palette"></i> {% trans "Preset Background" %}
                         </label>
                         {{ form.preset_background }}
                         {% if form.preset_background.errors %}
@@ -161,7 +162,7 @@
 
                     <div class="mb-3">
                         <label for="{{ form.background_image.id_for_label }}" class="form-label">
-                            <i class="fas fa-upload"></i> Custom Background Image
+                            <i class="fas fa-upload"></i> {% trans "Custom Background Image" %}
                         </label>
                         {{ form.background_image }}
                         {% if form.background_image.errors %}
@@ -170,19 +171,19 @@
                         {% if user.profile.background_image %}
                         <div class="mt-2">
                             <img src="{{ user.profile.background_image.url }}" alt="Current background" style="max-width: 200px; max-height: 100px; object-fit: cover;" class="rounded">
-                            <small class="d-block text-muted mt-1">Current background image</small>
+                            <small class="d-block text-muted mt-1">{% trans "Current background image" %}</small>
                         </div>
                         {% endif %}
                         <small class="form-text text-muted">Upload an image to use as your background (only used when "Custom Upload" is selected above)</small>
                     </div>
 
                     <hr class="my-4">
-                    <h6><i class="fas fa-bell"></i> Notification Settings</h6>
+                    <h6><i class="fas fa-bell"></i> {% trans "Notification Settings" %}</h6>
 
                     <div class="mb-3 form-check">
                         {{ form.email_notifications }}
                         <label class="form-check-label" for="{{ form.email_notifications.id_for_label }}">
-                            Enable Email Notifications
+                            {% trans "Enable Email Notifications" %}
                         </label>
                         {% if form.email_notifications.errors %}
                         <div class="invalid-feedback d-block">{{ form.email_notifications.errors }}</div>
@@ -190,21 +191,21 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="{{ form.notification_frequency.id_for_label }}" class="form-label">Notification Frequency</label>
+                        <label for="{{ form.notification_frequency.id_for_label }}" class="form-label">{% trans "Notification Frequency" %}</label>
                         {{ form.notification_frequency }}
                         {% if form.notification_frequency.errors %}
                         <div class="invalid-feedback d-block">{{ form.notification_frequency.errors }}</div>
                         {% endif %}
-                        <small class="form-text text-muted">How often you want to receive email notifications</small>
+                        <small class="form-text text-muted">{% trans "How often you want to receive email notifications" %}</small>
                     </div>
 
                     <hr class="my-4">
-                    <h6><i class="fas fa-question-circle"></i> Interface Help</h6>
+                    <h6><i class="fas fa-question-circle"></i> {% trans "Interface Help" %}</h6>
 
                     <div class="mb-3 form-check">
                         {{ form.tooltips_enabled }}
                         <label class="form-check-label" for="{{ form.tooltips_enabled.id_for_label }}">
-                            Enable Helpful Tooltips
+                            {% trans "Enable Helpful Tooltips" %}
                         </label>
                         {% if form.tooltips_enabled.errors %}
                         <div class="invalid-feedback d-block">{{ form.tooltips_enabled.errors }}</div>
@@ -214,10 +215,10 @@
 
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Save Changes
+                            <i class="fas fa-save"></i> {% trans "Save Changes" %}
                         </button>
                         <a href="{% url 'accounts:profile' %}" class="btn btn-secondary">
-                            <i class="fas fa-times"></i> Cancel
+                            <i class="fas fa-times"></i> {% trans "Cancel" %}
                         </a>
                     </div>
                 </form>

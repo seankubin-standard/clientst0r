@@ -1,10 +1,11 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}My Profile - Client St0r{% endblock %}
+{% block title %}{% trans "My Profile" %} - Client St0r{% endblock %}
 
 {% block content %}
 <div class="mb-4">
-    <h1><i class="fas fa-user-circle"></i> My Profile</h1>
+    <h1><i class="fas fa-user-circle"></i> {% trans "My Profile" %}</h1>
 </div>
 
 <div class="row">
@@ -32,13 +33,13 @@
 
                 <div class="d-grid gap-2 mt-3">
                     <a href="{% url 'accounts:profile_edit' %}" class="btn btn-primary">
-                        <i class="fas fa-edit"></i> Edit Profile
+                        <i class="fas fa-edit"></i> {% trans "Edit Profile" %}
                     </a>
                     <a href="{% url 'accounts:password_change' %}" class="btn btn-outline-secondary">
-                        <i class="fas fa-key"></i> Change Password
+                        <i class="fas fa-key"></i> {% trans "Change Password" %}
                     </a>
                     <a href="{% url 'accounts:two_factor_setup' %}" class="btn btn-outline-secondary">
-                        <i class="fas fa-shield-alt"></i> 2FA Settings
+                        <i class="fas fa-shield-alt"></i> {% trans "2FA Settings" %}
                     </a>
                 </div>
             </div>
@@ -46,26 +47,26 @@
 
         <div class="card mt-3">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Security Status</h5>
+                <h5 class="mb-0"><i class="fas fa-shield-alt"></i> {% trans "Security Status" %}</h5>
             </div>
             <div class="card-body">
                 <dl>
-                    <dt>Two-Factor Auth:</dt>
+                    <dt>{% trans "Two-Factor Auth:" %}</dt>
                     <dd>
                         {% if profile.two_factor_enabled %}
-                        <span class="badge bg-success"><i class="fas fa-check"></i> Enabled</span>
+                        <span class="badge bg-success"><i class="fas fa-check"></i> {% trans "Enabled" %}</span>
                         {% else %}
-                        <span class="badge bg-warning"><i class="fas fa-times"></i> Disabled</span>
+                        <span class="badge bg-warning"><i class="fas fa-times"></i> {% trans "Disabled" %}</span>
                         {% endif %}
                     </dd>
 
                     {% if user.last_login %}
-                    <dt>Last Login:</dt>
+                    <dt>{% trans "Last Login:" %}</dt>
                     <dd>{{ user.last_login|date:"F j, Y g:i A" }}</dd>
                     {% endif %}
 
                     {% if profile.last_login_ip %}
-                    <dt>Last IP:</dt>
+                    <dt>{% trans "Last IP:" %}</dt>
                     <dd><code>{{ profile.last_login_ip }}</code></dd>
                     {% endif %}
                 </dl>
@@ -76,45 +77,45 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Profile Information</h5>
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> {% trans "Profile Information" %}</h5>
             </div>
             <div class="card-body">
                 <dl class="row">
-                    <dt class="col-sm-3">Email:</dt>
-                    <dd class="col-sm-9">{{ user.email|default:"Not set" }}</dd>
+                    <dt class="col-sm-3">{% trans "Email:" %}</dt>
+                    <dd class="col-sm-9">{{ user.email|default:_("Not set") }}</dd>
 
-                    <dt class="col-sm-3">Phone:</dt>
-                    <dd class="col-sm-9">{{ profile.phone|default:"Not set" }}</dd>
+                    <dt class="col-sm-3">{% trans "Phone:" %}</dt>
+                    <dd class="col-sm-9">{{ profile.phone|default:_("Not set") }}</dd>
 
-                    <dt class="col-sm-3">Timezone:</dt>
+                    <dt class="col-sm-3">{% trans "Timezone:" %}</dt>
                     <dd class="col-sm-9">{{ profile.timezone }}</dd>
 
-                    <dt class="col-sm-3">Language:</dt>
+                    <dt class="col-sm-3">{% trans "Language:" %}</dt>
                     <dd class="col-sm-9">{{ profile.get_locale_display }}</dd>
 
-                    <dt class="col-sm-3">Color Theme:</dt>
+                    <dt class="col-sm-3">{% trans "Color Theme:" %}</dt>
                     <dd class="col-sm-9">{{ profile.get_theme_display }}</dd>
 
-                    <dt class="col-sm-3">Background:</dt>
+                    <dt class="col-sm-3">{% trans "Background:" %}</dt>
                     <dd class="col-sm-9">
                         {{ profile.get_background_mode_display }}
                         {% if profile.background_mode == 'custom' and profile.background_image %}
-                        <br><small class="text-muted"><i class="fas fa-image"></i> Custom image uploaded</small>
+                        <br><small class="text-muted"><i class="fas fa-image"></i> {% trans "Custom image uploaded" %}</small>
                         {% elif profile.background_mode == 'random' %}
-                        <br><small class="text-muted"><i class="fas fa-globe"></i> Random images (changes each page load)</small>
+                        <br><small class="text-muted"><i class="fas fa-globe"></i> {% trans "Random images (changes each page load)" %}</small>
                         {% endif %}
                     </dd>
 
-                    <dt class="col-sm-3">Notifications:</dt>
+                    <dt class="col-sm-3">{% trans "Notifications:" %}</dt>
                     <dd class="col-sm-9">
                         {% if profile.email_notifications %}
-                        <i class="fas fa-check-circle text-success"></i> Enabled ({{ profile.get_notification_frequency_display }})
+                        <i class="fas fa-check-circle text-success"></i> {% trans "Enabled" %} ({{ profile.get_notification_frequency_display }})
                         {% else %}
-                        <i class="fas fa-times-circle text-danger"></i> Disabled
+                        <i class="fas fa-times-circle text-danger"></i> {% trans "Disabled" %}
                         {% endif %}
                     </dd>
 
-                    <dt class="col-sm-3">Member Since:</dt>
+                    <dt class="col-sm-3">{% trans "Member Since:" %}</dt>
                     <dd class="col-sm-9">{{ user.date_joined|date:"F j, Y" }}</dd>
                 </dl>
             </div>
@@ -122,7 +123,7 @@
 
         <div class="card mt-3">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-building"></i> Organization Memberships</h5>
+                <h5 class="mb-0"><i class="fas fa-building"></i> {% trans "Organization Memberships" %}</h5>
             </div>
             <div class="card-body">
                 {% if memberships %}
@@ -149,7 +150,7 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="text-muted">You are not a member of any organizations.</p>
+                <p class="text-muted">{% trans "You are not a member of any organizations." %}</p>
                 {% endif %}
             </div>
         </div>

@@ -1,0 +1,525 @@
+# Spanish (es) translations for Client St0r
+# Copyright (C) 2026
+msgid ""
+msgstr ""
+"Project-Id-Version: Client St0r\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-02-26 00:00+0000\n"
+"PO-Revision-Date: 2026-02-26 00:00+0000\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# Navigation
+msgid "Dashboard"
+msgstr "Panel"
+
+msgid "Quick Add"
+msgstr "Agregar rápido"
+
+msgid "Assets"
+msgstr "Activos"
+
+msgid "All Assets"
+msgstr "Todos los activos"
+
+msgid "Infrastructure"
+msgstr "Infraestructura"
+
+msgid "Racks"
+msgstr "Bastidores"
+
+msgid "Network Closets"
+msgstr "Armarios de red"
+
+msgid "IPAM"
+msgstr "IPAM"
+
+msgid "VLANs"
+msgstr "VLANs"
+
+msgid "Vault"
+msgstr "Bóveda"
+
+msgid "Passwords"
+msgstr "Contraseñas"
+
+msgid "My Vault"
+msgstr "Mi bóveda"
+
+msgid "Secure Notes"
+msgstr "Notas seguras"
+
+msgid "Docs"
+msgstr "Docs"
+
+msgid "Documents"
+msgstr "Documentos"
+
+msgid "Diagrams"
+msgstr "Diagramas"
+
+msgid "Import Floor Plans"
+msgstr "Importar planos"
+
+msgid "Workflows"
+msgstr "Flujos de trabajo"
+
+msgid "Monitoring"
+msgstr "Monitoreo"
+
+msgid "Website Monitors"
+msgstr "Monitores web"
+
+msgid "WAN Connections"
+msgstr "Conexiones WAN"
+
+msgid "Expirations"
+msgstr "Vencimientos"
+
+msgid "Service Vehicles"
+msgstr "Vehículos de servicio"
+
+msgid "Service Alerts"
+msgstr "Alertas de servicio"
+
+msgid "All Vehicles"
+msgstr "Todos los vehículos"
+
+msgid "Add Vehicle"
+msgstr "Agregar vehículo"
+
+msgid "Reports"
+msgstr "Informes"
+
+msgid "Reports Home"
+msgstr "Inicio de informes"
+
+msgid "Dashboards"
+msgstr "Paneles"
+
+msgid "Generate Reports"
+msgstr "Generar informes"
+
+msgid "Report History"
+msgstr "Historial de informes"
+
+msgid "Scheduled Reports"
+msgstr "Informes programados"
+
+msgid "Analytics"
+msgstr "Análisis"
+
+msgid "Admin"
+msgstr "Administración"
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "Settings"
+msgstr "Configuración"
+
+msgid "System Status"
+msgstr "Estado del sistema"
+
+msgid "System Updates"
+msgstr "Actualizaciones del sistema"
+
+msgid "Security"
+msgstr "Seguridad"
+
+msgid "Security Dashboard"
+msgstr "Panel de seguridad"
+
+msgid "Vulnerability Scans"
+msgstr "Análisis de vulnerabilidades"
+
+msgid "Scan Configuration"
+msgstr "Configuración de análisis"
+
+msgid "Management"
+msgstr "Gestión"
+
+msgid "Organizations"
+msgstr "Organizaciones"
+
+msgid "Locations"
+msgstr "Ubicaciones"
+
+msgid "Access Management"
+msgstr "Gestión de acceso"
+
+msgid "Integrations"
+msgstr "Integraciones"
+
+msgid "Webhooks"
+msgstr "Webhooks"
+
+msgid "Import Data"
+msgstr "Importar datos"
+
+msgid "Global View"
+msgstr "Vista global"
+
+msgid "Switch View"
+msgstr "Cambiar vista"
+
+msgid "My Profile"
+msgstr "Mi perfil"
+
+msgid "Documentation & Help"
+msgstr "Documentación y ayuda"
+
+msgid "About"
+msgstr "Acerca de"
+
+msgid "Report Bug"
+msgstr "Reportar error"
+
+msgid "Support This Project"
+msgstr "Apoyar este proyecto"
+
+msgid "Mobile Access"
+msgstr "Acceso móvil"
+
+msgid "Install App (PWA)"
+msgstr "Instalar aplicación (PWA)"
+
+msgid "Works on Android, iOS, and desktop!"
+msgstr "¡Funciona en Android, iOS y escritorio!"
+
+msgid "Sign Out"
+msgstr "Cerrar sesión"
+
+msgid "Login"
+msgstr "Iniciar sesión"
+
+msgid "Favorites"
+msgstr "Favoritos"
+
+msgid "Global KB"
+msgstr "BC global"
+
+msgid "Search..."
+msgstr "Buscar..."
+
+msgid "Search"
+msgstr "Buscar"
+
+# Tooltips
+msgid "View your main dashboard"
+msgstr "Ver tu panel principal"
+
+msgid "Quickly create passwords, assets, documents, and more"
+msgstr "Crear rápidamente contraseñas, activos, documentos y más"
+
+msgid "View and manage all assets"
+msgstr "Ver y gestionar todos los activos"
+
+msgid "Manage server racks and equipment placement"
+msgstr "Gestionar bastidores de servidores y colocación de equipos"
+
+msgid "View network closets and wiring infrastructure"
+msgstr "Ver armarios de red e infraestructura de cableado"
+
+msgid "IP address management and subnet tracking"
+msgstr "Gestión de direcciones IP y seguimiento de subredes"
+
+msgid "Manage VLANs and network segmentation"
+msgstr "Gestionar VLANs y segmentación de red"
+
+msgid "Encrypted password storage for the organization"
+msgstr "Almacenamiento de contraseñas cifradas para la organización"
+
+msgid "Your private password vault (not accessible by admins)"
+msgstr "Tu bóveda privada de contraseñas (no accesible por administradores)"
+
+msgid "Send encrypted ephemeral messages"
+msgstr "Enviar mensajes efímeros cifrados"
+
+msgid "Knowledge base and documentation"
+msgstr "Base de conocimiento y documentación"
+
+msgid "Network diagrams and visual documentation"
+msgstr "Diagramas de red y documentación visual"
+
+msgid "Import floor plans from MagicPlan or upload images"
+msgstr "Importar planos desde MagicPlan o subir imágenes"
+
+msgid "Process automation and workflow templates"
+msgstr "Automatización de procesos y plantillas de flujos de trabajo"
+
+msgid "Website uptime and SSL certificate monitoring"
+msgstr "Monitoreo de disponibilidad web y certificados SSL"
+
+msgid "WAN connection monitoring and status tracking"
+msgstr "Monitoreo de conexiones WAN y seguimiento de estado"
+
+msgid "Track SSL certificates, domains, and credential expirations"
+msgstr "Rastrear vencimientos de certificados SSL, dominios y credenciales"
+
+msgid "Reports and analytics home"
+msgstr "Inicio de informes y análisis"
+
+msgid "Custom dashboards and widgets"
+msgstr "Paneles personalizados y widgets"
+
+msgid "Generate reports from templates"
+msgstr "Generar informes a partir de plantillas"
+
+msgid "View generated reports"
+msgstr "Ver informes generados"
+
+msgid "Manage scheduled reports"
+msgstr "Gestionar informes programados"
+
+msgid "System analytics and usage metrics"
+msgstr "Análisis del sistema y métricas de uso"
+
+msgid "System settings and configuration"
+msgstr "Configuración y ajustes del sistema"
+
+msgid "Health monitoring and scheduled tasks"
+msgstr "Monitoreo de salud y tareas programadas"
+
+msgid "Check for and apply system updates"
+msgstr "Buscar y aplicar actualizaciones del sistema"
+
+msgid "Security overview and vulnerability status"
+msgstr "Resumen de seguridad y estado de vulnerabilidades"
+
+msgid "View Snyk vulnerability scan history"
+msgstr "Ver historial de análisis de vulnerabilidades de Snyk"
+
+msgid "Configure security scanning settings"
+msgstr "Configurar ajustes de análisis de seguridad"
+
+msgid "Manage organizations and tenants"
+msgstr "Gestionar organizaciones e inquilinos"
+
+msgid "Physical locations and addresses"
+msgstr "Ubicaciones físicas y direcciones"
+
+msgid "User management, roles, and permissions"
+msgstr "Gestión de usuarios, roles y permisos"
+
+msgid "PSA and RMM integrations"
+msgstr "Integraciones PSA y RMM"
+
+msgid "Configure webhooks for event notifications"
+msgstr "Configurar webhooks para notificaciones de eventos"
+
+msgid "Import data from CSV or other sources"
+msgstr "Importar datos desde CSV u otras fuentes"
+
+msgid "Staff-only knowledge base shared across all organizations"
+msgstr "Base de conocimiento solo para personal compartida en todas las organizaciones"
+
+msgid "View and edit your user profile"
+msgstr "Ver y editar tu perfil de usuario"
+
+msgid "Integrated help and documentation"
+msgstr "Ayuda y documentación integradas"
+
+msgid "System information and version details"
+msgstr "Información del sistema y detalles de versión"
+
+msgid "Report an issue to GitHub"
+msgstr "Reportar un problema en GitHub"
+
+msgid "Support this open-source project"
+msgstr "Apoyar este proyecto de código abierto"
+
+msgid "Install Client St0r as an app"
+msgstr "Instalar Client St0r como aplicación"
+
+msgid "Sign out of your account"
+msgstr "Cerrar sesión de tu cuenta"
+
+# Profile page
+msgid "Edit Profile"
+msgstr "Editar perfil"
+
+msgid "Change Password"
+msgstr "Cambiar contraseña"
+
+msgid "2FA Settings"
+msgstr "Configuración 2FA"
+
+msgid "Security Status"
+msgstr "Estado de seguridad"
+
+msgid "Two-Factor Auth:"
+msgstr "Autenticación de dos factores:"
+
+msgid "Enabled"
+msgstr "Habilitado"
+
+msgid "Disabled"
+msgstr "Deshabilitado"
+
+msgid "Last Login:"
+msgstr "Último acceso:"
+
+msgid "Last IP:"
+msgstr "Última IP:"
+
+msgid "Profile Information"
+msgstr "Información del perfil"
+
+msgid "Email:"
+msgstr "Correo electrónico:"
+
+msgid "Phone:"
+msgstr "Teléfono:"
+
+msgid "Timezone:"
+msgstr "Zona horaria:"
+
+msgid "Language:"
+msgstr "Idioma:"
+
+msgid "Color Theme:"
+msgstr "Tema de color:"
+
+msgid "Background:"
+msgstr "Fondo:"
+
+msgid "Notifications:"
+msgstr "Notificaciones:"
+
+msgid "Member Since:"
+msgstr "Miembro desde:"
+
+msgid "Not set"
+msgstr "No establecido"
+
+msgid "Custom image uploaded"
+msgstr "Imagen personalizada subida"
+
+msgid "Random images (changes each page load)"
+msgstr "Imágenes aleatorias (cambia en cada carga de página)"
+
+msgid "Organization Memberships"
+msgstr "Membresías de organización"
+
+msgid "You are not a member of any organizations."
+msgstr "No eres miembro de ninguna organización."
+
+# Profile edit page
+msgid "First Name"
+msgstr "Nombre"
+
+msgid "Last Name"
+msgstr "Apellido"
+
+msgid "Email"
+msgstr "Correo electrónico"
+
+msgid "Phone"
+msgstr "Teléfono"
+
+msgid "Job Title"
+msgstr "Cargo"
+
+msgid "Department"
+msgstr "Departamento"
+
+msgid "Preferences"
+msgstr "Preferencias"
+
+msgid "Timezone"
+msgstr "Zona horaria"
+
+msgid "Your local timezone for displaying dates and times"
+msgstr "Tu zona horaria local para mostrar fechas y horas"
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Time Format"
+msgstr "Formato de hora"
+
+msgid "Clock display format in the navigation bar"
+msgstr "Formato del reloj en la barra de navegación"
+
+msgid "Color Theme"
+msgstr "Tema de color"
+
+msgid "Choose your preferred color palette for the interface"
+msgstr "Elige tu paleta de colores preferida para la interfaz"
+
+msgid "Background Mode"
+msgstr "Modo de fondo"
+
+msgid "Solid Background Color"
+msgstr "Color de fondo sólido"
+
+msgid "Click to choose color"
+msgstr "Haz clic para elegir color"
+
+msgid "Preset Background"
+msgstr "Fondo predeterminado"
+
+msgid "Custom Background Image"
+msgstr "Imagen de fondo personalizada"
+
+msgid "Current background image"
+msgstr "Imagen de fondo actual"
+
+msgid "Notification Settings"
+msgstr "Configuración de notificaciones"
+
+msgid "Enable Email Notifications"
+msgstr "Habilitar notificaciones por correo"
+
+msgid "Notification Frequency"
+msgstr "Frecuencia de notificaciones"
+
+msgid "How often you want to receive email notifications"
+msgstr "Con qué frecuencia deseas recibir notificaciones por correo"
+
+msgid "Interface Help"
+msgstr "Ayuda de la interfaz"
+
+msgid "Enable Helpful Tooltips"
+msgstr "Habilitar información emergente útil"
+
+msgid "Show helpful hints when hovering over buttons and features"
+msgstr "Mostrar consejos útiles al pasar el cursor sobre botones y funciones"
+
+msgid "Save Changes"
+msgstr "Guardar cambios"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+# Password change page
+msgid "Your password must be at least 12 characters long and contain a mix of letters, numbers, and special characters."
+msgstr "Tu contraseña debe tener al menos 12 caracteres y contener una combinación de letras, números y caracteres especiales."
+
+msgid "Current Password"
+msgstr "Contraseña actual"
+
+msgid "New Password"
+msgstr "Nueva contraseña"
+
+msgid "Confirm New Password"
+msgstr "Confirmar nueva contraseña"
+
+msgid "Password Security Tips"
+msgstr "Consejos de seguridad para contraseñas"
+
+msgid "Use a unique password that you don't use for other accounts"
+msgstr "Usa una contraseña única que no uses para otras cuentas"
+
+msgid "Consider using a passphrase made of random words"
+msgstr "Considera usar una frase de contraseña con palabras aleatorias"
+
+msgid "Use a password manager to generate and store strong passwords"
+msgstr "Usa un gestor de contraseñas para generar y almacenar contraseñas seguras"
+
+msgid "Never share your password with anyone"
+msgstr "Nunca compartas tu contraseña con nadie"

@@ -2,6 +2,15 @@
 Context processors for accounts app
 """
 
+LOCALE_LABELS = {
+    'en-us': 'English (US)',
+    'es':    'Spanish',
+    'fr':    'French',
+    'de':    'German',
+    'pt-br': 'Portuguese (Brazil)',
+}
+
+
 def user_theme(request):
     """
     Add user theme, background, and UI preferences to template context.
@@ -60,6 +69,10 @@ def user_theme(request):
             # Blur option for softer backgrounds: &blur=2
             background_url = f'https://picsum.photos/1920/1080?random={seed}'
 
+    # Language / locale
+    user_locale_code = getattr(request, 'LANGUAGE_CODE', 'en-us') or 'en-us'
+    user_locale_label = LOCALE_LABELS.get(user_locale_code, 'English (US)')
+
     return {
         'user_theme': theme,
         'user_background_mode': background_mode,
@@ -67,4 +80,6 @@ def user_theme(request):
         'user_background_color': background_color,
         'tooltips_enabled': tooltips_enabled,
         'user_time_format': time_format,
+        'user_locale_code': user_locale_code,
+        'user_locale_label': user_locale_label,
     }

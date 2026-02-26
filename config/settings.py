@@ -4,6 +4,7 @@ Django settings for Client St0r
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from django.utils.translation import gettext_lazy as _
 from .version import get_version
 
 # Load environment variables
@@ -100,6 +101,7 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.gzip.GZipMiddleware',  # Compress responses
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'core.csrf_middleware.MultiDomainCsrfViewMiddleware',  # Custom CSRF for multi-domain support
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -110,6 +112,7 @@ MIDDLEWARE = [
     'axes.middleware.AxesMiddleware',
     'core.middleware.CurrentOrganizationMiddleware',
     'accounts.middleware.Enforce2FAMiddleware',
+    'accounts.middleware.UserLanguageMiddleware',
     'core.ai_abuse_control.AIAbuseControlMiddleware',  # AI endpoint protection
     'audit.middleware.AuditLoggingMiddleware',
 ]
@@ -212,6 +215,16 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'America/New_York'  # Eastern Time (handles EST/EDT automatically)
 USE_I18N = True
 USE_TZ = True
+
+LANGUAGES = [
+    ('en-us', _('English (US)')),
+    ('es',    _('Spanish')),
+    ('fr',    _('French')),
+    ('de',    _('German')),
+    ('pt-br', _('Portuguese (Brazil)')),
+]
+
+LOCALE_PATHS = [BASE_DIR / 'locale']
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = '/static/'

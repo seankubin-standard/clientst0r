@@ -1,10 +1,36 @@
 """
-2FA enforcement middleware
+2FA enforcement middleware and language middleware
 """
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.conf import settings
+from django.utils import translation
 from django_otp import user_has_device
+
+
+class UserLanguageMiddleware:
+    """
+    Activate the UI language saved in the user's profile.
+
+    Runs after Enforce2FAMiddleware (and after LocaleMiddleware) so the
+    authenticated user's preference always wins over the Accept-Language header.
+    Language is deactivated at the end of each request so it doesn't leak
+    across requests on the same thread.
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.user.is_authenticated:
+            try:
+                lang = request.user.profile.locale  # e.g. 'fr', 'pt-br'
+                translation.activate(lang)
+                request.LANGUAGE_CODE = lang
+            except Exception:
+                pass
+        response = self.get_response(request)
+        translation.deactivate()
+        return response
 
 
 class Enforce2FAMiddleware:

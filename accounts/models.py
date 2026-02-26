@@ -195,12 +195,14 @@ class UserProfile(BaseModel):
         ('12', '12-hour (AM/PM)'),
         ('24', '24-hour'),
     ])
-    locale = models.CharField(max_length=10, default='en', choices=[
-        ('en', 'English'),
-        ('fr', 'French'),
-        ('de', 'German'),
-        ('es', 'Spanish'),
-    ])
+    LOCALE_CHOICES = [
+        ('en-us', 'English (US)'),
+        ('es',    'Spanish'),
+        ('fr',    'French'),
+        ('de',    'German'),
+        ('pt-br', 'Portuguese (Brazil)'),
+    ]
+    locale = models.CharField(max_length=10, default='en-us', choices=LOCALE_CHOICES)
     theme = models.CharField(max_length=30, default='default', choices=[
         ('dark', 'Dark Mode'),
         ('default', 'Default Blue'),
