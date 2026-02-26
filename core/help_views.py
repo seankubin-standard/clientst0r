@@ -235,6 +235,44 @@ def help_getting_started(request):
         <li><strong>Global items:</strong> Some templates and reference data are shared across all organizations</li>
     </ul>
 
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <!-- Top nav bar -->
+        <rect width="700" height="48" fill="#161b22" stroke="#30363d"/>
+        <text x="16" y="30" fill="#e6edf3" font-size="14" font-weight="bold" font-family="sans-serif">ClientSt0r</text>
+        <!-- Org selector button -->
+        <rect x="180" y="10" width="180" height="28" rx="5" fill="#1f2937" stroke="#30363d"/>
+        <circle cx="198" cy="24" r="8" fill="#1f6feb"/>
+        <text x="210" y="28" fill="#e6edf3" font-size="11" font-family="sans-serif">Acme Corp  ▾</text>
+        <!-- Nav links -->
+        <text x="390" y="28" fill="#8b949e" font-size="11" font-family="sans-serif">Assets</text>
+        <text x="450" y="28" fill="#8b949e" font-size="11" font-family="sans-serif">Vault</text>
+        <text x="510" y="28" fill="#8b949e" font-size="11" font-family="sans-serif">Vehicles</text>
+        <text x="590" y="28" fill="#8b949e" font-size="11" font-family="sans-serif">👤 jsmith</text>
+        <!-- Dropdown -->
+        <rect x="180" y="40" width="200" height="145" rx="5" fill="#1c2128" stroke="#30363d"/>
+        <text x="196" y="60" fill="#8b949e" font-size="10" font-family="sans-serif">SWITCH ORGANIZATION</text>
+        <!-- Org list items -->
+        <rect x="186" y="66" width="188" height="26" rx="4" fill="#1f6feb22"/>
+        <circle cx="200" cy="79" r="7" fill="#1f6feb"/>
+        <text x="212" y="83" fill="#e6edf3" font-size="11" font-family="sans-serif">Acme Corp</text>
+        <text x="348" y="83" fill="#3fb950" font-size="9" font-family="sans-serif">✓</text>
+        <rect x="186" y="96" width="188" height="26" rx="4" fill="transparent"/>
+        <circle cx="200" cy="109" r="7" fill="#6e40c9"/>
+        <text x="212" y="113" fill="#c9d1d9" font-size="11" font-family="sans-serif">Beta Client Inc</text>
+        <rect x="186" y="126" width="188" height="26" rx="4" fill="transparent"/>
+        <circle cx="200" cy="139" r="7" fill="#e3701b"/>
+        <text x="212" y="143" fill="#c9d1d9" font-size="11" font-family="sans-serif">Gamma Solutions</text>
+        <line x1="186" y1="158" x2="374" y2="158" stroke="#30363d" stroke-width="1"/>
+        <text x="196" y="175" fill="#58a6ff" font-size="11" font-family="sans-serif">+ New Organization</text>
+        <!-- Annotation -->
+        <line x1="270" y1="40" x2="320" y2="10" stroke="#79c0ff" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="310" y="1" width="170" height="14" rx="7" fill="#1f6feb44"/>
+        <text x="395" y="12" fill="#79c0ff" font-size="10" font-family="sans-serif" text-anchor="middle">Click to switch organization</text>
+      </svg>
+      <p class="help-screenshot-caption">Organization selector in the top navigation — switch between clients instantly. All data (assets, passwords, monitors) is isolated per organization.</p>
+    </div>
+
     <h5 class="mt-4" id="users-roles"><i class="fas fa-users"></i> Users &amp; Roles</h5>
     <p>Access control uses role-based permissions with four built-in roles:</p>
     <div class="table-responsive mt-3">
@@ -250,6 +288,49 @@ def help_getting_started(request):
     </div>
     <p>Custom roles with 42 granular permissions are available for fine-grained control.</p>
 
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 180" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="180" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Header -->
+        <rect width="700" height="36" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect y="18" width="700" height="18" fill="#161b22"/>
+        <text x="16" y="22" fill="#8b949e" font-size="10" font-family="monospace">User</text>
+        <text x="200" y="22" fill="#8b949e" font-size="10" font-family="monospace">Email</text>
+        <text x="400" y="22" fill="#8b949e" font-size="10" font-family="monospace">Role</text>
+        <text x="520" y="22" fill="#8b949e" font-size="10" font-family="monospace">Last Active</text>
+        <text x="630" y="22" fill="#8b949e" font-size="10" font-family="monospace">Actions</text>
+        <!-- Rows -->
+        <rect y="36" width="700" height="36" fill="#0d1117" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="58" fill="#e6edf3" font-size="12" font-family="sans-serif">John Smith</text>
+        <text x="200" y="58" fill="#8b949e" font-size="11" font-family="sans-serif">j.smith@acme.com</text>
+        <rect x="400" y="46" width="48" height="16" rx="8" fill="#da3633"/>
+        <text x="424" y="58" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">Owner</text>
+        <text x="520" y="58" fill="#8b949e" font-size="11" font-family="sans-serif">2m ago</text>
+
+        <rect y="72" width="700" height="36" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="94" fill="#e6edf3" font-size="12" font-family="sans-serif">Sarah Lee</text>
+        <text x="200" y="94" fill="#8b949e" font-size="11" font-family="sans-serif">s.lee@acme.com</text>
+        <rect x="400" y="82" width="44" height="16" rx="8" fill="#9a6700"/>
+        <text x="422" y="94" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">Admin</text>
+        <text x="520" y="94" fill="#8b949e" font-size="11" font-family="sans-serif">1h ago</text>
+
+        <rect y="108" width="700" height="36" fill="#0d1117" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="130" fill="#e6edf3" font-size="12" font-family="sans-serif">Mike Johnson</text>
+        <text x="200" y="130" fill="#8b949e" font-size="11" font-family="sans-serif">m.johnson@acme.com</text>
+        <rect x="400" y="118" width="46" height="16" rx="8" fill="#1f6feb"/>
+        <text x="423" y="130" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">Editor</text>
+        <text x="520" y="130" fill="#8b949e" font-size="11" font-family="sans-serif">3d ago</text>
+
+        <rect y="144" width="700" height="36" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="166" fill="#e6edf3" font-size="12" font-family="sans-serif">Anna Chen</text>
+        <text x="200" y="166" fill="#8b949e" font-size="11" font-family="sans-serif">a.chen@acme.com</text>
+        <rect x="400" y="154" width="68" height="16" rx="8" fill="#3d444d"/>
+        <text x="434" y="166" fill="#e6edf3" font-size="10" font-family="sans-serif" text-anchor="middle">Read-Only</text>
+        <text x="520" y="166" fill="#8b949e" font-size="11" font-family="sans-serif">1w ago</text>
+      </svg>
+      <p class="help-screenshot-caption">User management table showing the four built-in roles. Roles are color-coded: <strong style="color:#f85149">Owner</strong> (red), <strong style="color:#d29922">Admin</strong> (amber), <strong style="color:#58a6ff">Editor</strong> (blue), <strong style="color:#8b949e">Read-Only</strong> (grey).</p>
+    </div>
+
     <h5 class="mt-4" id="api-keys"><i class="fas fa-key"></i> API Keys</h5>
     <p>API keys authenticate programmatic access to the REST API and the browser extension.</p>
     <ul>
@@ -259,6 +340,37 @@ def help_getting_started(request):
         <li><strong>Scope:</strong> Keys are tied to your user and inherit your organization access</li>
         <li><strong>Revoke:</strong> Delete a key instantly to invalidate all uses</li>
     </ul>
+
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 160" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="160" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Card header -->
+        <rect width="700" height="42" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect y="24" width="700" height="18" fill="#161b22"/>
+        <text x="16" y="27" fill="#e6edf3" font-size="13" font-weight="bold" font-family="sans-serif">API Keys</text>
+        <rect x="570" y="10" width="116" height="22" rx="4" fill="#1f6feb"/>
+        <text x="628" y="25" fill="#fff" font-size="11" font-family="sans-serif" text-anchor="middle">+ Create New Key</text>
+        <!-- Key row -->
+        <rect x="12" y="52" width="676" height="42" rx="4" fill="#0d1117" stroke="#30363d"/>
+        <text x="28" y="70" fill="#e6edf3" font-size="11" font-family="sans-serif">Browser Extension Key</text>
+        <rect x="28" y="76" width="340" height="14" rx="3" fill="#161b22" stroke="#30363d"/>
+        <text x="36" y="87" fill="#3fb950" font-size="10" font-family="monospace">itdocs_live_xK9mP…Qr7v</text>
+        <rect x="380" y="73" width="66" height="18" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="413" y="85" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">⧉ Copy</text>
+        <rect x="460" y="73" width="60" height="18" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="490" y="85" fill="#f85149" font-size="10" font-family="sans-serif" text-anchor="middle">🗑 Revoke</text>
+        <text x="534" y="85" fill="#8b949e" font-size="10" font-family="sans-serif">Created 2d ago</text>
+        <!-- Warning box -->
+        <rect x="12" y="104" width="676" height="44" rx="4" fill="#3fb95022" stroke="#3fb95055"/>
+        <text x="28" y="122" fill="#3fb950" font-size="11" font-family="sans-serif">✓ Key created! Copy it now — it will only be shown once.</text>
+        <rect x="28" y="128" width="440" height="14" rx="3" fill="#161b22" stroke="#30363d"/>
+        <text x="36" y="139" fill="#79c0ff" font-size="10" font-family="monospace">itdocs_live_xK9mPL3t8nQjR2sYfBdWcAeZuHvMoTgNiXkCpDwF4yEq0Qr7v</text>
+        <!-- Annotations -->
+        <line x1="200" y1="87" x2="200" y2="106" stroke="#f0b429" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="120" y="106" width="160" height="0" rx="8" fill="#f0b42944"/>
+      </svg>
+      <p class="help-screenshot-caption">API key management. Copy the full key immediately after creation — it is only shown once. Use the key prefix shown afterwards to identify it.</p>
+    </div>
     """
     return render(request, 'core/help/section.html', {
         'title': 'Getting Started',
@@ -376,6 +488,79 @@ def help_assets(request):
         <li><strong>Power Management:</strong> Track power consumption and capacity</li>
         <li><strong>Environmental Monitoring:</strong> Record temperature, humidity, and conditions</li>
     </ul>
+
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 280" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="280" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Rack cabinet frame -->
+        <rect x="60" y="20" width="200" height="240" rx="4" fill="#0d1117" stroke="#444c56" stroke-width="2"/>
+        <text x="160" y="14" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">Rack A — 42U</text>
+        <!-- U number ruler -->
+        <rect x="60" y="20" width="22" height="240" fill="#161b22" stroke="#30363d"/>
+        <!-- U rows — filled devices -->
+        <!-- 1U patch panel at top -->
+        <rect x="82" y="28" width="174" height="14" rx="2" fill="#2d333b" stroke="#444c56"/>
+        <text x="90" y="39" fill="#8b949e" font-size="8" font-family="monospace">1U</text>
+        <text x="170" y="39" fill="#6e7681" font-size="8" font-family="sans-serif" text-anchor="middle">Patch Panel A</text>
+        <!-- 1U switch -->
+        <rect x="82" y="44" width="174" height="14" rx="2" fill="#1f3a5f" stroke="#1f6feb"/>
+        <text x="90" y="55" fill="#58a6ff" font-size="8" font-family="monospace">2U</text>
+        <text x="170" y="55" fill="#79c0ff" font-size="8" font-family="sans-serif" text-anchor="middle">Core Switch</text>
+        <!-- 2U server -->
+        <rect x="82" y="60" width="174" height="28" rx="2" fill="#1a3a2a" stroke="#3fb950"/>
+        <text x="90" y="71" fill="#56d364" font-size="8" font-family="monospace">3U</text>
+        <text x="170" y="74" fill="#3fb950" font-size="8" font-family="sans-serif" text-anchor="middle">Server A (2U)</text>
+        <circle cx="238" cy="74" r="3" fill="#3fb950"/>
+        <!-- 1U blank -->
+        <rect x="82" y="90" width="174" height="14" rx="2" fill="#161b22" stroke="#30363d" stroke-dasharray="2,2"/>
+        <text x="90" y="101" fill="#3d444d" font-size="8" font-family="monospace">5U</text>
+        <text x="170" y="101" fill="#3d444d" font-size="8" font-family="sans-serif" text-anchor="middle">— empty —</text>
+        <!-- 4U storage -->
+        <rect x="82" y="106" width="174" height="56" rx="2" fill="#2d1f3f" stroke="#8957e5"/>
+        <text x="90" y="117" fill="#bc8cff" font-size="8" font-family="monospace">6U</text>
+        <text x="170" y="134" fill="#bc8cff" font-size="8" font-family="sans-serif" text-anchor="middle">NAS Storage (4U)</text>
+        <!-- UPS at bottom -->
+        <rect x="82" y="220" width="174" height="28" rx="2" fill="#3a2a1a" stroke="#e3b341"/>
+        <text x="90" y="231" fill="#e3b341" font-size="8" font-family="monospace">38U</text>
+        <text x="170" y="234" fill="#e3b341" font-size="8" font-family="sans-serif" text-anchor="middle">UPS (2U)</text>
+
+        <!-- Legend / info panel -->
+        <rect x="300" y="20" width="380" height="240" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="316" y="38" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Rack A Details</text>
+        <line x1="316" y1="44" x2="664" y2="44" stroke="#30363d"/>
+        <!-- Stats -->
+        <text x="316" y="62" fill="#8b949e" font-size="10" font-family="sans-serif">Location</text>
+        <text x="460" y="62" fill="#e6edf3" font-size="10" font-family="sans-serif">Server Room 1, Rack Row B</text>
+        <text x="316" y="80" fill="#8b949e" font-size="10" font-family="sans-serif">Total U</text>
+        <text x="460" y="80" fill="#e6edf3" font-size="10" font-family="sans-serif">42U</text>
+        <text x="316" y="98" fill="#8b949e" font-size="10" font-family="sans-serif">Used U</text>
+        <text x="460" y="98" fill="#e6edf3" font-size="10" font-family="sans-serif">12U</text>
+        <text x="316" y="116" fill="#8b949e" font-size="10" font-family="sans-serif">Free U</text>
+        <text x="460" y="116" fill="#3fb950" font-size="10" font-family="sans-serif">30U available</text>
+        <text x="316" y="134" fill="#8b949e" font-size="10" font-family="sans-serif">Power Draw</text>
+        <text x="460" y="134" fill="#e6edf3" font-size="10" font-family="sans-serif">1.4 kW / 4.0 kW cap</text>
+        <!-- Power bar -->
+        <rect x="460" y="140" width="160" height="8" rx="4" fill="#21262d"/>
+        <rect x="460" y="140" width="56" height="8" rx="4" fill="#1f6feb"/>
+        <text x="316" y="165" fill="#8b949e" font-size="10" font-family="sans-serif">Temperature</text>
+        <text x="460" y="165" fill="#3fb950" font-size="10" font-family="sans-serif">22°C ✓</text>
+        <!-- Device list -->
+        <text x="316" y="188" fill="#8b949e" font-size="10" font-family="sans-serif">Assets in rack:</text>
+        <rect x="316" y="194" width="8" height="8" rx="1" fill="#1f6feb"/>
+        <text x="330" y="202" fill="#c9d1d9" font-size="10" font-family="sans-serif">Core Switch</text>
+        <rect x="316" y="208" width="8" height="8" rx="1" fill="#3fb950"/>
+        <text x="330" y="216" fill="#c9d1d9" font-size="10" font-family="sans-serif">Server A</text>
+        <rect x="316" y="222" width="8" height="8" rx="1" fill="#8957e5"/>
+        <text x="330" y="230" fill="#c9d1d9" font-size="10" font-family="sans-serif">NAS Storage</text>
+        <rect x="316" y="236" width="8" height="8" rx="1" fill="#e3b341"/>
+        <text x="330" y="244" fill="#c9d1d9" font-size="10" font-family="sans-serif">UPS</text>
+        <!-- Annotation -->
+        <line x1="256" y1="74" x2="296" y2="74" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="258" y="66" width="40" height="16" rx="8" fill="#1a7f3744"/>
+        <text x="278" y="77" fill="#3fb950" font-size="9" font-family="sans-serif" text-anchor="middle">Online</text>
+      </svg>
+      <p class="help-screenshot-caption">Visual rack layout showing U-space allocation, power consumption bar, and environmental data. Drag devices between U positions to reorganize.</p>
+    </div>
 
     <h5 class="mt-4" id="port-configuration"><i class="fas fa-ethernet"></i> Port Configuration</h5>
     <p>Switches and patch panels support per-port configuration with VLAN management.</p>
@@ -521,6 +706,61 @@ def help_vehicles(request):
         <li><strong>Service Providers:</strong> Record mechanics and service centers</li>
     </ul>
 
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="220" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Header -->
+        <rect width="700" height="36" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect y="18" width="700" height="18" fill="#161b22"/>
+        <text x="16" y="22" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Service History — Van 01 (Ford Transit 2022)</text>
+        <rect x="580" y="8" width="106" height="22" rx="4" fill="#1f6feb"/>
+        <text x="633" y="23" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">+ Log Service</text>
+        <!-- Column headers -->
+        <rect y="36" width="700" height="24" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="52" fill="#8b949e" font-size="10" font-family="monospace">Date</text>
+        <text x="110" y="52" fill="#8b949e" font-size="10" font-family="monospace">Service Type</text>
+        <text x="280" y="52" fill="#8b949e" font-size="10" font-family="monospace">Mileage</text>
+        <text x="370" y="52" fill="#8b949e" font-size="10" font-family="monospace">Cost</text>
+        <text x="450" y="52" fill="#8b949e" font-size="10" font-family="monospace">Provider</text>
+        <text x="590" y="52" fill="#8b949e" font-size="10" font-family="monospace">Next Due</text>
+        <!-- Row 1 — overdue -->
+        <rect y="60" width="700" height="36" fill="#3a1a1a" stroke="#5a2a2a" stroke-width="0.5"/>
+        <text x="16" y="80" fill="#f85149" font-size="11" font-family="sans-serif">Jan 10</text>
+        <text x="110" y="80" fill="#e6edf3" font-size="11" font-family="sans-serif">Oil Change</text>
+        <text x="280" y="80" fill="#c9d1d9" font-size="11" font-family="monospace">48,320 mi</text>
+        <text x="370" y="80" fill="#e6edf3" font-size="11" font-family="sans-serif">$89.00</text>
+        <text x="450" y="80" fill="#8b949e" font-size="11" font-family="sans-serif">Quick Lube Plus</text>
+        <rect x="586" y="68" width="100" height="18" rx="9" fill="#da363344"/>
+        <text x="636" y="81" fill="#f85149" font-size="10" font-family="sans-serif" text-anchor="middle">⚠ Overdue 2k mi</text>
+        <!-- Row 2 — ok -->
+        <rect y="96" width="700" height="36" fill="#0d1117" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="116" fill="#e6edf3" font-size="11" font-family="sans-serif">Dec 5</text>
+        <text x="110" y="116" fill="#e6edf3" font-size="11" font-family="sans-serif">Tire Rotation</text>
+        <text x="280" y="116" fill="#c9d1d9" font-size="11" font-family="monospace">46,100 mi</text>
+        <text x="370" y="116" fill="#e6edf3" font-size="11" font-family="sans-serif">$45.00</text>
+        <text x="450" y="116" fill="#8b949e" font-size="11" font-family="sans-serif">Bob's Garage</text>
+        <rect x="590" y="104" width="90" height="18" rx="9" fill="#1a7f3744"/>
+        <text x="635" y="117" fill="#3fb950" font-size="10" font-family="sans-serif" text-anchor="middle">Due in 6k mi</text>
+        <!-- Row 3 — inspection -->
+        <rect y="132" width="700" height="36" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="152" fill="#e6edf3" font-size="11" font-family="sans-serif">Nov 20</text>
+        <text x="110" y="152" fill="#e6edf3" font-size="11" font-family="sans-serif">Annual Inspection</text>
+        <text x="280" y="152" fill="#c9d1d9" font-size="11" font-family="monospace">44,800 mi</text>
+        <text x="370" y="152" fill="#e6edf3" font-size="11" font-family="sans-serif">$210.00</text>
+        <text x="450" y="152" fill="#8b949e" font-size="11" font-family="sans-serif">State DMV</text>
+        <rect x="590" y="140" width="90" height="18" rx="9" fill="#1a7f3744"/>
+        <text x="635" y="153" fill="#3fb950" font-size="10" font-family="sans-serif" text-anchor="middle">Due Nov 2026</text>
+        <!-- Total cost summary -->
+        <rect y="168" width="700" height="52" fill="#0d1117" stroke="#30363d"/>
+        <text x="16" y="190" fill="#8b949e" font-size="10" font-family="sans-serif">Total this year: <tspan fill="#e6edf3">$1,248.00</tspan>   |   Avg cost/service: <tspan fill="#e6edf3">$156.00</tspan>   |   Services logged: <tspan fill="#e6edf3">8</tspan></text>
+        <text x="16" y="208" fill="#f85149" font-size="10" font-family="sans-serif">⚠ 1 service overdue — oil change was due at 50,320 mi (current: 52,200 mi)</text>
+        <!-- Annotation -->
+        <line x1="636" y1="68" x2="636" y2="46" stroke="#f85149" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="576" y="36" width="120" height="0" fill="transparent"/>
+      </svg>
+      <p class="help-screenshot-caption">Maintenance service history log. Overdue services are highlighted in red — the row turns red when mileage or date has passed the scheduled next-due point.</p>
+    </div>
+
     <h5 class="mt-4" id="fuel"><i class="fas fa-gas-pump"></i> Fuel Tracking</h5>
     <ul>
         <li><strong>Fuel Logs:</strong> Record every fill-up with gallons and cost</li>
@@ -529,6 +769,56 @@ def help_vehicles(request):
         <li><strong>Station Locations:</strong> Record where fuel was purchased</li>
         <li><strong>Trend Analysis:</strong> Monitor fuel efficiency over time</li>
     </ul>
+
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 180" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="180" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Stat cards row -->
+        <rect x="12" y="12" width="155" height="60" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="28" y="32" fill="#8b949e" font-size="10" font-family="sans-serif">Avg MPG (30 days)</text>
+        <text x="28" y="58" fill="#3fb950" font-size="26" font-weight="bold" font-family="sans-serif">22.4</text>
+
+        <rect x="180" y="12" width="155" height="60" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="196" y="32" fill="#8b949e" font-size="10" font-family="sans-serif">Fuel Cost (month)</text>
+        <text x="196" y="58" fill="#e6edf3" font-size="26" font-weight="bold" font-family="sans-serif">$284</text>
+
+        <rect x="348" y="12" width="155" height="60" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="364" y="32" fill="#8b949e" font-size="10" font-family="sans-serif">Total Gallons</text>
+        <text x="364" y="58" fill="#e6edf3" font-size="26" font-weight="bold" font-family="sans-serif">68.2</text>
+
+        <rect x="516" y="12" width="172" height="60" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="532" y="32" fill="#8b949e" font-size="10" font-family="sans-serif">Fill-ups (month)</text>
+        <text x="532" y="58" fill="#e6edf3" font-size="26" font-weight="bold" font-family="sans-serif">6</text>
+
+        <!-- MPG trend chart -->
+        <rect x="12" y="84" width="676" height="84" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="28" y="100" fill="#8b949e" font-size="10" font-family="sans-serif">MPG Trend (last 8 fill-ups)</text>
+        <!-- Chart axes -->
+        <line x1="50" y1="106" x2="50" y2="158" stroke="#30363d" stroke-width="1"/>
+        <line x1="50" y1="158" x2="670" y2="158" stroke="#30363d" stroke-width="1"/>
+        <!-- Y labels -->
+        <text x="40" y="115" fill="#8b949e" font-size="8" font-family="monospace" text-anchor="end">25</text>
+        <text x="40" y="135" fill="#8b949e" font-size="8" font-family="monospace" text-anchor="end">20</text>
+        <text x="40" y="155" fill="#8b949e" font-size="8" font-family="monospace" text-anchor="end">15</text>
+        <!-- Data points — MPG values mapped to y: 25mpg=y108, 20mpg=y128, 15mpg=y148 -->
+        <!-- x positions: 75, 150, 225, 300, 375, 450, 525, 600 -->
+        <polyline points="75,132 150,126 225,136 300,120 375,118 450,124 525,116 600,110"
+                  fill="none" stroke="#1f6feb" stroke-width="2"/>
+        <polyline points="75,132 150,126 225,136 300,120 375,118 450,124 525,116 600,110"
+                  fill="url(#mpg-fill)" stroke="none" opacity="0.2"/>
+        <!-- Data dots -->
+        <circle cx="75" cy="132" r="3" fill="#58a6ff"/>
+        <circle cx="150" cy="126" r="3" fill="#58a6ff"/>
+        <circle cx="225" cy="136" r="3" fill="#58a6ff"/>
+        <circle cx="300" cy="120" r="3" fill="#58a6ff"/>
+        <circle cx="375" cy="118" r="3" fill="#58a6ff"/>
+        <circle cx="450" cy="124" r="3" fill="#58a6ff"/>
+        <circle cx="525" cy="116" r="3" fill="#58a6ff"/>
+        <circle cx="600" cy="110" r="4" fill="#3fb950" stroke="#56d364" stroke-width="1.5"/>
+        <text x="612" y="107" fill="#3fb950" font-size="9" font-family="monospace">22.4</text>
+      </svg>
+      <p class="help-screenshot-caption">Fuel tracking dashboard showing average MPG, monthly cost, and an MPG trend chart. MPG is auto-calculated from each fill-up's mileage delta ÷ gallons.</p>
+    </div>
 
     <h5 class="mt-4" id="damage"><i class="fas fa-car-crash"></i> Damage Reporting</h5>
     <ul>
@@ -718,6 +1008,73 @@ def help_monitoring(request):
         <li><strong>Response Time:</strong> Measure latency and performance</li>
     </ul>
 
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 210" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="210" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Header -->
+        <rect width="700" height="36" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect y="18" width="700" height="18" fill="#161b22"/>
+        <text x="16" y="25" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Monitor Status</text>
+        <!-- Stats row -->
+        <rect x="12" y="44" width="100" height="44" rx="4" fill="#1a3a2a" stroke="#3fb950"/>
+        <text x="62" y="62" fill="#3fb950" font-size="18" font-weight="bold" font-family="sans-serif" text-anchor="middle">12</text>
+        <text x="62" y="78" fill="#56d364" font-size="9" font-family="sans-serif" text-anchor="middle">UP</text>
+
+        <rect x="122" y="44" width="100" height="44" rx="4" fill="#3a1a1a" stroke="#f85149"/>
+        <text x="172" y="62" fill="#f85149" font-size="18" font-weight="bold" font-family="sans-serif" text-anchor="middle">2</text>
+        <text x="172" y="78" fill="#ff7b72" font-size="9" font-family="sans-serif" text-anchor="middle">DOWN</text>
+
+        <rect x="232" y="44" width="100" height="44" rx="4" fill="#2a2a1a" stroke="#e3b341"/>
+        <text x="282" y="62" fill="#e3b341" font-size="18" font-weight="bold" font-family="sans-serif" text-anchor="middle">1</text>
+        <text x="282" y="78" fill="#e3b341" font-size="9" font-family="sans-serif" text-anchor="middle">WARN</text>
+
+        <rect x="342" y="44" width="120" height="44" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="402" y="62" fill="#e6edf3" font-size="14" font-weight="bold" font-family="sans-serif" text-anchor="middle">99.7%</text>
+        <text x="402" y="78" fill="#8b949e" font-size="9" font-family="sans-serif" text-anchor="middle">30d uptime</text>
+
+        <!-- Monitor list -->
+        <rect y="100" width="700" height="24" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
+        <text x="56" y="116" fill="#8b949e" font-size="10" font-family="monospace">Monitor</text>
+        <text x="280" y="116" fill="#8b949e" font-size="10" font-family="monospace">Type</text>
+        <text x="380" y="116" fill="#8b949e" font-size="10" font-family="monospace">Response</text>
+        <text x="480" y="116" fill="#8b949e" font-size="10" font-family="monospace">Uptime 30d</text>
+        <text x="590" y="116" fill="#8b949e" font-size="10" font-family="monospace">Last Check</text>
+
+        <!-- Row - up -->
+        <rect y="124" width="700" height="28" fill="#0d1117" stroke="#21262d" stroke-width="0.5"/>
+        <circle cx="28" cy="138" r="6" fill="#3fb950"/>
+        <text x="56" y="142" fill="#e6edf3" font-size="11" font-family="sans-serif">Main Website</text>
+        <text x="280" y="142" fill="#8b949e" font-size="10" font-family="sans-serif">HTTPS</text>
+        <text x="380" y="142" fill="#3fb950" font-size="10" font-family="monospace">142ms</text>
+        <text x="480" y="142" fill="#3fb950" font-size="10" font-family="sans-serif">100.0%</text>
+        <text x="590" y="142" fill="#8b949e" font-size="10" font-family="sans-serif">10s ago</text>
+
+        <!-- Row - down -->
+        <rect y="152" width="700" height="28" fill="#1a0d0d" stroke="#5a2020" stroke-width="0.5"/>
+        <circle cx="28" cy="166" r="6" fill="#f85149"/>
+        <text x="56" y="170" fill="#e6edf3" font-size="11" font-family="sans-serif">DB Server</text>
+        <text x="280" y="170" fill="#8b949e" font-size="10" font-family="sans-serif">TCP:5432</text>
+        <text x="380" y="170" fill="#f85149" font-size="10" font-family="monospace">TIMEOUT</text>
+        <text x="480" y="170" fill="#e3b341" font-size="10" font-family="sans-serif">98.2%</text>
+        <text x="590" y="170" fill="#f85149" font-size="10" font-family="sans-serif">2m ago ⚠</text>
+
+        <!-- Row - up -->
+        <rect y="180" width="700" height="28" fill="#0d1117" stroke="#21262d" stroke-width="0.5"/>
+        <circle cx="28" cy="194" r="6" fill="#3fb950"/>
+        <text x="56" y="198" fill="#e6edf3" font-size="11" font-family="sans-serif">API Gateway</text>
+        <text x="280" y="198" fill="#8b949e" font-size="10" font-family="sans-serif">HTTPS</text>
+        <text x="380" y="198" fill="#3fb950" font-size="10" font-family="monospace">38ms</text>
+        <text x="480" y="198" fill="#3fb950" font-size="10" font-family="sans-serif">99.9%</text>
+        <text x="590" y="198" fill="#8b949e" font-size="10" font-family="sans-serif">10s ago</text>
+
+        <!-- Annotations -->
+        <line x1="172" y1="44" x2="220" y2="20" stroke="#f85149" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="200" y="8" width="120" height="16" rx="8" fill="#da363344"/>
+        <text x="260" y="19" fill="#f85149" font-size="10" font-family="sans-serif" text-anchor="middle">Triggers alert email</text>
+      </svg>
+      <p class="help-screenshot-caption">Monitor status dashboard. Red circle = DOWN (alert sent), green = UP, yellow = warning. Response time and 30-day uptime percentage shown per monitor.</p>
+    </div>
+
     <h5 class="mt-4" id="alerting"><i class="fas fa-bell"></i> Alerting</h5>
     <ul>
         <li><strong>Real-time Alerts:</strong> Instant notifications for issues</li>
@@ -799,6 +1156,73 @@ def help_security(request):
         <li><strong>Historical Tracking:</strong> Monitor vulnerability trends over time</li>
     </ul>
 
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="220" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Header -->
+        <rect width="700" height="36" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect y="18" width="700" height="18" fill="#161b22"/>
+        <text x="16" y="25" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Package Vulnerability Scan — Latest Results</text>
+        <rect x="578" y="8" width="108" height="22" rx="4" fill="#1f6feb"/>
+        <text x="632" y="23" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">▶ Run New Scan</text>
+        <!-- Summary row -->
+        <rect x="12" y="44" width="90" height="44" rx="4" fill="#3a1a1a" stroke="#f85149"/>
+        <text x="57" y="62" fill="#f85149" font-size="20" font-weight="bold" font-family="sans-serif" text-anchor="middle">3</text>
+        <text x="57" y="78" fill="#ff7b72" font-size="9" font-family="sans-serif" text-anchor="middle">CRITICAL</text>
+        <rect x="112" y="44" width="90" height="44" rx="4" fill="#2d1f00" stroke="#e3b341"/>
+        <text x="157" y="62" fill="#e3b341" font-size="20" font-weight="bold" font-family="sans-serif" text-anchor="middle">7</text>
+        <text x="157" y="78" fill="#e3b341" font-size="9" font-family="sans-serif" text-anchor="middle">HIGH</text>
+        <rect x="212" y="44" width="90" height="44" rx="4" fill="#1a1f2e" stroke="#d29922"/>
+        <text x="257" y="62" fill="#d29922" font-size="20" font-weight="bold" font-family="sans-serif" text-anchor="middle">12</text>
+        <text x="257" y="78" fill="#d29922" font-size="9" font-family="sans-serif" text-anchor="middle">MEDIUM</text>
+        <rect x="312" y="44" width="90" height="44" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="357" y="62" fill="#8b949e" font-size="20" font-weight="bold" font-family="sans-serif" text-anchor="middle">5</text>
+        <text x="357" y="78" fill="#8b949e" font-size="9" font-family="sans-serif" text-anchor="middle">LOW</text>
+        <!-- Table -->
+        <rect y="100" width="700" height="22" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="115" fill="#8b949e" font-size="10" font-family="monospace">Package</text>
+        <text x="180" y="115" fill="#8b949e" font-size="10" font-family="monospace">Installed</text>
+        <text x="260" y="115" fill="#8b949e" font-size="10" font-family="monospace">CVE</text>
+        <text x="380" y="115" fill="#8b949e" font-size="10" font-family="monospace">Severity</text>
+        <text x="470" y="115" fill="#8b949e" font-size="10" font-family="monospace">Fix version</text>
+        <text x="590" y="115" fill="#8b949e" font-size="10" font-family="monospace">Action</text>
+
+        <!-- Row 1 - critical -->
+        <rect y="122" width="700" height="28" fill="#1a0a0a" stroke="#4a1515" stroke-width="0.5"/>
+        <text x="16" y="140" fill="#e6edf3" font-size="11" font-family="monospace">cryptography</text>
+        <text x="180" y="140" fill="#8b949e" font-size="11" font-family="monospace">41.0.3</text>
+        <text x="260" y="140" fill="#58a6ff" font-size="10" font-family="monospace">CVE-2024-0727</text>
+        <rect x="378" y="128" width="64" height="16" rx="8" fill="#da3633"/>
+        <text x="410" y="140" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">CRITICAL</text>
+        <text x="470" y="140" fill="#3fb950" font-size="11" font-family="monospace">42.0.8</text>
+        <rect x="590" y="128" width="80" height="16" rx="4" fill="#1f6feb"/>
+        <text x="630" y="140" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">Auto-fix</text>
+
+        <!-- Row 2 - high -->
+        <rect y="150" width="700" height="28" fill="#1a1400" stroke="#3a3000" stroke-width="0.5"/>
+        <text x="16" y="168" fill="#e6edf3" font-size="11" font-family="monospace">pillow</text>
+        <text x="180" y="168" fill="#8b949e" font-size="11" font-family="monospace">10.0.1</text>
+        <text x="260" y="168" fill="#58a6ff" font-size="10" font-family="monospace">CVE-2023-50447</text>
+        <rect x="378" y="156" width="44" height="16" rx="8" fill="#9a6700"/>
+        <text x="400" y="168" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">HIGH</text>
+        <text x="470" y="168" fill="#3fb950" font-size="11" font-family="monospace">10.3.0</text>
+        <rect x="590" y="156" width="80" height="16" rx="4" fill="#1f6feb"/>
+        <text x="630" y="168" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">Auto-fix</text>
+
+        <!-- Row 3 - medium -->
+        <rect y="178" width="700" height="28" fill="#0d1117" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="196" fill="#e6edf3" font-size="11" font-family="monospace">django</text>
+        <text x="180" y="196" fill="#8b949e" font-size="11" font-family="monospace">4.2.8</text>
+        <text x="260" y="196" fill="#58a6ff" font-size="10" font-family="monospace">CVE-2024-27351</text>
+        <rect x="378" y="184" width="58" height="16" rx="8" fill="#6e4c00"/>
+        <text x="407" y="196" fill="#e3b341" font-size="10" font-family="sans-serif" text-anchor="middle">MEDIUM</text>
+        <text x="470" y="196" fill="#3fb950" font-size="11" font-family="monospace">4.2.14</text>
+        <rect x="590" y="184" width="80" height="16" rx="4" fill="#1f6feb"/>
+        <text x="630" y="196" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">Auto-fix</text>
+      </svg>
+      <p class="help-screenshot-caption">Vulnerability scanner results showing CVE IDs, severity levels, installed vs safe versions, and one-click auto-fix. Scans run on schedule or on-demand.</p>
+    </div>
+
     <h5 class="mt-4" id="authentication"><i class="fas fa-user-shield"></i> Authentication &amp; Access Control</h5>
     <ul>
         <li><strong>Two-Factor Authentication (2FA):</strong> TOTP-based 2FA with QR code setup</li>
@@ -827,6 +1251,59 @@ def help_security(request):
         <li><strong>Retention Policies:</strong> Configurable log retention periods</li>
         <li><strong>Immutable Records:</strong> Logs cannot be modified or deleted</li>
     </ul>
+
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 190" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="190" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Header -->
+        <rect width="700" height="36" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect y="18" width="700" height="18" fill="#161b22"/>
+        <text x="16" y="25" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Audit Log</text>
+        <!-- Filter bar -->
+        <rect x="12" y="44" width="140" height="22" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="20" y="59" fill="#8b949e" font-size="10" font-family="sans-serif">All users ▾</text>
+        <rect x="162" y="44" width="120" height="22" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="170" y="59" fill="#8b949e" font-size="10" font-family="sans-serif">All actions ▾</text>
+        <rect x="292" y="44" width="120" height="22" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="300" y="59" fill="#8b949e" font-size="10" font-family="sans-serif">Last 7 days ▾</text>
+        <!-- Column headers -->
+        <rect y="74" width="700" height="22" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="89" fill="#8b949e" font-size="10" font-family="monospace">Time</text>
+        <text x="110" y="89" fill="#8b949e" font-size="10" font-family="monospace">User</text>
+        <text x="210" y="89" fill="#8b949e" font-size="10" font-family="monospace">Action</text>
+        <text x="360" y="89" fill="#8b949e" font-size="10" font-family="monospace">Resource</text>
+        <text x="530" y="89" fill="#8b949e" font-size="10" font-family="monospace">IP Address</text>
+        <!-- Rows -->
+        <rect y="96" width="700" height="28" fill="#0d1117" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="114" fill="#8b949e" font-size="10" font-family="monospace">09:42:11</text>
+        <text x="110" y="114" fill="#e6edf3" font-size="11" font-family="sans-serif">jsmith</text>
+        <rect x="210" y="102" width="72" height="16" rx="8" fill="#1f6feb44"/>
+        <text x="246" y="114" fill="#79c0ff" font-size="10" font-family="sans-serif" text-anchor="middle">password.view</text>
+        <text x="360" y="114" fill="#c9d1d9" font-size="11" font-family="sans-serif">Vault: github-root</text>
+        <text x="530" y="114" fill="#8b949e" font-size="10" font-family="monospace">10.0.1.5</text>
+
+        <rect y="124" width="700" height="28" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
+        <text x="16" y="142" fill="#8b949e" font-size="10" font-family="monospace">09:38:04</text>
+        <text x="110" y="142" fill="#e6edf3" font-size="11" font-family="sans-serif">s.lee</text>
+        <rect x="210" y="130" width="66" height="16" rx="8" fill="#1a7f3744"/>
+        <text x="243" y="142" fill="#3fb950" font-size="10" font-family="sans-serif" text-anchor="middle">asset.create</text>
+        <text x="360" y="142" fill="#c9d1d9" font-size="11" font-family="sans-serif">Asset: New NAS Unit</text>
+        <text x="530" y="142" fill="#8b949e" font-size="10" font-family="monospace">10.0.1.12</text>
+
+        <rect y="152" width="700" height="28" fill="#1a0d0d" stroke="#4a1515" stroke-width="0.5"/>
+        <text x="16" y="170" fill="#8b949e" font-size="10" font-family="monospace">09:31:55</text>
+        <text x="110" y="170" fill="#e6edf3" font-size="11" font-family="sans-serif">unknown</text>
+        <rect x="210" y="158" width="80" height="16" rx="8" fill="#da363344"/>
+        <text x="250" y="170" fill="#f85149" font-size="10" font-family="sans-serif" text-anchor="middle">login.failed</text>
+        <text x="360" y="170" fill="#c9d1d9" font-size="11" font-family="sans-serif">User: admin (3rd attempt)</text>
+        <text x="530" y="170" fill="#f85149" font-size="10" font-family="monospace">185.234.x.x</text>
+        <!-- Annotation -->
+        <line x1="250" y1="158" x2="300" y2="138" stroke="#f85149" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="282" y="128" width="130" height="14" rx="7" fill="#da363344"/>
+        <text x="347" y="139" fill="#f85149" font-size="10" font-family="sans-serif" text-anchor="middle">Failed logins highlighted</text>
+      </svg>
+      <p class="help-screenshot-caption">Audit log showing every user action with timestamp, action type color-coded by category, resource affected, and source IP. Failed logins are highlighted in red.</p>
+    </div>
 
     <h5 class="mt-4" id="data-protection"><i class="fas fa-lock"></i> Data Protection</h5>
     <ul>
@@ -916,6 +1393,52 @@ def help_api(request):
         <li><code>vulnerability.found</code></li>
         <li><code>vehicle.maintenance_due</code></li>
     </ul>
+
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="200" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Header -->
+        <rect width="700" height="36" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect y="18" width="700" height="18" fill="#161b22"/>
+        <text x="16" y="25" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Webhooks</text>
+        <rect x="578" y="8" width="108" height="22" rx="4" fill="#1f6feb"/>
+        <text x="632" y="23" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">+ Create Webhook</text>
+
+        <!-- Webhook card 1 -->
+        <rect x="12" y="44" width="676" height="64" rx="4" fill="#161b22" stroke="#30363d"/>
+        <circle cx="34" cy="76" r="8" fill="#1a7f37"/>
+        <text x="54" y="70" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Slack Alerts</text>
+        <text x="54" y="84" fill="#8b949e" font-size="10" font-family="monospace">https://hooks.slack.com/services/T…</text>
+        <!-- Event badges -->
+        <rect x="340" y="62" width="80" height="14" rx="7" fill="#1f6feb44"/>
+        <text x="380" y="73" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">monitor.down</text>
+        <rect x="428" y="62" width="74" height="14" rx="7" fill="#1f6feb44"/>
+        <text x="465" y="73" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">monitor.up</text>
+        <rect x="508" y="62" width="104" height="14" rx="7" fill="#da363344"/>
+        <text x="560" y="73" fill="#f85149" font-size="9" font-family="sans-serif" text-anchor="middle">password.breached</text>
+        <text x="54" y="100" fill="#3fb950" font-size="10" font-family="sans-serif">✓ Active  |  Last delivery: 12m ago (200 OK)</text>
+        <rect x="630" y="58" width="50" height="16" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="655" y="70" fill="#8b949e" font-size="9" font-family="sans-serif" text-anchor="middle">Test</text>
+
+        <!-- Webhook card 2 -->
+        <rect x="12" y="118" width="676" height="64" rx="4" fill="#161b22" stroke="#30363d"/>
+        <circle cx="34" cy="150" r="8" fill="#6e40c9"/>
+        <text x="54" y="144" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Teams Notifications</text>
+        <text x="54" y="158" fill="#8b949e" font-size="10" font-family="monospace">https://acmecorp.webhook.office.com/…</text>
+        <rect x="340" y="136" width="80" height="14" rx="7" fill="#1f6feb44"/>
+        <text x="380" y="147" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">asset.created</text>
+        <rect x="428" y="136" width="80" height="14" rx="7" fill="#1f6feb44"/>
+        <text x="468" y="147" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">asset.updated</text>
+        <text x="54" y="174" fill="#3fb950" font-size="10" font-family="sans-serif">✓ Active  |  Last delivery: 2h ago (200 OK)</text>
+        <rect x="630" y="132" width="50" height="16" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="655" y="144" fill="#8b949e" font-size="9" font-family="sans-serif" text-anchor="middle">Test</text>
+        <!-- Annotation -->
+        <line x1="560" y1="62" x2="600" y2="44" stroke="#f85149" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="570" y="36" width="120" height="12" rx="6" fill="#da363344"/>
+        <text x="630" y="46" fill="#f85149" font-size="9" font-family="sans-serif" text-anchor="middle">Event types subscribed</text>
+      </svg>
+      <p class="help-screenshot-caption">Webhook configuration. Each webhook subscribes to specific event types (shown as badges). Use <strong>Test</strong> to send a sample payload and verify delivery.</p>
+    </div>
 
     <h5 class="mt-4" id="filtering"><i class="fas fa-filter"></i> Filtering &amp; Pagination</h5>
     <ul>
