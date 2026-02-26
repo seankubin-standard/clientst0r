@@ -266,7 +266,7 @@ else:
 
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False  # Must be False so JS can read csrftoken cookie for AJAX POST requests
 CSRF_COOKIE_SAMESITE = 'Lax'
 
 # CSRF Trusted Origins - Multi-domain support for HTTPS
