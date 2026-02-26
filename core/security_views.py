@@ -116,11 +116,9 @@ def run_package_scan(request):
                             continue
 
             if not json_found:
-                # If no JSON found, return error with diagnostic info
                 return JsonResponse({
                     'success': False,
-                    'error': f'Failed to parse scan output: {str(e)}',
-                    'raw_output': output[:500]  # First 500 chars for debugging
+                    'error': 'Failed to parse scan output',
                 }, status=500)
 
         # Add cache update status to scan data
@@ -133,10 +131,10 @@ def run_package_scan(request):
             'scan_data': scan_data
         })
 
-    except Exception as e:
+    except Exception:
         return JsonResponse({
             'success': False,
-            'error': f'Scan failed: {str(e)}'
+            'error': 'Scan failed'
         }, status=500)
 
 
@@ -176,10 +174,10 @@ def update_packages(request):
             'output': output
         })
 
-    except Exception as e:
+    except Exception:
         return JsonResponse({
             'success': False,
-            'error': str(e)
+            'error': 'Update failed'
         }, status=500)
 
 

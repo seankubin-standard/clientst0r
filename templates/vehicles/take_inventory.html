@@ -217,7 +217,9 @@
 
     // Manual QR code entry
     function submitManualQR() {
-        const qrCode = document.getElementById('manual-qr-input').value.trim();
+        const raw = document.getElementById('manual-qr-input').value.trim();
+        // Restrict to alphanumeric + hyphen/underscore to prevent open-redirect injection
+        const qrCode = raw.replace(/[^a-zA-Z0-9_-]/g, '');
         if (qrCode) {
             window.location.href = `/vehicles/inventory/scan-update/${qrCode}/`;
         }

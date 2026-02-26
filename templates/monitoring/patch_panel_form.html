@@ -240,6 +240,12 @@ function initializePorts(count) {
     renderPorts();
 }
 
+function escAttr(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s ?? '');
+    return d.innerHTML.replace(/"/g, '&quot;');
+}
+
 function renderPorts() {
     const container = document.getElementById('ports-container');
     container.innerHTML = '';
@@ -247,27 +253,61 @@ function renderPorts() {
     ports.forEach((port, index) => {
         const row = document.createElement('div');
         row.className = 'port-editor-row';
-        row.innerHTML = `
-            <div><strong>${port.port_number}</strong></div>
-            <input type="text" class="form-control form-control-sm" value="${port.label || ''}"
-                   onchange="updatePort(${index}, 'label', this.value)" placeholder="Port label">
-            <input type="text" class="form-control form-control-sm" value="${port.destination || ''}"
-                   onchange="updatePort(${index}, 'destination', this.value)" placeholder="Where it goes">
-            <select class="form-select form-select-sm" onchange="updatePort(${index}, 'cable_type', this.value)">
-                <option value="Cat5e" ${port.cable_type === 'Cat5e' ? 'selected' : ''}>Cat5e</option>
-                <option value="Cat6" ${port.cable_type === 'Cat6' ? 'selected' : ''}>Cat6</option>
-                <option value="Cat6a" ${port.cable_type === 'Cat6a' ? 'selected' : ''}>Cat6a</option>
-                <option value="Fiber" ${port.cable_type === 'Fiber' ? 'selected' : ''}>Fiber</option>
-            </select>
-            <select class="form-select form-select-sm" onchange="updatePort(${index}, 'status', this.value)">
-                <option value="available" ${port.status === 'available' ? 'selected' : ''}>Available</option>
-                <option value="in-use" ${port.status === 'in-use' ? 'selected' : ''}>In Use</option>
-                <option value="reserved" ${port.status === 'reserved' ? 'selected' : ''}>Reserved</option>
-            </select>
-            <button type="button" class="btn btn-sm btn-outline-info" onclick="editPortNotes(${index})" title="Edit notes">
-                <i class="fas fa-sticky-note"></i>
-            </button>
-        `;
+
+        const numDiv = document.createElement('div');
+        const strong = document.createElement('strong');
+        strong.textContent = port.port_number;
+        numDiv.appendChild(strong);
+
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.className = 'form-control form-control-sm';
+        labelInput.value = port.label || '';
+        labelInput.placeholder = 'Port label';
+        labelInput.addEventListener('change', () => updatePort(index, 'label', labelInput.value));
+
+        const destInput = document.createElement('input');
+        destInput.type = 'text';
+        destInput.className = 'form-control form-control-sm';
+        destInput.value = port.destination || '';
+        destInput.placeholder = 'Where it goes';
+        destInput.addEventListener('change', () => updatePort(index, 'destination', destInput.value));
+
+        const cableSelect = document.createElement('select');
+        cableSelect.className = 'form-select form-select-sm';
+        cableSelect.addEventListener('change', () => updatePort(index, 'cable_type', cableSelect.value));
+        ['Cat5e', 'Cat6', 'Cat6a', 'Fiber'].forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = v;
+            if (port.cable_type === v) opt.selected = true;
+            cableSelect.appendChild(opt);
+        });
+
+        const statusSelect = document.createElement('select');
+        statusSelect.className = 'form-select form-select-sm';
+        statusSelect.addEventListener('change', () => updatePort(index, 'status', statusSelect.value));
+        [['available', 'Available'], ['in-use', 'In Use'], ['reserved', 'Reserved']].forEach(([v, label]) => {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = label;
+            if (port.status === v) opt.selected = true;
+            statusSelect.appendChild(opt);
+        });
+
+        const notesBtn = document.createElement('button');
+        notesBtn.type = 'button';
+        notesBtn.className = 'btn btn-sm btn-outline-info';
+        notesBtn.title = 'Edit notes';
+        notesBtn.innerHTML = '<i class="fas fa-sticky-note"></i>';
+        notesBtn.addEventListener('click', () => editPortNotes(index));
+
+        row.appendChild(numDiv);
+        row.appendChild(labelInput);
+        row.appendChild(destInput);
+        row.appendChild(cableSelect);
+        row.appendChild(statusSelect);
+        row.appendChild(notesBtn);
         container.appendChild(row);
     });
 

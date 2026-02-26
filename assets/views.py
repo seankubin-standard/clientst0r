@@ -762,8 +762,8 @@ def network_scan_upload(request):
 
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON file'}, status=400)
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+    except Exception:
+        return JsonResponse({'error': 'An error occurred processing the file'}, status=500)
 
 
 @login_required

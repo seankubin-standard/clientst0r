@@ -1,10 +1,14 @@
 from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.db import connection
 
 @login_required
 def test_database_connection(request):
     """Simple test view to show database status without any caching."""
+    if not (request.user.is_superuser or request.user.is_staff):
+        raise PermissionDenied
+
     html = """
     <html>
     <head><title>Database Test</title></head>
@@ -12,22 +16,22 @@ def test_database_connection(request):
     <h1>Database Connection Test</h1>
     <pre>
 """
-    
+
     db_info = {'connected': False, 'engine': 'unknown'}
     try:
         db_engine = connection.settings_dict['ENGINE']
         db_info['engine'] = db_engine.split('.')[-1]
-        
+
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
             db_info['connected'] = True
             html += f"✓ DATABASE CONNECTED: {db_info['connected']}\n"
             html += f"✓ Engine: {db_info['engine']}\n"
             html += f"✓ Type: {type(db_info['connected'])}\n"
-    except Exception as e:
+    except Exception:
         db_info['connected'] = False
-        html += f"✗ ERROR: {str(e)}\n"
-    
+        html += "✗ ERROR: database connection failed\n"
+
     html += f"\ndb_info dict: {db_info}\n"
     html += f"bool(db_info['connected']): {bool(db_info['connected'])}\n"
     html += """
@@ -36,5 +40,5 @@ def test_database_connection(request):
     </body>
     </html>
     """
-    
+
     return HttpResponse(html)

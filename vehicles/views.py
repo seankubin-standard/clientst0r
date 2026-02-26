@@ -882,8 +882,8 @@ def inventory_quick_update(request, pk):
             'message': f'Updated {item.name} to {item.quantity} {item.unit}'
         })
 
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=400)
+    except Exception:
+        return JsonResponse({'error': 'Failed to update inventory item'}, status=400)
 
 
 @login_required

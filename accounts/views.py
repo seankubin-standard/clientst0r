@@ -61,7 +61,10 @@ def switch_organization(request, org_id):
                 require_https=request.is_secure(),
             ):
                 try:
-                    return redirect(urlparse(referer).path)
+                    path = urlparse(referer).path
+                    # Only redirect to same-origin relative paths
+                    if path.startswith('/') and not path.startswith('//'):
+                        return redirect(path)
                 except Exception:
                     pass
 
