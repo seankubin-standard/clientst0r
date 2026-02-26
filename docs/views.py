@@ -619,8 +619,14 @@ def template_edit(request, pk):
     """
     Edit document template.
     """
+    from django.db.models import Q
     org = get_request_organization(request)
-    template = get_object_or_404(Document, pk=pk, organization=org, is_template=True)
+    template = get_object_or_404(
+        Document,
+        Q(organization=org) | Q(organization=None, is_global=True),
+        pk=pk,
+        is_template=True,
+    )
 
     if request.method == 'POST':
         form = DocumentForm(request.POST, instance=template, organization=org)
@@ -648,8 +654,14 @@ def template_delete(request, pk):
     """
     Delete document template.
     """
+    from django.db.models import Q
     org = get_request_organization(request)
-    template = get_object_or_404(Document, pk=pk, organization=org, is_template=True)
+    template = get_object_or_404(
+        Document,
+        Q(organization=org) | Q(organization=None, is_global=True),
+        pk=pk,
+        is_template=True,
+    )
 
     if request.method == 'POST':
         title = template.title
