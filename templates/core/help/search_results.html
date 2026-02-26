@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Help Search — {{ q }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'core:help_index' %}"><i class="fas fa-book-open"></i> Help</a></li>
+        <li class="breadcrumb-item active">Search</li>
+    </ol>
+</nav>
+
+<h2 class="mb-4"><i class="fas fa-search"></i> Documentation Search</h2>
+
+<form action="{% url 'core:help_search' %}" method="get" class="mb-4">
+    <div class="input-group input-group-lg">
+        <span class="input-group-text"><i class="fas fa-search"></i></span>
+        <input type="search" name="q" class="form-control" value="{{ q }}" placeholder="Search documentation…" autocomplete="off" autofocus>
+        <button class="btn btn-primary" type="submit">Search</button>
+    </div>
+</form>
+
+{% if q %}
+    {% if results %}
+    <p class="text-muted mb-3">{{ results|length }} result{{ results|length|pluralize }} for <strong>"{{ q }}"</strong></p>
+    <div class="list-group">
+        {% for r in results %}
+        <a href="{% url r.url_name %}#{{ r.anchor }}" class="list-group-item list-group-item-action">
+            <div class="d-flex align-items-start gap-3">
+                <div class="flex-shrink-0 mt-1">
+                    <span class="badge bg-secondary">{{ r.section_hl|safe }}</span>
+                </div>
+                <div>
+                    <strong>{{ r.heading_hl|safe }}</strong>
+                    <br>
+                    <small class="text-muted">{{ r.text_hl|safe|truncatechars:160 }}</small>
+                </div>
+                <div class="ms-auto flex-shrink-0">
+                    <i class="fas fa-arrow-right text-muted"></i>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        No results found for <strong>"{{ q }}"</strong>. Try different keywords.
+    </div>
+    <p class="text-muted">Browse by section:</p>
+    <ul>
+        <li><a href="{% url 'core:help_getting_started' %}">Getting Started</a></li>
+        <li><a href="{% url 'core:help_assets' %}">Asset Management</a></li>
+        <li><a href="{% url 'core:help_vehicles' %}">Service Vehicles</a></li>
+        <li><a href="{% url 'core:help_vault' %}">Password Vault</a></li>
+        <li><a href="{% url 'core:help_monitoring' %}">Monitoring</a></li>
+        <li><a href="{% url 'core:help_security' %}">Security</a></li>
+        <li><a href="{% url 'core:help_api' %}">API &amp; Integrations</a></li>
+    </ul>
+    {% endif %}
+{% else %}
+<div class="alert alert-secondary">
+    <i class="fas fa-info-circle me-2"></i> Enter a search term above to search the documentation.
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+mark { background: #f0b42966; color: inherit; border-radius: 2px; padding: 0 2px; }
+.list-group-item:hover { background: rgba(255,255,255,.05); }
+</style>
+{% endblock %}
