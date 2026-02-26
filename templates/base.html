@@ -741,7 +741,12 @@
                         } else if (isAndroid) {
                             alert('📱 To install on Android:\n\n1. Tap the menu (⋮) in your browser\n2. Tap "Install app" or "Add to Home screen"\n3. Follow the prompts');
                         } else {
-                            alert('💻 To install on desktop:\n\n1. Look for the install icon in your address bar\n2. Or check your browser menu for "Install Client St0r"\n3. Follow the prompts');
+                            const isHTTP = window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+                            if (isHTTP) {
+                                alert('💻 PWA Install — HTTPS Required\n\nBrowsers only offer PWA installation over HTTPS (HTTP is blocked for security).\n\nTo install this app:\n• Set up HTTPS on your server, then revisit — the install button will appear automatically.\n• Or in Chrome, go to: chrome://flags → search "unsafely-treat-insecure-origin-as-secure" → add your server URL and relaunch.');
+                            } else {
+                                alert('💻 To install on desktop:\n\n1. Look for the install icon ⬇ in your browser\'s address bar\n2. Or open the browser menu (⋮) → "Install Client St0r"\n3. Follow the prompts');
+                            }
                         }
                     }
                 });
