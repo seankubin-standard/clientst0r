@@ -141,6 +141,56 @@ HELP_INDEX = [
     {'section': 'API', 'url_name': 'core:help_api',
      'anchor': 'filtering', 'heading': 'Filtering & Pagination',
      'text': 'filter search ordering pagination page size query parameter'},
+
+    # Reports
+    {'section': 'Reports & Analytics', 'url_name': 'core:help_reports',
+     'anchor': 'dashboards', 'heading': 'Custom Dashboards',
+     'text': 'dashboard widget analytics asset count warranty monitor status vault health activity'},
+    {'section': 'Reports & Analytics', 'url_name': 'core:help_reports',
+     'anchor': 'report-templates', 'heading': 'Report Templates',
+     'text': 'report template data source filter columns CSV PDF export inventory warranty depreciation'},
+    {'section': 'Reports & Analytics', 'url_name': 'core:help_reports',
+     'anchor': 'scheduled-reports', 'heading': 'Scheduled Reports',
+     'text': 'scheduled report recurring daily weekly monthly email delivery automation'},
+    {'section': 'Reports & Analytics', 'url_name': 'core:help_reports',
+     'anchor': 'analytics', 'heading': 'Analytics',
+     'text': 'analytics trend chart asset growth uptime vault usage audit events'},
+
+    # Workflows
+    {'section': 'Workflows', 'url_name': 'core:help_workflows',
+     'anchor': 'processes', 'heading': 'Processes',
+     'text': 'workflow process checklist stages steps onboarding offboarding maintenance incident procedure'},
+    {'section': 'Workflows', 'url_name': 'core:help_workflows',
+     'anchor': 'executing', 'heading': 'Executing a Process',
+     'text': 'execute run workflow checklist stage complete progress audit trail assigned user'},
+    {'section': 'Workflows', 'url_name': 'core:help_workflows',
+     'anchor': 'global-processes', 'heading': 'Global Processes',
+     'text': 'global process shared organization standard procedure template library'},
+
+    # Documentation
+    {'section': 'Documentation & KB', 'url_name': 'core:help_documentation',
+     'anchor': 'documents', 'heading': 'Documents',
+     'text': 'document runbook WYSIWYG markdown editor upload category tag knowledge base'},
+    {'section': 'Documentation & KB', 'url_name': 'core:help_documentation',
+     'anchor': 'templates', 'heading': 'Document Templates',
+     'text': 'document template reusable skeleton runbook client report onboarding'},
+    {'section': 'Documentation & KB', 'url_name': 'core:help_documentation',
+     'anchor': 'knowledge-base', 'heading': 'Knowledge Base',
+     'text': 'knowledge base KB article search category global publish organization'},
+    {'section': 'Documentation & KB', 'url_name': 'core:help_documentation',
+     'anchor': 'diagrams', 'heading': 'Network Diagrams',
+     'text': 'network diagram topology visual drag drop node switch server connection export'},
+    {'section': 'Documentation & KB', 'url_name': 'core:help_documentation',
+     'anchor': 'ai-assistant', 'heading': 'AI Writing Assistant',
+     'text': 'AI assistant generate enhance validate document draft improve quality'},
+
+    # Locations
+    {'section': 'Locations & WAN', 'url_name': 'core:help_locations',
+     'anchor': 'locations', 'heading': 'Locations',
+     'text': 'location site office data center address floor plan physical'},
+    {'section': 'Locations & WAN', 'url_name': 'core:help_locations',
+     'anchor': 'wan-connections', 'heading': 'WAN Connections',
+     'text': 'WAN internet connection ISP fibre cable DSL bandwidth circuit ID public IP contract'},
 ]
 
 
@@ -200,8 +250,16 @@ def help_index(request):
          'desc': 'Monitor WAN connections, public URLs, ports, and SSL certificates with alerting.'},
         {'icon': 'fa-shield-alt', 'title': 'Security', 'url_name': 'core:help_security',
          'desc': 'Vulnerability scanning, RBAC, audit logging, and 2FA.'},
+        {'icon': 'fa-chart-bar', 'title': 'Reports & Analytics', 'url_name': 'core:help_reports',
+         'desc': 'Custom dashboards, report templates, scheduled reports, and analytics.'},
+        {'icon': 'fa-tasks', 'title': 'Workflows', 'url_name': 'core:help_workflows',
+         'desc': 'Step-by-step checklists and process executions for repeatable IT tasks.'},
+        {'icon': 'fa-book', 'title': 'Documentation & KB', 'url_name': 'core:help_documentation',
+         'desc': 'Runbooks, knowledge base articles, network diagrams, and AI writing assistant.'},
+        {'icon': 'fa-map-marker-alt', 'title': 'Locations & WAN', 'url_name': 'core:help_locations',
+         'desc': 'Physical site management and WAN internet connection tracking.'},
         {'icon': 'fa-plug', 'title': 'API & Integrations', 'url_name': 'core:help_api',
-         'desc': 'REST API, webhooks, authentication, and client libraries.'},
+         'desc': 'REST API, webhooks, authentication, and RMM integrations.'},
     ]
     return render(request, 'core/help/index.html', {
         'title': 'Help & Documentation',
@@ -1338,7 +1396,7 @@ def help_security(request):
         'toc': toc,
         'content': content,
         'prev_section': {'title': 'Monitoring', 'url_name': 'core:help_monitoring'},
-        'next_section': {'title': 'API & Integrations', 'url_name': 'core:help_api'},
+        'next_section': {'title': 'Reports & Analytics', 'url_name': 'core:help_reports'},
     })
 
 
@@ -1463,6 +1521,328 @@ def help_api(request):
         'section_id': 'api',
         'toc': toc,
         'content': content,
-        'prev_section': {'title': 'Security', 'url_name': 'core:help_security'},
+        'prev_section': {'title': 'Locations & WAN', 'url_name': 'core:help_locations'},
         'next_section': None,
+    })
+
+
+@login_required
+def help_reports(request):
+    """Reports & Analytics help"""
+    toc = [
+        {'anchor': 'dashboards', 'heading': 'Custom Dashboards'},
+        {'anchor': 'report-templates', 'heading': 'Report Templates'},
+        {'anchor': 'scheduled-reports', 'heading': 'Scheduled Reports'},
+        {'anchor': 'analytics', 'heading': 'Analytics'},
+    ]
+    content = """
+    <h4>Reports &amp; Analytics</h4>
+    <p class="lead">Generate, schedule, and export reports across all your organization data. Build custom dashboards and track trends over time.</p>
+
+    <h5 class="mt-4" id="dashboards"><i class="fas fa-chart-bar"></i> Custom Dashboards</h5>
+    <p>Build organization-specific dashboards that combine data widgets from multiple sources:</p>
+    <div class="row">
+        <div class="col-md-6">
+            <ul>
+                <li><strong>Asset count</strong> — totals by type, status, or location</li>
+                <li><strong>Warranty alerts</strong> — expiring in 30/60/90 days</li>
+                <li><strong>Monitor status</strong> — WAN uptime summary</li>
+                <li><strong>Vault health</strong> — breached or expiring credentials</li>
+            </ul>
+        </div>
+        <div class="col-md-6">
+            <ul>
+                <li><strong>Vehicle fleet</strong> — status and upcoming maintenance</li>
+                <li><strong>Recent activity</strong> — audit log summary</li>
+                <li>Create multiple dashboards per organization</li>
+                <li>Drag widgets to rearrange layout</li>
+            </ul>
+        </div>
+    </div>
+    <p>Dashboards are shared with all members of the organization. Navigate to <em>Reports → Dashboards</em> to create or manage them.</p>
+
+    <h5 class="mt-4" id="report-templates"><i class="fas fa-file-alt"></i> Report Templates</h5>
+    <p>Report templates define what data to include, how to format it, and where to send it:</p>
+    <div class="table-responsive mt-2">
+        <table class="table table-sm table-bordered">
+            <thead><tr><th>Field</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Data Source</strong></td><td>Assets, Passwords, Vehicles, Monitors, Audit Log, etc.</td></tr>
+                <tr><td><strong>Filters</strong></td><td>Scope by type, status, date range, location</td></tr>
+                <tr><td><strong>Columns</strong></td><td>Choose exactly which fields to include</td></tr>
+                <tr><td><strong>Format</strong></td><td>CSV, PDF, or HTML</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p><strong>Common built-in templates:</strong></p>
+    <ul>
+        <li>Asset Inventory — full list with serial, location, warranty, status</li>
+        <li>Expiring Warranties — assets with warranty ending within N days</li>
+        <li>Needs Reorder — all assets flagged for replacement</li>
+        <li>Breached Credentials — vault entries with HIBP hits</li>
+        <li>Vehicle Maintenance Due — overdue and upcoming service</li>
+        <li>Monitor Uptime Summary — 30-day uptime % per endpoint</li>
+        <li>User Activity — audit log summary by user and action</li>
+    </ul>
+    <p>Generate a report at <em>Reports → Templates → (select) → Generate</em>. Results can be downloaded immediately or saved to <em>Generated Reports</em>.</p>
+
+    <h5 class="mt-4" id="scheduled-reports"><i class="fas fa-clock"></i> Scheduled Reports</h5>
+    <p>Automate report delivery on a recurring schedule:</p>
+    <ul>
+        <li><strong>Frequency:</strong> Daily, Weekly, or Monthly</li>
+        <li><strong>Recipients:</strong> One or more email addresses</li>
+        <li><strong>Format:</strong> CSV, PDF, or HTML attachment</li>
+        <li><strong>Toggle:</strong> Pause and resume without deleting</li>
+        <li><strong>History:</strong> Delivery log with success/failure status</li>
+    </ul>
+    <p>Manage scheduled reports at <em>Reports → Scheduled</em>.</p>
+
+    <h5 class="mt-4" id="analytics"><i class="fas fa-chart-line"></i> Analytics</h5>
+    <p>The analytics overview provides real-time metrics and trend charts at <em>Reports → Analytics</em>:</p>
+    <ul>
+        <li><strong>Asset growth</strong> — assets added over time</li>
+        <li><strong>Monitor reliability</strong> — uptime trend across all monitors</li>
+        <li><strong>Vault usage</strong> — new entries, reveals, breach rate</li>
+        <li><strong>Audit events</strong> — activity volume by type and user</li>
+    </ul>
+    """
+    return render(request, 'core/help/section.html', {
+        'title': 'Reports & Analytics',
+        'section_id': 'reports',
+        'toc': toc,
+        'content': content,
+        'prev_section': {'title': 'Security', 'url_name': 'core:help_security'},
+        'next_section': {'title': 'Workflows', 'url_name': 'core:help_workflows'},
+    })
+
+
+@login_required
+def help_workflows(request):
+    """Workflows / Processes help"""
+    toc = [
+        {'anchor': 'processes', 'heading': 'Processes'},
+        {'anchor': 'executing', 'heading': 'Executing a Process'},
+        {'anchor': 'global-processes', 'heading': 'Global Processes'},
+    ]
+    content = """
+    <h4>Workflows</h4>
+    <p class="lead">Define and execute step-by-step checklists for repeatable IT tasks — onboarding, offboarding, maintenance, incident response, and more.</p>
+
+    <div class="alert alert-info mb-4">
+        <i class="fas fa-info-circle"></i> <strong>Terminology:</strong>
+        A <strong>Process</strong> is a reusable workflow template.
+        An <strong>Execution</strong> is a live running instance of that process for a specific task or client.
+    </div>
+
+    <h5 class="mt-4" id="processes"><i class="fas fa-sitemap"></i> Processes</h5>
+    <p>Each process defines the ordered steps required to complete a task:</p>
+    <div class="table-responsive mt-2">
+        <table class="table table-sm table-bordered">
+            <thead><tr><th>Field</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Name</strong></td><td>e.g., "Employee Onboarding", "Network Device Replacement"</td></tr>
+                <tr><td><strong>Category</strong></td><td>Onboarding / Offboarding / Maintenance / Incident / etc.</td></tr>
+                <tr><td><strong>Stages</strong></td><td>Ordered list of steps — each with title, instructions, and checklist items</td></tr>
+                <tr><td><strong>Organization</strong></td><td>Scoped to one org, or Global (shared across all)</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p>Stages can be drag-reordered and each stage can have:</p>
+    <ul>
+        <li>Detailed instructions for the person completing the step</li>
+        <li>Sub-tasks (checklist items) within the stage</li>
+        <li>An assigned role (who is responsible)</li>
+        <li>A required flag (must complete before moving on)</li>
+    </ul>
+    <p>Manage processes at <em>Processes</em> in the navigation.</p>
+
+    <h5 class="mt-4" id="executing"><i class="fas fa-play-circle"></i> Executing a Process</h5>
+    <ol>
+        <li>Open a process from the library and click <strong>Execute</strong></li>
+        <li>Fill in execution metadata: assigned user, target client, due date</li>
+        <li>Work through each stage — check off items as completed</li>
+        <li>Add notes per stage as needed</li>
+        <li>Process is marked complete when all required stages are done</li>
+    </ol>
+    <p><strong>Execution tracking:</strong></p>
+    <ul>
+        <li><strong>Progress bar</strong> — shows % of stages completed</li>
+        <li><strong>Audit trail</strong> — every stage completion logged with timestamp and user</li>
+        <li><strong>Reassignment</strong> — assign individual stages to specific users</li>
+        <li><strong>Due dates</strong> — overall and per-stage deadlines</li>
+    </ul>
+    <p>View all active and completed executions at <em>Processes → Executions</em>.</p>
+
+    <h5 class="mt-4" id="global-processes"><i class="fas fa-globe"></i> Global Processes</h5>
+    <p><strong>Global Processes</strong> are available across all organizations — ideal for standardized IT procedures:</p>
+    <ul>
+        <li>Only <strong>superusers/staff</strong> can create global processes</li>
+        <li>Global processes appear in every organization's process library</li>
+        <li>Organizations can <strong>copy</strong> a global process to customize it</li>
+    </ul>
+    <p>Examples: Employee Onboarding Checklist, New Client Onboarding, Security Incident Response, Quarterly Review.</p>
+    <p>Manage global processes at <em>Processes → Global</em> (staff only).</p>
+    """
+    return render(request, 'core/help/section.html', {
+        'title': 'Workflows',
+        'section_id': 'workflows',
+        'toc': toc,
+        'content': content,
+        'prev_section': {'title': 'Reports & Analytics', 'url_name': 'core:help_reports'},
+        'next_section': {'title': 'Documentation & KB', 'url_name': 'core:help_documentation'},
+    })
+
+
+@login_required
+def help_documentation(request):
+    """Documentation & Knowledge Base help"""
+    toc = [
+        {'anchor': 'documents', 'heading': 'Documents'},
+        {'anchor': 'templates', 'heading': 'Document Templates'},
+        {'anchor': 'knowledge-base', 'heading': 'Knowledge Base'},
+        {'anchor': 'diagrams', 'heading': 'Network Diagrams'},
+        {'anchor': 'ai-assistant', 'heading': 'AI Writing Assistant'},
+    ]
+    content = """
+    <h4>Documentation &amp; Knowledge Base</h4>
+    <p class="lead">Create, organize, and share technical documentation, runbooks, knowledge base articles, and network diagrams — with WYSIWYG or Markdown editors.</p>
+
+    <h5 class="mt-4" id="documents"><i class="fas fa-file-alt"></i> Documents</h5>
+    <p>Documents are rich-content pages scoped to your organization. Navigate to <em>Docs</em> to create and manage them.</p>
+    <div class="table-responsive mt-2">
+        <table class="table table-sm table-bordered">
+            <thead><tr><th>Field</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Title</strong></td><td>Document name</td></tr>
+                <tr><td><strong>Editor</strong></td><td>WYSIWYG (Quill) for formatted content, or Markdown for technical runbooks</td></tr>
+                <tr><td><strong>Category</strong></td><td>Organize into folders/categories (up to 3 levels deep)</td></tr>
+                <tr><td><strong>Tags</strong></td><td>Free-form labels for filtering and search</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p>Upload existing files (PDF, DOCX, images) at <em>Docs → Upload</em>. Files are served through authenticated views only.</p>
+
+    <h5 class="mt-4" id="templates"><i class="fas fa-copy"></i> Document Templates</h5>
+    <p>Templates are reusable document skeletons — create once, generate new documents instantly:</p>
+    <ul>
+        <li><strong>Runbooks</strong> — "Network Outage Runbook" starter with standard sections</li>
+        <li><strong>Client reports</strong> — "Monthly IT Summary" with placeholder fields</li>
+        <li><strong>Onboarding docs</strong> — "New Employee IT Setup" checklist</li>
+        <li><strong>Change requests</strong> — structured change request form</li>
+    </ul>
+    <p>Templates support the same WYSIWYG and Markdown editors as documents. Manage at <em>Docs → Templates</em>.</p>
+
+    <h5 class="mt-4" id="knowledge-base"><i class="fas fa-book"></i> Knowledge Base</h5>
+    <p>The Knowledge Base is a searchable article library for reference material within your organization:</p>
+    <ul>
+        <li><strong>URL slugs</strong> — human-readable URLs (<code>/docs/kb/my-article/</code>)</li>
+        <li><strong>Categories</strong> — organize articles by topic</li>
+        <li><strong>Search</strong> — full-text search across all KB articles</li>
+        <li><strong>Edit history</strong> — versioned changes for all articles</li>
+        <li><strong>Global KB</strong> — superusers can publish articles visible across all organizations (company-wide policies, SOPs)</li>
+    </ul>
+
+    <h5 class="mt-4" id="diagrams"><i class="fas fa-project-diagram"></i> Network Diagrams</h5>
+    <p>Create interactive network topology diagrams with a drag-and-drop canvas at <em>Docs → Diagrams</em>:</p>
+    <ul>
+        <li><strong>Node types</strong> — servers, switches, routers, firewalls, workstations, cloud, and more</li>
+        <li><strong>Connections</strong> — labeled links with cable type and bandwidth</li>
+        <li><strong>Templates</strong> — start from predefined diagram layouts</li>
+        <li><strong>Export</strong> — PNG, SVG, or JSON format</li>
+        <li>Diagrams can be embedded in documents and linked from asset records</li>
+    </ul>
+
+    <h5 class="mt-4" id="ai-assistant"><i class="fas fa-robot"></i> AI Writing Assistant</h5>
+    <p>The built-in AI assistant helps write and improve documentation at <em>Docs → AI Assistant</em>:</p>
+    <div class="table-responsive mt-2">
+        <table class="table table-sm table-bordered">
+            <thead><tr><th>Feature</th><th>What It Does</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Generate</strong></td><td>Create a document draft from a plain-English prompt</td></tr>
+                <tr><td><strong>Enhance</strong></td><td>Improve clarity, grammar, and completeness of existing content</td></tr>
+                <tr><td><strong>Validate</strong></td><td>Check a runbook for missing steps or logical gaps</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="alert alert-warning mt-2">
+        <i class="fas fa-exclamation-triangle"></i> AI features require an API key configured in <em>Settings → AI Integration</em>.
+    </div>
+    """
+    return render(request, 'core/help/section.html', {
+        'title': 'Documentation & KB',
+        'section_id': 'documentation',
+        'toc': toc,
+        'content': content,
+        'prev_section': {'title': 'Workflows', 'url_name': 'core:help_workflows'},
+        'next_section': {'title': 'Locations & WAN', 'url_name': 'core:help_locations'},
+    })
+
+
+@login_required
+def help_locations(request):
+    """Locations & WAN Connections help"""
+    toc = [
+        {'anchor': 'locations', 'heading': 'Locations'},
+        {'anchor': 'wan-connections', 'heading': 'WAN Connections'},
+        {'anchor': 'floor-plans', 'heading': 'Floor Plans'},
+    ]
+    content = """
+    <h4>Locations &amp; WAN Connections</h4>
+    <p class="lead">Manage physical sites and the internet (WAN) connections serving each location.</p>
+
+    <h5 class="mt-4" id="locations"><i class="fas fa-map-marker-alt"></i> Locations</h5>
+    <p>A <strong>Location</strong> represents a physical site where equipment is installed or staff work. Navigate to <em>Locations</em> in the top menu.</p>
+    <div class="table-responsive mt-2">
+        <table class="table table-sm table-bordered">
+            <thead><tr><th>Field</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Name</strong></td><td>e.g., "Head Office", "Data Center 1", "Remote Site A"</td></tr>
+                <tr><td><strong>Address</strong></td><td>Street, city, state, country</td></tr>
+                <tr><td><strong>Notes</strong></td><td>Site contacts, access instructions</td></tr>
+                <tr><td><strong>Assets</strong></td><td>Assets can be associated with a location</td></tr>
+                <tr><td><strong>Floor Plan</strong></td><td>Attach or auto-generate a floor plan diagram</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p>Locations provide a physical grouping for assets — assets can be further organized by rack or room within a location.</p>
+
+    <h5 class="mt-4" id="wan-connections"><i class="fas fa-globe"></i> WAN Connections</h5>
+    <p>Each location can have one or more <strong>WAN connections</strong> — the internet links serving that site. Access them from the location detail page.</p>
+    <div class="table-responsive mt-2">
+        <table class="table table-sm table-bordered">
+            <thead><tr><th>Field</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Name</strong></td><td>e.g., "Primary Fibre", "4G Failover"</td></tr>
+                <tr><td><strong>ISP</strong></td><td>Internet service provider name</td></tr>
+                <tr><td><strong>Type</strong></td><td>Fibre / Cable / DSL / 4G / MPLS / etc.</td></tr>
+                <tr><td><strong>Bandwidth</strong></td><td>Download and upload speeds</td></tr>
+                <tr><td><strong>Public IP</strong></td><td>Static IP or range</td></tr>
+                <tr><td><strong>Circuit ID</strong></td><td>ISP circuit reference number for support calls</td></tr>
+                <tr><td><strong>Contract Expiry</strong></td><td>Renewal date for the ISP contract</td></tr>
+                <tr><td><strong>Status</strong></td><td>Active / Inactive / Maintenance</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="alert alert-info mt-2">
+        <i class="fas fa-info-circle"></i> For <strong>automated uptime monitoring</strong> of a WAN connection, create a
+        <a href="{% url 'core:help_monitoring' %}">WAN Monitor</a> targeting the location's public IP or a hosted endpoint.
+        WAN connections here are for documentation and ISP contract tracking only.
+    </div>
+
+    <h5 class="mt-4" id="floor-plans"><i class="fas fa-drafting-compass"></i> Floor Plans</h5>
+    <p>Attach a floor plan image to a location to map where equipment is physically installed:</p>
+    <ul>
+        <li><strong>Upload</strong> — attach an existing PNG/SVG floor plan image</li>
+        <li><strong>Generate</strong> — auto-generate a simple floor plan from rack and asset data</li>
+        <li><strong>Import</strong> — import from a structured JSON format</li>
+    </ul>
+    <p>Floor plans are visible on the location detail page and can be linked from individual asset records.</p>
+    """
+    return render(request, 'core/help/section.html', {
+        'title': 'Locations & WAN',
+        'section_id': 'locations',
+        'toc': toc,
+        'content': content,
+        'prev_section': {'title': 'Documentation & KB', 'url_name': 'core:help_documentation'},
+        'next_section': {'title': 'API & Integrations', 'url_name': 'core:help_api'},
     })

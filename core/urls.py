@@ -33,6 +33,10 @@ urlpatterns = [
     path('help/monitoring/', help_views.help_monitoring, name='help_monitoring'),
     path('help/security/', help_views.help_security, name='help_security'),
     path('help/api/', help_views.help_api, name='help_api'),
+    path('help/reports/', help_views.help_reports, name='help_reports'),
+    path('help/workflows/', help_views.help_workflows, name='help_workflows'),
+    path('help/documentation/', help_views.help_documentation, name='help_documentation'),
+    path('help/locations/', help_views.help_locations, name='help_locations'),
     path('help/search/', help_views.help_search, name='help_search'),
 
     path('search/', search_views.global_search, name='search'),
