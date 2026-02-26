@@ -7,6 +7,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
+from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 from django_ratelimit.decorators import ratelimit
@@ -1329,7 +1330,6 @@ def download_browser_extension(request):
 
     # Show install instructions page
     ext_exists = os.path.isdir(ext_dir)
-    from config.version import get_version
     return render(request, 'core/browser_extension.html', {
         'ext_exists': ext_exists,
         'version': get_version(),
