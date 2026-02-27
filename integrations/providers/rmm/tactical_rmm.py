@@ -285,24 +285,26 @@ class TacticalRMMProvider(BaseRMMProvider):
         # Parse last seen timestamp
         last_seen = self._parse_datetime(raw_data.get('last_seen'))
 
-        # Site/Client information for organization mapping
-        # Try to get site ID and name
-        site_id = str(raw_data.get('site', '')) if raw_data.get('site') else ''
-        site_name = raw_data.get('site_name', '')
+        # Site/Client information for organization mapping.
+        # Tactical RMM API variants:
+        #   Newer:  { "client_name": "Acme", "site_name": "Main Office" }
+        #   Older:  { "client": "Acme",      "site": "Main Office" }   ← name IS the value
+        from django.utils.text import slugify
 
-        # If we have a name but no ID, use name as ID (for organization mapping)
-        if site_name and not site_id:
-            from django.utils.text import slugify
-            site_id = slugify(site_name)
-
-        # Try to get client ID and name
-        client_id = str(raw_data.get('client', '')) if raw_data.get('client') else ''
+        raw_client = str(raw_data.get('client', '')) if raw_data.get('client') else ''
+        raw_site   = str(raw_data.get('site',   '')) if raw_data.get('site')   else ''
         client_name = raw_data.get('client_name', '')
+        site_name   = raw_data.get('site_name',   '')
 
-        # If we have a name but no ID, use name as ID (for organization mapping)
-        if client_name and not client_id:
-            from django.utils.text import slugify
-            client_id = slugify(client_name)
+        # When the API returns only 'client'/'site' (the name string), use it as name too
+        if raw_client and not client_name:
+            client_name = raw_client
+        if raw_site and not site_name:
+            site_name = raw_site
+
+        # Derive stable slug IDs for org matching
+        client_id = slugify(client_name) if client_name else ''
+        site_id   = slugify(site_name)   if site_name   else ''
 
         # Parse location data if available
         # Check for location in various possible fields
