@@ -420,54 +420,51 @@ def fail2ban_install_sudoers(request):
 {username} ALL=(ALL) NOPASSWD: /bin/systemctl status fail2ban
 """
 
-        # Write to temp file first
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='-fail2ban-sudoers') as tmp:
-            tmp.write(sudoers_content)
-            temp_path = tmp.name
-
+        # Write to the deploy path so the sudoers cp rule (which specifies this
+        # exact source file) matches when we run sudo cp below.
+        deploy_path = settings.BASE_DIR / 'deploy' / 'clientst0r-fail2ban-sudoers'
         try:
-            dest_path = '/etc/sudoers.d/clientst0r-fail2ban'
+            with open(str(deploy_path), 'w') as f:
+                f.write(sudoers_content)
+        except Exception as write_err:
+            messages.error(request, f'Failed to write sudoers file: {write_err}')
+            return redirect('core:fail2ban_status')
 
-            # Try to install the sudoers file
-            result = subprocess.run(
-                ['/usr/bin/sudo', '/bin/cp', temp_path, dest_path],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                env=env
+        dest_path = '/etc/sudoers.d/clientst0r-fail2ban'
+
+        # Try to install the sudoers file
+        result = subprocess.run(
+            ['/usr/bin/sudo', '/bin/cp', str(deploy_path), dest_path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env
+        )
+
+        if result.returncode != 0:
+            messages.error(
+                request,
+                f'Failed to install fail2ban sudoers. Make sure base install sudoers is configured: sudo cp {settings.BASE_DIR}/deploy/clientst0r-install-sudoers /etc/sudoers.d/clientst0r-install && sudo chmod 0440 /etc/sudoers.d/clientst0r-install'
             )
+            logger.error(f"Failed to copy fail2ban sudoers: {result.stderr}")
+            return redirect('core:fail2ban_status')
 
-            if result.returncode != 0:
-                messages.error(
-                    request,
-                    f'Failed to install fail2ban sudoers. Make sure base install sudoers is configured: sudo cp {settings.BASE_DIR}/deploy/clientst0r-install-sudoers /etc/sudoers.d/clientst0r-install && sudo chmod 0440 /etc/sudoers.d/clientst0r-install'
-                )
-                logger.error(f"Failed to copy fail2ban sudoers: {result.stderr}")
-                return redirect('core:fail2ban_status')
+        # Set correct permissions
+        result = subprocess.run(
+            ['/usr/bin/sudo', '/bin/chmod', '0440', dest_path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env
+        )
 
-            # Set correct permissions
-            result = subprocess.run(
-                ['/usr/bin/sudo', '/bin/chmod', '0440', dest_path],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                env=env
-            )
+        if result.returncode != 0:
+            messages.error(request, f'Failed to set fail2ban sudoers permissions: {result.stderr[:200]}')
+            logger.error(f"Failed to chmod fail2ban sudoers: {result.stderr}")
+            return redirect('core:fail2ban_status')
 
-            if result.returncode != 0:
-                messages.error(request, f'Failed to set fail2ban sudoers permissions: {result.stderr[:200]}')
-                logger.error(f"Failed to chmod fail2ban sudoers: {result.stderr}")
-                return redirect('core:fail2ban_status')
-
-            messages.success(request, f'Fail2ban sudoers configuration installed successfully for user {username}! Refresh the page.')
-            logger.info(f"User {request.user.username} successfully installed fail2ban sudoers configuration")
-
-        finally:
-            # Clean up temp file
-            try:
-                os.unlink(temp_path)
-            except:
-                pass
+        messages.success(request, f'Fail2ban sudoers configuration installed successfully for user {username}! Refresh the page.')
+        logger.info(f"User {request.user.username} successfully installed fail2ban sudoers configuration")
 
     except subprocess.TimeoutExpired:
         messages.error(request, 'Installation timed out.')
@@ -630,32 +627,24 @@ def fail2ban_install(request):
 {username} ALL=(ALL) NOPASSWD: /bin/systemctl status fail2ban
 """
 
-        # Write to temp file first
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='-fail2ban-sudoers') as tmp:
-            tmp.write(sudoers_content)
-            temp_path = tmp.name
+        # Write to the deploy path so the sudoers cp rule matches the exact source file.
+        deploy_path = settings.BASE_DIR / 'deploy' / 'clientst0r-fail2ban-sudoers'
+        with open(str(deploy_path), 'w') as f:
+            f.write(sudoers_content)
 
-        try:
-            logger.info("Installing fail2ban sudoers configuration...")
-            dest_path = '/etc/sudoers.d/clientst0r-fail2ban'
+        logger.info("Installing fail2ban sudoers configuration...")
+        dest_path = '/etc/sudoers.d/clientst0r-fail2ban'
 
-            if sudo_password:
-                subprocess.run(['/usr/bin/sudo', '-S', '/bin/cp', temp_path, dest_path],
-                             input=f"{sudo_password}\n", capture_output=True, text=True, timeout=10, check=True, env=env)
-                subprocess.run(['/usr/bin/sudo', '-S', '/bin/chmod', '0440', dest_path],
-                             input=f"{sudo_password}\n", capture_output=True, text=True, timeout=10, check=True, env=env)
-            else:
-                subprocess.run(['/usr/bin/sudo', '/bin/cp', temp_path, dest_path], timeout=10, check=True, env=env)
-                subprocess.run(['/usr/bin/sudo', '/bin/chmod', '0440', dest_path], timeout=10, check=True, env=env)
+        if sudo_password:
+            subprocess.run(['/usr/bin/sudo', '-S', '/bin/cp', str(deploy_path), dest_path],
+                         input=f"{sudo_password}\n", capture_output=True, text=True, timeout=10, check=True, env=env)
+            subprocess.run(['/usr/bin/sudo', '-S', '/bin/chmod', '0440', dest_path],
+                         input=f"{sudo_password}\n", capture_output=True, text=True, timeout=10, check=True, env=env)
+        else:
+            subprocess.run(['/usr/bin/sudo', '/bin/cp', str(deploy_path), dest_path], timeout=10, check=True, env=env)
+            subprocess.run(['/usr/bin/sudo', '/bin/chmod', '0440', dest_path], timeout=10, check=True, env=env)
 
-            logger.info(f"Sudoers configured for user: {username}")
-        finally:
-            # Clean up temp file
-            try:
-                os.unlink(temp_path)
-            except:
-                pass
+        logger.info(f"Sudoers configured for user: {username}")
 
         messages.success(request, 'Fail2ban installed and configured successfully! Refresh the page to see the status.')
         logger.info(f"User {request.user.username} successfully installed fail2ban automatically")

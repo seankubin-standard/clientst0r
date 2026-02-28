@@ -816,12 +816,9 @@ class RMMSync:
                 hostname__iexact=device.hostname
             ).first()
 
-        # Try IP address if still not found
-        if not asset and device.ip_address:
-            asset = Asset.objects.filter(
-                organization=device_org,
-                ip_address=device.ip_address
-            ).first()
+        # NOTE: IP address matching intentionally omitted — private IP ranges
+        # (10.x, 192.168.x, 172.16.x) overlap across organizations and cause
+        # false-positive matches that hard-link unrelated devices to the same asset.
 
         # Create new asset if not found
         if not asset:
