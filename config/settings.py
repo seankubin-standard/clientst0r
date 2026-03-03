@@ -383,6 +383,7 @@ AXES_FAILURE_LIMIT = int(os.getenv('AXES_FAILURE_LIMIT', '5'))
 AXES_COOLOFF_TIME = int(os.getenv('AXES_COOLOFF_TIME', '1'))  # hours
 AXES_LOCK_OUT_BY_COMBINATION_USER_AND_IP = True
 AXES_RESET_ON_SUCCESS = True
+AXES_LOCKOUT_URL = '/accounts/locked/'
 
 # Django Two-Factor Auth
 TWO_FACTOR_PATCH_ADMIN = False

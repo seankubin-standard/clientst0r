@@ -10,6 +10,9 @@ from . import oauth_views
 app_name = 'accounts'
 
 urlpatterns = [
+    # Account lockout page (shown by django-axes after too many failed logins)
+    path('locked/', views.lockout, name='lockout'),
+
     # Azure AD OAuth
     path('auth/azure/login/', oauth_views.azure_login, name='azure_login'),
     path('auth/azure/callback/', oauth_views.azure_callback, name='azure_callback'),

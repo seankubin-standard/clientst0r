@@ -2,6 +2,7 @@
 Accounts views
 """
 import logging
+import datetime
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
@@ -1177,4 +1178,44 @@ def organization_merge(request):
 
     return render(request, 'accounts/organization_merge.html', {
         'organizations': organizations,
+    })
+
+
+def lockout(request):
+    """
+    Custom account-locked page shown after too many failed login attempts.
+    Provides remaining lockout time and auto-redirects once the lockout expires.
+    """
+    from django.conf import settings
+    from django.utils import timezone
+    from axes.models import AccessAttempt
+
+    cooloff_hours = getattr(settings, 'AXES_COOLOFF_TIME', 1)
+    failure_limit = getattr(settings, 'AXES_FAILURE_LIMIT', 5)
+    ip = request.META.get('REMOTE_ADDR')
+
+    unlock_time = None
+    time_remaining = None
+    unlock_timestamp = None
+
+    attempt = AccessAttempt.objects.filter(ip_address=ip).order_by('-attempt_time').first()
+    if attempt:
+        unlock_time = attempt.attempt_time + datetime.timedelta(hours=cooloff_hours)
+        remaining = unlock_time - timezone.now()
+        if remaining.total_seconds() > 0:
+            total_minutes = int(remaining.total_seconds() / 60)
+            if total_minutes >= 60:
+                h = total_minutes // 60
+                m = total_minutes % 60
+                time_remaining = f"{h}h {m}m" if m else f"{h}h"
+            else:
+                time_remaining = f"{total_minutes} minute{'s' if total_minutes != 1 else ''}"
+            unlock_timestamp = int(unlock_time.timestamp())
+
+    return render(request, 'axes/lockout.html', {
+        'cooloff_hours': cooloff_hours,
+        'failure_limit': failure_limit,
+        'time_remaining': time_remaining,
+        'unlock_time': unlock_time,
+        'unlock_timestamp': unlock_timestamp,
     })
