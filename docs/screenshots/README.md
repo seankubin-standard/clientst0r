@@ -1,8 +1,8 @@
 # Client St0r Screenshots
 
-**Version:** v2.24.52
-**Date:** January 2026
-**Total Screenshots:** 34
+**Version:** v3.13.68
+**Date:** March 2026
+**Total Screenshots:** 42
 
 All screenshots showcase Client St0r with random backgrounds enabled and include demo data watermarks.
 
@@ -147,6 +147,34 @@ All screenshots showcase Client St0r with random backgrounds enabled and include
 
 ### Login
 ![Login](login-page.png)
+
+---
+
+## 🚗 Service Vehicles & Inventory
+
+### Vehicles Dashboard
+![Vehicles Dashboard](vehicles-dashboard.png)
+
+### Vehicle List
+![Vehicle List](vehicles-list.png)
+
+### Inventory (Unified View)
+![Inventory](vehicles-inventory.png)
+
+### Inventory — By Vehicle
+![Inventory by Vehicle](vehicles-inventory-by-vehicle.png)
+
+### Inventory — Shop
+![Shop Inventory](vehicles-inventory-shop.png)
+
+### Shop Inventory Item Edit (with QR code)
+![Shop Inventory Edit](vehicles-inventory-shop-edit.png)
+
+### Vehicle Inventory Item Edit (with QR code)
+![Vehicle Inventory Edit](vehicles-inventory-item-edit.png)
+
+### QR Code Print Sheet
+![QR Codes](vehicles-inventory-qr-codes.png)
 
 ---
 

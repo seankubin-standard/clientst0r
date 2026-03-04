@@ -3,8 +3,8 @@
 ## 🆕 New Features (PRIORITY - Missing Screenshots)
 
 ### Service Vehicles (v3.9+)
-- [ ] `vehicles-dashboard.png` - Dashboard with fleet statistics (total, active, maintenance, mileage cards)
-- [ ] `vehicles-list.png` - Vehicle list view with DataTables
+- [x] `vehicles-dashboard.png` - Dashboard with fleet statistics (total, active, maintenance, mileage cards)
+- [x] `vehicles-list.png` - Vehicle list view with DataTables
 - [ ] `vehicle-detail-overview.png` - Vehicle detail page, Overview tab
 - [ ] `vehicle-detail-maintenance.png` - Vehicle detail page, Maintenance tab
 - [ ] `vehicle-detail-fuel.png` - Vehicle detail page, Fuel tab with MPG chart

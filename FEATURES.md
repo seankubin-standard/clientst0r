@@ -288,13 +288,26 @@ Complete feature documentation for Client St0r - Self-hosted IT documentation pl
 - **Repair Details** - Repair date, shop, notes
 - **Condition Changes** - Track before/after condition status
 
-### Vehicle Inventory
+### Inventory Management
+- **Unified Inventory Page** - Single page with filter tabs: All, Vehicles (flat), By Vehicle, Shop — no separate menus
 - **Per-Vehicle Inventory** - Track tools, cables, connectors, hardware, supplies stored in each vehicle
+- **Shop/Warehouse Inventory** - Separate inventory pool for items stored at base location (not vehicle-specific)
 - **Categories** - Organize by cables, tools, hardware, supplies, etc.
 - **Quantity Tracking** - Current quantity with units (ea, ft, box, etc.)
-- **Low Stock Alerts** - Set minimum quantity thresholds for automated alerts
+- **Low Stock Alerts** - Set minimum quantity thresholds with high-contrast row highlighting
 - **Value Tracking** - Unit cost and total value calculations
-- **Storage Location** - Note where items are stored within vehicle (toolbox, compartment, etc.)
+- **Storage Location** - Note where items are stored (vehicle compartment or shop shelf/cabinet)
+- **Reorder Links** - Store reorder URLs (Amazon, eBay, etc.) with one-click cart button in all inventory tables
+- **Reorder Quantity** - Track how many to order when restocking
+
+### QR Code System
+- **Auto-Generated QR Codes** - Every inventory item gets a unique QR code on creation (never changes)
+- **Vehicle Items** - QR codes prefixed `INV-` linked to scan interface
+- **Shop Items** - QR codes prefixed `SHOP-INV-` linked to shop scan interface
+- **Scan-to-Edit** - Scanning a QR code opens a mobile-optimized interface with +/- quantity buttons, set quantity, and Full Edit link
+- **QR Image Download** - Download PNG of any QR code from the item edit form
+- **Global QR Print Sheet** - Print all inventory QR codes (vehicle + shop) on one page, filterable by vehicle
+- **Print-Optimized Layout** - 4-column grid layout when printing for adhesive label sheets
 
 ### User Assignments & History
 - **Assignment Management** - Assign vehicles to users/technicians
