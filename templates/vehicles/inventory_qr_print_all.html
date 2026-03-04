@@ -105,7 +105,7 @@
         <div class="qr-item-code">{{ item.qr_code }}</div>
         <div class="qr-item-details">
             <div><strong>Vehicle:</strong> {{ item.vehicle.display_name }}</div>
-            <div><strong>Qty:</strong> {{ item.quantity }} {{ item.unit }}</div>
+            <div><strong>Min Qty:</strong> {{ item.min_quantity }} {{ item.unit }}</div>
             {% if item.category %}<div><strong>Cat:</strong> {{ item.category }}</div>{% endif %}
             {% if item.location_in_vehicle %}<div><strong>Location:</strong> {{ item.location_in_vehicle }}</div>{% endif %}
         </div>
@@ -130,7 +130,7 @@
         <div class="qr-item-name">{{ item.name }}</div>
         <div class="qr-item-code">{{ item.qr_code }}</div>
         <div class="qr-item-details">
-            <div><strong>Qty:</strong> {{ item.quantity }} {{ item.unit }}</div>
+            <div><strong>Min Qty:</strong> {{ item.min_quantity }} {{ item.unit }}</div>
             {% if item.category %}<div><strong>Cat:</strong> {{ item.category }}</div>{% endif %}
             {% if item.location_in_shop %}<div><strong>Location:</strong> {{ item.location_in_shop }}</div>{% endif %}
         </div>
