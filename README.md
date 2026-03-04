@@ -1,6 +1,6 @@
 # Client St0r
 
-[![Version 3.10.4](https://img.shields.io/badge/version-3.10.4-brightgreen)](https://github.com/agit8or1/clientst0r)
+[![Version 3.13.69](https://img.shields.io/badge/version-3.13.69-brightgreen)](https://github.com/agit8or1/clientst0r)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green)](https://github.com/agit8or1/clientst0r)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-blue)](https://www.djangoproject.com/)
@@ -87,10 +87,26 @@ Client St0r is commonly evaluated as an **open-source IT Glue alternative** and 
 
 </td>
 </tr>
+<tr>
+<td width="50%">
+
+### 🚗 Service Vehicles & Fleet Inventory
+![Inventory](docs/screenshots/vehicles-inventory.png)
+![Vehicles Dashboard](docs/screenshots/vehicles-dashboard.png)
+
+</td>
+<td width="50%">
+
+### 📦 Inventory QR Codes
+![QR Code Print Sheet](docs/screenshots/vehicles-inventory-qr-codes.png)
+![Shop Inventory Edit](docs/screenshots/vehicles-inventory-shop-edit.png)
+
+</td>
+</tr>
 </table>
 
 <details>
-<summary><strong>📋 View All Screenshots (34 total)</strong></summary>
+<summary><strong>📋 View All Screenshots (42 total)</strong></summary>
 
 ### Core Features
 - [Dashboard](docs/screenshots/dashboard.png) - Main dashboard with random backgrounds
@@ -141,6 +157,16 @@ Client St0r is commonly evaluated as an **open-source IT Glue alternative** and 
 - [Global Dashboard](docs/screenshots/global-dashboard.png) - Cross-organization overview
 - [Global KB](docs/screenshots/global-kb.png) - Internal staff documentation
 - [Global Workflows](docs/screenshots/global-workflows.png) - Reusable process templates
+
+### Service Vehicles & Fleet Inventory
+- [Vehicles Dashboard](docs/screenshots/vehicles-dashboard.png) - Fleet overview with stats, alerts, and recent activity
+- [Vehicle List](docs/screenshots/vehicles-list.png) - All vehicles with status and condition filters
+- [Inventory](docs/screenshots/vehicles-inventory.png) - Unified inventory page with All/Vehicle/By Vehicle/Shop filter tabs
+- [Inventory by Vehicle](docs/screenshots/vehicles-inventory-by-vehicle.png) - Items grouped per vehicle with low-stock highlighting
+- [Shop Inventory](docs/screenshots/vehicles-inventory-shop.png) - Warehouse/shop inventory with location and reorder links
+- [Shop Item Edit](docs/screenshots/vehicles-inventory-shop-edit.png) - Item edit form with auto-generated QR code and download
+- [Vehicle Item Edit](docs/screenshots/vehicles-inventory-item-edit.png) - Vehicle inventory item with QR code display
+- [QR Code Print Sheet](docs/screenshots/vehicles-inventory-qr-codes.png) - Printable QR grid for all inventory items (vehicle + shop)
 
 </details>
 
