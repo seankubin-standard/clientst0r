@@ -2,10 +2,26 @@
 Organization import utilities for PSA/RMM integrations
 """
 from django.utils.text import slugify
+from django.contrib.contenttypes.models import ContentType
 from core.models import Organization
 from audit.models import AuditLog
 from integrations.models import ExternalObjectMap
 import logging
+
+
+def _eom_filter(connection, **kwargs):
+    """
+    Return an ExternalObjectMap queryset filtered by connection.
+
+    GenericForeignKey cannot be used in ORM filter() calls directly.
+    Use connection_type (ContentType) + connection_id instead.
+    """
+    ct = ContentType.objects.get_for_model(connection)
+    return ExternalObjectMap.objects.filter(
+        connection_type=ct,
+        connection_id=connection.pk,
+        **kwargs,
+    )
 
 logger = logging.getLogger('integrations')
 
@@ -98,8 +114,10 @@ def import_organization_from_psa(connection, company_data):
         org.save()
 
         # Update ExternalObjectMap
+        ct = ContentType.objects.get_for_model(connection)
         ExternalObjectMap.objects.update_or_create(
-            connection=connection,
+            connection_type=ct,
+            connection_id=connection.pk,
             external_type='company',
             external_id=str(external_id),
             defaults={
@@ -168,8 +186,10 @@ def import_organization_from_psa(connection, company_data):
             logger.info(f"Created {memberships_created} inherited memberships for {org.name}")
 
         # Create ExternalObjectMap to track this organization
+        ct = ContentType.objects.get_for_model(connection)
         ExternalObjectMap.objects.create(
-            connection=connection,
+            connection_type=ct,
+            connection_id=connection.pk,
             external_type='company',
             external_id=str(external_id),
             organization=org,
@@ -255,8 +275,10 @@ def import_organization_from_rmm(connection, site_data):
         # Create/update ExternalObjectMap for stable tracking
         # Use 'rmm_client' if client_id exists, otherwise 'rmm_site'
         external_type = 'rmm_client' if site_data.get('client_id') else 'rmm_site'
+        ct = ContentType.objects.get_for_model(connection)
         ExternalObjectMap.objects.update_or_create(
-            connection=connection,
+            connection_type=ct,
+            connection_id=connection.pk,
             external_type=external_type,
             external_id=str(external_id),
             defaults={
@@ -304,8 +326,10 @@ def import_organization_from_rmm(connection, site_data):
         # Create ExternalObjectMap for stable tracking (prevents slug collisions)
         # Use 'rmm_client' if client_id exists, otherwise 'rmm_site'
         external_type = 'rmm_client' if site_data.get('client_id') else 'rmm_site'
+        ct = ContentType.objects.get_for_model(connection)
         ExternalObjectMap.objects.create(
-            connection=connection,
+            connection_type=ct,
+            connection_id=connection.pk,
             external_type=external_type,
             external_id=str(external_id),
             organization=org,
@@ -335,11 +359,11 @@ def find_existing_organization_by_psa_id(connection, external_id):
         Organization instance or None
     """
     # Search for ExternalObjectMap with matching PSA company ID
-    mapping = ExternalObjectMap.objects.filter(
-        connection=connection,
+    mapping = _eom_filter(
+        connection,
         external_type='company',
         external_id=str(external_id),
-        local_type='organization'
+        local_type='organization',
     ).first()
 
     if mapping:
@@ -371,11 +395,11 @@ def find_existing_organization_by_rmm_id(connection, external_id):
     # Search for ExternalObjectMap with matching RMM client/site ID
     # Use 'rmm_client' or 'rmm_site' as external_type
     for external_type in ['rmm_client', 'rmm_site']:
-        mapping = ExternalObjectMap.objects.filter(
-            connection=connection,
+        mapping = _eom_filter(
+            connection,
             external_type=external_type,
             external_id=str(external_id),
-            local_type='organization'
+            local_type='organization',
         ).first()
 
         if mapping:

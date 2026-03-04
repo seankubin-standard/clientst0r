@@ -1081,15 +1081,14 @@ def rmm_organization_mapping(request, pk):
         return redirect('integrations:rmm_detail', pk=connection.pk)
 
     # GET request - show RMM site analysis
-    # Get unique site names from RMM devices
+    # Group by client+site so that sites with the same name under different
+    # clients are shown separately (e.g. "Hometown" for ClientA ≠ "Hometown" for ClientB)
     from django.db.models import Count
     site_data = RMMDevice.objects.filter(
         connection=connection
-    ).exclude(
-        Q(site_name='') | Q(site_name__isnull=True)
-    ).values('site_name', 'site_id').annotate(
+    ).values('client_name', 'client_id', 'site_name', 'site_id').annotate(
         device_count=Count('id')
-    ).order_by('site_name')
+    ).order_by('client_name', 'site_name')
 
     # Get all organizations
     all_organizations = Organization.objects.all().order_by('name')
@@ -1097,21 +1096,21 @@ def rmm_organization_mapping(request, pk):
     # Build site list with potential matches
     site_mapping_data = []
     for site in site_data:
-        site_name = site['site_name']
+        client_name = site['client_name'] or ''
+        site_name = site['site_name'] or ''
 
-        # Apply prefix if configured
+        # Org will be named after the client (preferred) or site
+        base_name = client_name if client_name else site_name
         if connection.org_name_prefix:
-            org_name = f"{connection.org_name_prefix}{site_name}"
+            org_name = f"{connection.org_name_prefix}{base_name}"
         else:
-            org_name = site_name
+            org_name = base_name
 
-        # Check if organization exists with this name
         existing_org = Organization.objects.filter(name=org_name).first()
-
-        # Try exact match without prefix
-        suggested_org = Organization.objects.filter(name__iexact=site_name).first()
+        suggested_org = Organization.objects.filter(name__iexact=base_name).first()
 
         site_mapping_data.append({
+            'client_name': client_name,
             'site_name': site_name,
             'site_id': site['site_id'],
             'device_count': site['device_count'],

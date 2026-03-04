@@ -38,19 +38,22 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
-                        <th style="width: 25%">RMM Site Name</th>
+                        <th style="width: 20%">Client</th>
+                        <th style="width: 20%">Site</th>
                         <th style="width: 10%">Devices</th>
-                        <th style="width: 30%">Will Create As</th>
-                        <th style="width: 35%">Status</th>
+                        <th style="width: 20%">Will Create As</th>
+                        <th style="width: 30%">Status</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for item in site_mapping_data %}
                     <tr>
                         <td>
-                            <strong>{{ item.site_name }}</strong>
-                            <br>
-                            <small class="text-muted">Site ID: {{ item.site_id }}</small>
+                            <strong>{{ item.client_name|default:"—" }}</strong>
+                        </td>
+                        <td>
+                            {{ item.site_name|default:"—" }}
+                            {% if item.site_id %}<br><small class="text-muted">{{ item.site_id }}</small>{% endif %}
                         </td>
                         <td>
                             <span class="badge bg-info">{{ item.device_count }}</span>
