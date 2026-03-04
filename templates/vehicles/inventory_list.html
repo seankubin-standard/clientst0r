@@ -97,7 +97,7 @@
             <thead><tr><th>Item</th><th>Category</th><th>Location</th><th>Qty</th><th>Min</th><th>Status</th><th></th></tr></thead>
             <tbody>
                 {% for item in entry.items %}
-                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                <tr class="{% if item.is_low_stock %}low-stock-row{% endif %}">
                     <td>{{ item.name }}</td>
                     <td>{{ item.category|default:"—" }}</td>
                     <td>{{ item.location_in_vehicle|default:"—" }}</td>
@@ -138,7 +138,7 @@
             <thead><tr><th>Item</th><th>Category</th><th>Location</th><th>Qty</th><th>Status</th><th></th></tr></thead>
             <tbody>
                 {% for item in entry.items %}
-                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                <tr class="{% if item.is_low_stock %}low-stock-row{% endif %}">
                     <td>{{ item.name }}</td>
                     <td>{{ item.category|default:"—" }}</td>
                     <td>{{ item.location_in_vehicle|default:"—" }}</td>
@@ -171,7 +171,7 @@
             <thead><tr><th>Item</th><th>Category</th><th>Location</th><th>Qty</th><th>Min</th><th>Value</th><th>Status</th><th></th></tr></thead>
             <tbody>
                 {% for item in shop_items %}
-                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                <tr class="{% if item.is_low_stock %}low-stock-row{% endif %}">
                     <td><strong>{{ item.name }}</strong></td>
                     <td>{{ item.category|default:"—" }}</td>
                     <td>{{ item.location_in_shop|default:"—" }}</td>
@@ -208,7 +208,7 @@
             <thead><tr><th>Item</th><th>Vehicle</th><th>Category</th><th>Location</th><th>Qty</th><th>Min</th><th>Status</th><th></th></tr></thead>
             <tbody>
                 {% for item in vehicle_items %}
-                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                <tr class="{% if item.is_low_stock %}low-stock-row{% endif %}">
                     <td>{{ item.name }}</td>
                     <td><a href="?vehicle={{ item.vehicle.pk }}">{{ item.vehicle.display_name }}</a></td>
                     <td>{{ item.category|default:"—" }}</td>
@@ -239,7 +239,7 @@
             <thead><tr><th>Item</th><th>Vehicle</th><th>Category</th><th>Qty</th><th>Status</th><th></th></tr></thead>
             <tbody>
                 {% for item in vehicle_items %}
-                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                <tr class="{% if item.is_low_stock %}low-stock-row{% endif %}">
                     <td>{{ item.name }}</td>
                     <td><a href="?vehicle={{ item.vehicle.pk }}">{{ item.vehicle.display_name }}</a></td>
                     <td>{{ item.category|default:"—" }}</td>
@@ -267,7 +267,7 @@
             <thead><tr><th>Item</th><th>Category</th><th>Location</th><th>Qty</th><th>Status</th><th></th></tr></thead>
             <tbody>
                 {% for item in shop_items %}
-                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                <tr class="{% if item.is_low_stock %}low-stock-row{% endif %}">
                     <td><strong>{{ item.name }}</strong></td>
                     <td>{{ item.category|default:"—" }}</td>
                     <td>{{ item.location_in_shop|default:"—" }}</td>

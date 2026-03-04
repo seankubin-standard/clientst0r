@@ -58,7 +58,7 @@
             </thead>
             <tbody>
                 {% for item in vehicle_items %}
-                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                <tr class="{% if item.is_low_stock %}low-stock-row{% endif %}">
                     <td>
                         <a href="{% url 'vehicles:inventory_item_edit' item.pk %}">{{ item.name }}</a>
                     </td>
@@ -110,7 +110,7 @@
             </thead>
             <tbody>
                 {% for item in shop_items %}
-                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                <tr class="{% if item.is_low_stock %}low-stock-row{% endif %}">
                     <td>
                         <a href="{% url 'vehicles:shop_inventory_edit' item.pk %}">{{ item.name }}</a>
                     </td>

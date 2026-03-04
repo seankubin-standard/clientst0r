@@ -196,7 +196,7 @@
                 </thead>
                 <tbody>
                     {% for item in inventory_items %}
-                    <tr {% if item.is_low_stock %}class="table-warning"{% endif %}>
+                    <tr {% if item.is_low_stock %}class="low-stock-row"{% endif %}>
                         <td>
                             <strong>{{ item.name }}</strong>
                             {% if item.qr_code %}<br><small class="text-muted"><i class="fas fa-qrcode"></i> {{ item.qr_code }}</small>{% endif %}

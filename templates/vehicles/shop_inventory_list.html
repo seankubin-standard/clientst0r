@@ -59,7 +59,7 @@
             </thead>
             <tbody>
                 {% for item in items %}
-                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                <tr class="{% if item.is_low_stock %}low-stock-row{% endif %}">
                     <td><strong>{{ item.name }}</strong></td>
                     <td>{{ item.category|default:"—" }}</td>
                     <td>{{ item.location_in_shop|default:"—" }}</td>

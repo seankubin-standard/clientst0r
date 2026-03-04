@@ -819,3 +819,13 @@ body.has-background .navbar {
 .badge.bg-secondary {
     background-color: var(--secondary-color) !important;
 }
+
+/* Low stock table rows — high contrast in both light and dark mode */
+tr.low-stock-row > td {
+    background-color: rgba(220, 100, 30, 0.22) !important;
+    color: inherit !important;
+}
+[data-bs-theme="dark"] tr.low-stock-row > td {
+    background-color: rgba(255, 120, 40, 0.30) !important;
+    color: #fff !important;
+}

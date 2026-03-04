@@ -67,7 +67,7 @@
             </thead>
             <tbody>
                 {% for item in entry.items %}
-                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                <tr class="{% if item.is_low_stock %}low-stock-row{% endif %}">
                     <td>{{ item.name }}</td>
                     <td>{{ item.category|default:"—" }}</td>
                     <td>{{ item.location_in_vehicle|default:"—" }}</td>
