@@ -4,6 +4,7 @@ Firewall middleware for IP and GeoIP-based access control.
 from django.http import HttpResponseForbidden
 from django.shortcuts import render
 from django.utils.deprecation import MiddlewareMixin
+import ipaddress
 import requests
 import logging
 
@@ -30,6 +31,14 @@ class FirewallMiddleware(MiddlewareMixin):
         client_ip = self.get_client_ip(request)
         if not client_ip:
             return None
+
+        # Always allow private/loopback IPs (LAN access must never be blocked)
+        try:
+            ip_obj = ipaddress.ip_address(client_ip)
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+                return None
+        except ValueError:
+            pass
 
         # Check bypass conditions
         if self.should_bypass(request, settings):

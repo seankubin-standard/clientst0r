@@ -256,6 +256,41 @@ if [ "$EXISTING_INSTALL" = true ]; then
             print_info "Collecting static files..."
             python3 manage.py collectstatic --noinput
 
+            # Recreate service file if missing (handles older installs or renamed service)
+            if ! sudo systemctl list-unit-files | grep -q clientst0r-gunicorn.service; then
+                print_info "Service file not found, creating it..."
+                sudo tee /etc/systemd/system/clientst0r-gunicorn.service > /dev/null << 'SVCEOF'
+[Unit]
+Description=Client St0r Gunicorn
+After=network.target mariadb.service
+Wants=mariadb.service
+
+[Service]
+Type=notify
+User=USER_PLACEHOLDER
+Group=USER_PLACEHOLDER
+WorkingDirectory=WORKDIR_PLACEHOLDER
+Environment="PATH=WORKDIR_PLACEHOLDER/venv/bin"
+ExecStart=WORKDIR_PLACEHOLDER/venv/bin/gunicorn \
+    --workers 4 \
+    --bind 0.0.0.0:8000 \
+    --timeout 120 \
+    --access-logfile /var/log/itdocs/gunicorn-access.log \
+    --error-logfile /var/log/itdocs/gunicorn-error.log \
+    --log-level info \
+    config.wsgi:application
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+                sudo sed -i "s|USER_PLACEHOLDER|$USER|g" /etc/systemd/system/clientst0r-gunicorn.service
+                sudo sed -i "s|WORKDIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/systemd/system/clientst0r-gunicorn.service
+                sudo systemctl daemon-reload
+                sudo systemctl enable clientst0r-gunicorn.service 2>&1 | grep -v "Created symlink" || true
+                print_status "Service file created"
+            fi
+
             # Restart service
             print_info "Restarting service..."
             sudo systemctl start clientst0r-gunicorn.service
