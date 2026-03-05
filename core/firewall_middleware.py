@@ -89,8 +89,17 @@ class FirewallMiddleware(MiddlewareMixin):
         if settings.bypass_for_api and request.path.startswith('/api/'):
             return True
 
-        # Always allow login page
-        if request.path in ['/accounts/login/', '/auth/login/']:
+        # Always allow all authentication paths (login, SSO/OAuth callbacks, 2FA, etc.)
+        # The firewall must not block users mid-flow during login/SSO redirect chains
+        AUTH_PREFIXES = (
+            '/accounts/login/',
+            '/accounts/logout/',
+            '/accounts/auth/',   # SSO: Azure/OAuth login + callback
+            '/auth/login/',
+            '/auth/logout/',
+            '/two_factor/',
+        )
+        if request.path.startswith(AUTH_PREFIXES):
             return True
 
         return False
