@@ -161,8 +161,24 @@ Guidelines:
 - Add value without unnecessary verbosity
 - Make it visually appealing and easy to scan"""
 
-        content_format = 'HTML' if output_format == 'html' else 'markdown'
-        user_prompt = f"""Please enhance this documentation:
+        if output_format == 'html':
+            # For HTML, avoid JSON wrapping — HTML attributes contain unescaped quotes
+            # that reliably break JSON parsing, causing the raw JSON blob to appear as
+            # document content. Return the enhanced HTML directly instead.
+            user_prompt = f"""Please enhance this documentation:
+
+Title: {title}
+
+Content:
+{content}
+
+Enhancement Type: {enhancement_instruction}
+
+Return ONLY the enhanced HTML content. Do NOT wrap it in JSON. Do NOT use markdown.
+Preserve all code blocks and technical content exactly.
+Start your response directly with an HTML tag."""
+        else:
+            user_prompt = f"""Please enhance this documentation:
 
 Title: {title}
 
@@ -174,7 +190,7 @@ Enhancement Type: {enhancement_instruction}
 Return the enhanced documentation in this JSON format:
 {{
     "title": "enhanced title if needed",
-    "content": "enhanced {content_format} content",
+    "content": "enhanced markdown content",
     "changes_made": ["list of key changes made"]
 }}"""
 
@@ -189,6 +205,16 @@ Return the enhanced documentation in this JSON format:
                 return response
 
             content_text = response['content']
+
+            if output_format == 'html':
+                # AI returns raw HTML directly — no parsing needed
+                return {
+                    'success': True,
+                    'title': title,
+                    'content': content_text.strip(),
+                    'changes_made': []
+                }
+
             result = self._parse_response(content_text)
 
             return {

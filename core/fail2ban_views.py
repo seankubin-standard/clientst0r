@@ -64,49 +64,32 @@ def is_fail2ban_installed():
     if not package_installed:
         return False, False, False, 'fail2ban package not installed'
 
-    # Check if sudo permissions are configured FIRST
-    # Test using an actual command we need (systemctl is-active is in sudoers whitelist)
+    # Test sudo permission AND service status in one shot using fail2ban-client ping.
+    # This is the command the sudoers file actually grants (not systemctl), so it
+    # correctly reflects whether the app can operate fail2ban at runtime.
+    # - RC=0 + "pong" in stdout → sudo works, service is running
+    # - RC!=0, no "password" in stderr → sudo works, service is NOT running (socket error)
+    # - "password is required" in stderr → sudo not configured
     sudo_configured = False
+    service_running = False
     try:
-        test_result = subprocess.run(
-            ['sudo', '-n', 'systemctl', 'is-active', 'fail2ban'],
+        ping_result = subprocess.run(
+            ['/usr/bin/sudo', '-n', '/usr/bin/fail2ban-client', 'ping'],
             capture_output=True,
             text=True,
             timeout=5
         )
-        # rc=0: service active, rc=3: service inactive — both mean sudo is working
-        # rc=1 + "password is required" in stderr means sudo is NOT configured
-        sudo_configured = test_result.returncode in (0, 3) and \
-            'password is required' not in test_result.stderr.lower()
+        password_required = (
+            'password is required' in ping_result.stderr.lower() or
+            'a password is required' in ping_result.stderr.lower()
+        )
+        if not password_required:
+            sudo_configured = True
+            service_running = (ping_result.returncode == 0 and
+                               'pong' in ping_result.stdout.lower())
     except Exception:
         sudo_configured = False
-
-    # Check if fail2ban service is running
-    # If sudo is configured, use it; otherwise try without sudo first
-    service_running = False
-    if sudo_configured:
-        try:
-            result = subprocess.run(
-                ['sudo', '-n', 'systemctl', 'is-active', 'fail2ban'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            service_running = result.returncode == 0 and result.stdout.strip() == 'active'
-        except Exception:
-            service_running = False
-    else:
-        # Try without sudo (might work if user is in systemd-journal group)
-        try:
-            result = subprocess.run(
-                ['systemctl', 'is-active', 'fail2ban'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            service_running = result.returncode == 0 and result.stdout.strip() == 'active'
-        except Exception:
-            service_running = False
+        service_running = False
 
     return package_installed, service_running, sudo_configured, ''
 
