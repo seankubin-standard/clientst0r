@@ -797,22 +797,25 @@ class RMMSync:
         # so assets are scoped to the correct client when import_organizations=True.
         device_org = device.organization or self.organization
 
-        # If already linked, verify the link is still valid (serial or hostname must match).
-        # Links established via the now-removed IP-address matching are invalid when the
-        # device's serial / hostname doesn't agree with the linked asset — clear them so
-        # the device gets re-evaluated below.
+        # If already linked, verify the link is still valid.
+        # A valid link requires ALL of:
+        #   1. The asset belongs to the same org as the device (guards against stale
+        #      cross-org links left over from before the org-assignment fix).
+        #   2. At least one identifier — serial number or hostname — still matches.
         if device.linked_asset:
             linked = device.linked_asset
+            org_match = (linked.organization_id == device_org.id)
             serial_match = (device.serial_number and linked.serial_number and
                             device.serial_number == linked.serial_number)
             hostname_match = (device.hostname and linked.hostname and
                               device.hostname.lower() == linked.hostname.lower())
-            if serial_match or hostname_match:
+            if org_match and (serial_match or hostname_match):
                 return  # Link is legitimate — keep it
             # Link looks wrong — clear it so we can re-evaluate
             logger.info(
                 f"Clearing stale asset link for RMM device {device.external_id}: "
-                f"linked asset {linked.id} does not match by serial or hostname"
+                f"linked asset {linked.id} failed validation "
+                f"(org_match={org_match}, serial_match={serial_match}, hostname_match={hostname_match})"
             )
             device.linked_asset = None
             device.save(update_fields=['linked_asset'])
