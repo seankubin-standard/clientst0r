@@ -162,10 +162,15 @@ def require_organization_context(view_func):
             else:
                 messages.error(request, "Please select an organization before creating this resource.")
 
-        # GET request or POST without org - show form with warning
+            # POST without a valid org — redirect back as GET so the org selector warning
+            # is shown. Never fall through to the view: it would try to save with org=None
+            # and raise IntegrityError.
+            return redirect(request.path)
+
+        # GET request with no org — show form with warning banner
         organizations = Organization.objects.filter(is_active=True).order_by('name')
 
-        # Call the view to render form
+        # Call the view to render the empty form
         response = view_func(request, *args, **kwargs)
 
         # Inject context for warning banner (if response has context_data)
