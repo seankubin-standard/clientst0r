@@ -4,35 +4,35 @@
 {% block title %}{{ asset.name }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-start mb-4 gap-3">
-    <h1 class="mb-0">{{ asset.name }}</h1>
-    <div class="d-flex flex-wrap gap-2 justify-content-end">
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>{{ asset.name }}</h1>
+    <div>
         {% include "includes/favorite_button.html" with object=asset %}
         {% if asset.profile_document %}
-        <a href="{% url 'docs:document_detail' asset.profile_document.pk %}" class="btn btn-outline-info btn-sm">
-            <i class="fas fa-file-alt"></i> View Profile
+        <a href="{% url 'docs:document_detail' asset.profile_document.pk %}" class="btn btn-outline-info">
+            <i class="fas fa-file-alt"></i> View Profile Doc
         </a>
         {% endif %}
-        <a href="{% url 'assets:asset_generate_profile' asset.pk %}" class="btn btn-info btn-sm">
-            <i class="fas fa-magic"></i> {% if asset.profile_document %}Regen Profile{% else %}Gen Profile{% endif %}
+        <a href="{% url 'assets:asset_generate_profile' asset.pk %}" class="btn btn-info">
+            <i class="fas fa-magic"></i> {% if asset.profile_document %}Regenerate Profile{% else %}Generate Profile{% endif %}
         </a>
         {% if has_ai %}
         {% if asset.ai_document %}
-        <a href="{% url 'docs:document_detail' asset.ai_document.pk %}" class="btn btn-outline-success btn-sm">
+        <a href="{% url 'docs:document_detail' asset.ai_document.pk %}" class="btn btn-outline-success">
             <i class="fas fa-robot"></i> View AI Doc
         </a>
         {% endif %}
-        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#aiDocModal">
-            <i class="fas fa-robot"></i> {% if asset.ai_document %}Regen AI Doc{% else %}Gen AI Doc{% endif %}
+        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#aiDocModal">
+            <i class="fas fa-robot"></i> {% if asset.ai_document %}Regenerate AI Doc{% else %}Generate AI Doc{% endif %}
         </button>
         {% endif %}
-        <a href="{% url 'assets:asset_edit' asset.pk %}" class="btn btn-secondary btn-sm">
+        <a href="{% url 'assets:asset_edit' asset.pk %}" class="btn btn-secondary">
             <i class="fas fa-edit"></i> Edit
         </a>
-        <a href="{% url 'assets:asset_delete' asset.pk %}" class="btn btn-danger btn-sm">
+        <a href="{% url 'assets:asset_delete' asset.pk %}" class="btn btn-danger">
             <i class="fas fa-trash"></i> Delete
         </a>
-        <a href="{% url 'assets:asset_list' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+        <a href="{% url 'assets:asset_list' %}" class="btn btn-outline-secondary">Back to List</a>
     </div>
 </div>
 
