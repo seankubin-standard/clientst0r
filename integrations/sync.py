@@ -805,7 +805,18 @@ class RMMSync:
         if device.linked_asset:
             linked = device.linked_asset
             org_match = (linked.organization_id == device_org.id)
-            serial_match = (device.serial_number and linked.serial_number and
+            _garbage = {
+                'to be filled by o.e.m.', 'to be filled by o.e.m',
+                'default string', 'not specified', 'none', 'n/a', 'na',
+                'system serial number', 'chassis serial number',
+                '0', '00000000', '0000000000', '000000000000',
+                '1234567890', '123456789', '12345678',
+                'invalid', 'unknown', 'xxxxxxxxxxx',
+            }
+            def _good_serial(s):
+                return s and s.lower().strip() not in _garbage and len(s.strip()) >= 4
+            serial_match = (_good_serial(device.serial_number) and
+                            _good_serial(linked.serial_number) and
                             device.serial_number == linked.serial_number)
             hostname_match = (device.hostname and linked.hostname and
                               device.hostname.lower() == linked.hostname.lower())
@@ -820,9 +831,26 @@ class RMMSync:
             device.linked_asset = None
             device.save(update_fields=['linked_asset'])
 
-        # Try to find existing asset by serial number
+        # Try to find existing asset by serial number.
+        # Skip matching if the serial is a known placeholder — many OEMs and
+        # hypervisors ship with identical garbage values, which causes every
+        # device with that serial to pile onto the same asset record.
+        _GARBAGE_SERIALS = {
+            'to be filled by o.e.m.', 'to be filled by o.e.m',
+            'default string', 'not specified', 'none', 'n/a', 'na',
+            'system serial number', 'chassis serial number',
+            '0', '00000000', '0000000000', '000000000000',
+            '1234567890', '123456789', '12345678',
+            'invalid', 'unknown', 'xxxxxxxxxxx',
+        }
+        usable_serial = (
+            device.serial_number and
+            device.serial_number.lower().strip() not in _GARBAGE_SERIALS and
+            len(device.serial_number.strip()) >= 4
+        )
+
         asset = None
-        if device.serial_number:
+        if usable_serial:
             asset = Asset.objects.filter(
                 organization=device_org,
                 serial_number=device.serial_number
