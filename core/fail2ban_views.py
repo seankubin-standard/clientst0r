@@ -37,7 +37,7 @@ def run_fail2ban_command(command):
         return False, '', 'fail2ban-client not found - is fail2ban installed?'
     try:
         result = subprocess.run(
-            ['/usr/bin/sudo', client_path] + command,
+            ['/usr/bin/sudo', '-n', client_path] + command,
             capture_output=True,
             text=True,
             timeout=10
@@ -341,48 +341,16 @@ def fail2ban_check_ip(request):
 @require_POST
 def fail2ban_start(request):
     """Start fail2ban service."""
-    import os
-
-    try:
-        # Set up environment with system paths
-        env = os.environ.copy()
-        system_paths = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
-        env['PATH'] = system_paths
-
-        # Enable fail2ban
-        result = subprocess.run(
-            ['/usr/bin/sudo', '/bin/systemctl', 'enable', 'fail2ban'],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            env=env
-        )
-
-        # Start fail2ban
-        result = subprocess.run(
-            ['/usr/bin/sudo', '/bin/systemctl', 'start', 'fail2ban'],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            env=env
-        )
-
-        if result.returncode == 0:
-            messages.success(request, 'Fail2ban started successfully!')
-            logger.info(f"User {request.user.username} started fail2ban service")
-        else:
-            messages.error(request, f'Failed to start fail2ban: {result.stderr[:200]}')
-            logger.error(f"Failed to start fail2ban: {result.stderr}")
-
-    except subprocess.TimeoutExpired:
-        messages.error(request, 'Start command timed out.')
-        logger.error("Fail2ban start timed out")
-    except FileNotFoundError as e:
-        messages.error(request, f'Required system commands not found: {str(e)}')
-        logger.error(f"System commands not found: {e}")
-    except Exception as e:
-        messages.error(request, f'Failed to start fail2ban: {str(e)[:200]}')
-        logger.error(f"Fail2ban start failed: {e}")
+    # Use fail2ban-client start — this is in sudoers (NOPASSWD: /usr/bin/fail2ban-client).
+    # systemctl start/enable are NOT in sudoers, so they will always fail with
+    # "password required" when called from the web process.
+    success, output, error = run_fail2ban_command(['start'])
+    if success or 'already running' in output.lower() or 'already running' in error.lower():
+        messages.success(request, 'Fail2ban started successfully!')
+        logger.info(f"User {request.user.username} started fail2ban service")
+    else:
+        messages.error(request, f'Failed to start fail2ban: {error[:200] or output[:200]}')
+        logger.error(f"Failed to start fail2ban: {error}")
 
     return redirect('core:fail2ban_status')
 
