@@ -195,7 +195,7 @@ def website_monitor_check(request, pk):
                 'success': True,
                 'status': monitor.status,
                 'status_display': monitor.get_status_display() if hasattr(monitor, 'get_status_display') else monitor.status,
-                'response_time': monitor.response_time_ms,
+                'response_time': monitor.last_response_time_ms,
                 'last_checked': monitor.last_checked_at.strftime('%Y-%m-%d %H:%M') if monitor.last_checked_at else '',
             })
         messages.success(request, f'Website "{monitor.url}" checked successfully.')
