@@ -177,6 +177,15 @@ class Asset(BaseModel):
         help_text='Auto-generated profile document for this asset',
     )
 
+    # AI-generated documentation (linked when "Generate AI Doc" is clicked)
+    ai_document = models.ForeignKey(
+        'docs.Document',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ai_doc_assets',
+        help_text='AI-generated documentation for this asset',
+    )
+
     objects = OrganizationManager()
 
     class Meta:

@@ -243,6 +243,158 @@ Return the enhanced documentation in this JSON format:
                 'error': str(e)
             }
 
+    def generate_asset_documentation(self, asset_data, template_type='server_blueprint', user_notes=''):
+        """
+        Generate AI documentation for an asset based on a template.
+
+        Args:
+            asset_data: dict of asset fields (name, type, hostname, ip, os, cpu, ram, etc.)
+            template_type: one of server_blueprint, network_device, workstation, general, security
+            user_notes: optional extra context provided by the user
+
+        Returns:
+            dict with success, content (HTML), title
+        """
+        templates = {
+            'server_blueprint': {
+                'title': 'Server Blueprint',
+                'sections': [
+                    'Overview — role and purpose of this server in the environment',
+                    'Hardware Specifications — CPU, RAM, storage, form factor',
+                    'Network Configuration — hostname, IP addresses, DNS, VLANs',
+                    'Operating System — OS, version, patch level, key services running',
+                    'RMM / Management — remote management tools, agent status',
+                    'Backup & Recovery — backup schedule, retention, restore procedure',
+                    'Maintenance Windows — patching schedule, planned downtime',
+                    'Dependencies — what relies on this server; what this server relies on',
+                    'Access & Credentials — who has access (reference vault, do not include passwords)',
+                    'Disaster Recovery — RTO/RPO targets, failover steps',
+                    'Notes & Known Issues',
+                ],
+            },
+            'network_device': {
+                'title': 'Network Device Configuration',
+                'sections': [
+                    'Device Overview — role (core/distribution/access/edge)',
+                    'Hardware — model, firmware version, port count',
+                    'Physical Location — rack, floor, building',
+                    'Management Access — management IP, protocols (SSH/HTTPS/SNMP)',
+                    'Interface Summary — key interfaces, descriptions, speeds',
+                    'VLAN Configuration — VLANs trunked/accessed on this device',
+                    'Routing — static routes or routing protocols in use',
+                    'Security — ACLs, port security, spanning tree settings',
+                    'Monitoring & Alerting — SNMP community, syslog destination',
+                    'Maintenance — firmware update procedure, config backup location',
+                    'Notes & Known Issues',
+                ],
+            },
+            'workstation': {
+                'title': 'Workstation / Laptop Setup',
+                'sections': [
+                    'Device Overview — assigned user, department, purpose',
+                    'Hardware — make, model, serial number',
+                    'Operating System — OS version, build, last patched',
+                    'Software — standard software stack, licensed applications',
+                    'Network — hostname, IP (DHCP/static), Wi-Fi/wired',
+                    'Security — AV, EDR agent, disk encryption status',
+                    'User Accounts — local admin, domain join status',
+                    'Peripherals — monitors, docking stations, printers',
+                    'Backup — OneDrive/backup client status',
+                    'Support Notes — known issues, special config',
+                ],
+            },
+            'general': {
+                'title': 'Asset Documentation',
+                'sections': [
+                    'Overview — what this asset is and its role',
+                    'Technical Specifications',
+                    'Network / Connectivity',
+                    'Configuration Details',
+                    'Management & Access',
+                    'Maintenance',
+                    'Notes',
+                ],
+            },
+            'security': {
+                'title': 'Security & Compliance Record',
+                'sections': [
+                    'Asset Overview & Classification',
+                    'Network Exposure — open ports, services, internet-facing',
+                    'Firewall & ACL Rules',
+                    'Authentication & Access Control',
+                    'Patching & Vulnerability Status',
+                    'Encryption — at-rest and in-transit',
+                    'Logging & Monitoring',
+                    'Compliance Notes — relevant frameworks (CIS, NIST, ISO)',
+                    'Incident History',
+                    'Review Schedule',
+                ],
+            },
+        }
+
+        tmpl = templates.get(template_type, templates['general'])
+        sections_list = '\n'.join(f'  - {s}' for s in tmpl['sections'])
+
+        # Build asset context string
+        asset_lines = []
+        for key, val in asset_data.items():
+            if val:
+                asset_lines.append(f'  {key}: {val}')
+        asset_context = '\n'.join(asset_lines) if asset_lines else '  (no data recorded)'
+
+        notes_section = f'\nAdditional context from engineer:\n{user_notes}\n' if user_notes else ''
+
+        system_prompt = """You are a senior IT documentation engineer at an MSP.
+Write professional, structured IT documentation using Bootstrap 5 HTML.
+
+Rules:
+- Output ONLY valid HTML5 — no JSON wrapper, no markdown, no preamble
+- Use Bootstrap 5 classes: cards (card, card-header, card-body), tables (table table-sm table-striped), badges (badge bg-*), alerts (alert alert-)
+- Use Font Awesome icons where appropriate (<i class="fas fa-..."></i>)
+- For sections with no data, add a placeholder row in muted text so the engineer knows to fill it in
+- Do NOT invent specific IP addresses, passwords, or credentials — use [PLACEHOLDER] for unknown values
+- Keep it practical: an on-call engineer should be able to use this document to manage the device
+- Use real newline characters, never the literal \\n sequence
+- Start your response directly with an HTML tag"""
+
+        user_prompt = f"""Generate a {tmpl['title']} document for the following asset.
+
+Asset Data:
+{asset_context}
+{notes_section}
+Document Sections to include:
+{sections_list}
+
+For each section:
+- Use the asset data above to fill in what is known
+- For unknown fields, add a styled placeholder row like: <tr><td>Field Name</td><td class="text-muted fst-italic">[Not recorded — please update]</td></tr>
+- Do not skip any section
+
+Return ONLY the HTML content starting with a <div> tag."""
+
+        try:
+            response = self.provider.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=8192
+            )
+
+            if not response['success']:
+                return response
+
+            doc_title = f'{asset_data.get("name", "Asset")} — {tmpl["title"]}'
+            return {
+                'success': True,
+                'title': doc_title,
+                'content': response['content'].strip(),
+            }
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
     def validate_documentation(self, content):
         """
         Validate documentation for consistency, completeness, and quality.

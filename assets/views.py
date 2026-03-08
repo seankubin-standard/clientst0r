@@ -126,11 +126,15 @@ def asset_detail(request, pk):
         content_type__startswith='image/'
     ).order_by('-created_at')[:50]
 
+    from docs.services.llm_providers import is_llm_configured
+    has_ai, _ = is_llm_configured()
+
     return render(request, 'assets/asset_detail.html', {
         'asset': asset,
         'relationships': relationships,
         'asset_images': asset_images,
         'in_global_view': in_global_view,
+        'has_ai': has_ai,
     })
 
 
@@ -542,6 +546,118 @@ def asset_generate_profile(request, pk):
         messages.success(request, f'Profile document created for {asset.name}.')
 
     return redirect('docs:document_detail', pk=doc.pk)
+
+
+@login_required
+@require_write
+def asset_ai_doc(request, pk):
+    """
+    Generate AI-powered documentation for an asset using a selected template.
+    AJAX POST — returns JSON {success, url, title} or {success:false, error}.
+    """
+    from django.http import JsonResponse
+    from django.utils.text import slugify
+    from django.utils import timezone
+    from docs.models import Document
+    from docs.services.ai_documentation_generator import AIDocumentationGenerator
+    from docs.services.llm_providers import is_llm_configured
+    import json
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required'}, status=405)
+
+    has_ai, provider_name = is_llm_configured()
+    if not has_ai:
+        return JsonResponse({
+            'success': False,
+            'error': f'LLM provider not configured. Go to Settings → AI to configure {provider_name}.',
+        }, status=400)
+
+    org = get_request_organization(request)
+    if org:
+        asset = get_object_or_404(Asset, pk=pk, organization=org)
+    else:
+        asset = get_object_or_404(Asset, pk=pk)
+
+    try:
+        body = json.loads(request.body)
+    except (ValueError, TypeError):
+        body = {}
+
+    template_type = body.get('template_type', 'general')
+    user_notes = body.get('user_notes', '').strip()
+
+    # Build asset data dict for the AI
+    asset_data = {
+        'name': asset.name,
+        'type': asset.get_asset_type_display(),
+        'asset_tag': asset.asset_tag,
+        'serial_number': asset.serial_number,
+        'manufacturer': asset.manufacturer,
+        'model': asset.model,
+        'hostname': asset.hostname,
+        'ip_address': str(asset.ip_address) if asset.ip_address else '',
+        'mac_address': asset.mac_address,
+        'os_name': asset.os_name,
+        'os_version': asset.os_version,
+        'cpu': asset.cpu,
+        'ram_gb': f'{asset.ram_gb} GB' if asset.ram_gb else '',
+        'storage': asset.storage,
+        'notes': asset.notes,
+        'location': str(asset.organization.name) if asset.organization else '',
+    }
+
+    # Append RMM data if available
+    try:
+        rmm = asset.rmm_devices.select_related('connection').first()
+        if rmm:
+            asset_data['rmm_provider'] = rmm.connection.get_provider_type_display() if rmm.connection else ''
+            asset_data['rmm_status'] = 'Online' if rmm.is_online else 'Offline'
+            asset_data['rmm_last_seen'] = rmm.last_seen.strftime('%Y-%m-%d %H:%M') if rmm.last_seen else ''
+            asset_data['rmm_site'] = rmm.site_name
+            asset_data['rmm_os'] = f'{rmm.os_type} {rmm.os_version}'.strip()
+    except Exception:
+        pass
+
+    generator = AIDocumentationGenerator()
+    result = generator.generate_asset_documentation(asset_data, template_type, user_notes)
+
+    if not result.get('success'):
+        return JsonResponse({'success': False, 'error': result.get('error', 'Generation failed')}, status=500)
+
+    doc_title = result['title']
+    doc_content = result['content']
+
+    # Update existing AI doc or create a new one
+    doc = asset.ai_document
+    if doc:
+        doc.title = doc_title
+        doc.body = doc_content
+        doc.content_type = 'html'
+        doc.save()
+    else:
+        base_slug = slugify(f'{asset.name}-ai-doc')
+        slug = base_slug
+        counter = 1
+        while Document.objects.filter(organization=asset.organization, slug=slug).exists():
+            slug = f'{base_slug}-{counter}'
+            counter += 1
+        doc = Document.objects.create(
+            organization=asset.organization,
+            title=doc_title,
+            body=doc_content,
+            content_type='html',
+            slug=slug,
+        )
+        asset.ai_document = doc
+        asset.save(update_fields=['ai_document'])
+
+    from django.urls import reverse
+    return JsonResponse({
+        'success': True,
+        'title': doc_title,
+        'url': reverse('docs:document_detail', kwargs={'pk': doc.pk}),
+    })
 
 
 @login_required

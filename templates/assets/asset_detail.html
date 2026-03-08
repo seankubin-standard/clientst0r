@@ -16,6 +16,16 @@
         <a href="{% url 'assets:asset_generate_profile' asset.pk %}" class="btn btn-info">
             <i class="fas fa-magic"></i> {% if asset.profile_document %}Regenerate Profile{% else %}Generate Profile{% endif %}
         </a>
+        {% if has_ai %}
+        {% if asset.ai_document %}
+        <a href="{% url 'docs:document_detail' asset.ai_document.pk %}" class="btn btn-outline-success">
+            <i class="fas fa-robot"></i> View AI Doc
+        </a>
+        {% endif %}
+        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#aiDocModal">
+            <i class="fas fa-robot"></i> {% if asset.ai_document %}Regenerate AI Doc{% else %}Generate AI Doc{% endif %}
+        </button>
+        {% endif %}
         <a href="{% url 'assets:asset_edit' asset.pk %}" class="btn btn-secondary">
             <i class="fas fa-edit"></i> Edit
         </a>
@@ -548,4 +558,148 @@ function deleteImage(imageId, button) {
     });
 }
 </script>
+
+{% if has_ai %}
+<!-- AI Doc Generation Modal -->
+<div class="modal fade" id="aiDocModal" tabindex="-1" aria-labelledby="aiDocModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="aiDocModalLabel"><i class="fas fa-robot me-2"></i>Generate AI Documentation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-3">Select a documentation template. The AI will use all known asset data to write the document — you can edit it afterwards.</p>
+
+                <!-- Template picker -->
+                <div class="list-group mb-3" id="ai-doc-template-list">
+                    <button type="button" class="list-group-item list-group-item-action ai-doc-template active" data-template="server_blueprint">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-server fa-2x me-3 text-primary"></i>
+                            <div>
+                                <h6 class="mb-1">Server Blueprint</h6>
+                                <p class="mb-0 small text-muted">Role, hardware, network, OS, backup, DR, dependencies, maintenance</p>
+                            </div>
+                        </div>
+                    </button>
+                    <button type="button" class="list-group-item list-group-item-action ai-doc-template" data-template="network_device">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-network-wired fa-2x me-3 text-info"></i>
+                            <div>
+                                <h6 class="mb-1">Network Device Config</h6>
+                                <p class="mb-0 small text-muted">Interfaces, VLANs, routing, management access, firmware</p>
+                            </div>
+                        </div>
+                    </button>
+                    <button type="button" class="list-group-item list-group-item-action ai-doc-template" data-template="workstation">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-laptop fa-2x me-3 text-warning"></i>
+                            <div>
+                                <h6 class="mb-1">Workstation / Laptop Setup</h6>
+                                <p class="mb-0 small text-muted">Assigned user, software, security, peripherals, backup</p>
+                            </div>
+                        </div>
+                    </button>
+                    <button type="button" class="list-group-item list-group-item-action ai-doc-template" data-template="security">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-shield-alt fa-2x me-3 text-danger"></i>
+                            <div>
+                                <h6 class="mb-1">Security &amp; Compliance Record</h6>
+                                <p class="mb-0 small text-muted">Exposure, ACLs, patching, encryption, compliance notes</p>
+                            </div>
+                        </div>
+                    </button>
+                    <button type="button" class="list-group-item list-group-item-action ai-doc-template" data-template="general">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-file-alt fa-2x me-3 text-secondary"></i>
+                            <div>
+                                <h6 class="mb-1">General Asset Doc</h6>
+                                <p class="mb-0 small text-muted">Generic documentation for any device type</p>
+                            </div>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- Optional notes -->
+                <div class="mb-3">
+                    <label for="ai-doc-notes" class="form-label fw-semibold"><i class="fas fa-comment-alt me-1"></i> Additional context <span class="text-muted fw-normal">(optional)</span></label>
+                    <textarea id="ai-doc-notes" class="form-control" rows="3" placeholder="e.g. This server hosts our ERP system. Backups run nightly to Azure Blob. Managed by IT team only."></textarea>
+                </div>
+
+                <!-- Status -->
+                <div id="ai-doc-loading" class="text-center py-3" style="display:none;">
+                    <div class="spinner-border text-success" role="status"></div>
+                    <p class="mt-2 text-muted">Generating documentation… this may take 15–30 seconds.</p>
+                </div>
+                <div id="ai-doc-error" class="alert alert-danger" style="display:none;">
+                    <i class="fas fa-exclamation-circle me-2"></i><span id="ai-doc-error-msg"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="ai-doc-generate-btn">
+                    <i class="fas fa-robot me-1"></i> Generate
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    let selectedTemplate = 'server_blueprint';
+
+    document.querySelectorAll('.ai-doc-template').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.ai-doc-template').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            selectedTemplate = this.dataset.template;
+        });
+    });
+
+    document.getElementById('ai-doc-generate-btn').addEventListener('click', function() {
+        const notes = document.getElementById('ai-doc-notes').value.trim();
+        const loading = document.getElementById('ai-doc-loading');
+        const errorDiv = document.getElementById('ai-doc-error');
+        const btn = this;
+
+        loading.style.display = 'block';
+        errorDiv.style.display = 'none';
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Generating…';
+
+        fetch('{% url "assets:asset_ai_doc" asset.pk %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                template_type: selectedTemplate,
+                user_notes: notes
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = data.url;
+            } else {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-robot me-1"></i> Generate';
+                document.getElementById('ai-doc-error-msg').textContent = data.error || 'Generation failed.';
+                errorDiv.style.display = 'block';
+            }
+        })
+        .catch(err => {
+            loading.style.display = 'none';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-robot me-1"></i> Generate';
+            document.getElementById('ai-doc-error-msg').textContent = err.message || 'Network error.';
+            errorDiv.style.display = 'block';
+        });
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}
