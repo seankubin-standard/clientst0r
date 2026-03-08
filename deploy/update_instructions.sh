@@ -170,47 +170,47 @@ if ! crontab -l 2>/dev/null | grep -q "check_update_trigger.sh"; then
 fi
 
 # =====================================================================
-# Step 5: Clear Python bytecode cache + hard restart
+# Step 5: Clear Python bytecode cache + graceful reload
 # =====================================================================
 log ""
-log "Step 5/5: Clearing bytecode cache and restarting service..."
+log "Step 5/5: Clearing bytecode cache and reloading service..."
 
 # Purge __pycache__ and .pyc files so no stale bytecode survives the update.
-# (git reset updates mtime but this is belt-and-suspenders for edge cases.)
 find "$BASE_DIR" -type f -name "*.pyc" -delete 2>/dev/null || true
 find "$BASE_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 log "Bytecode cache cleared"
 
-SYSTEMD_RUN=$(command -v systemd-run 2>/dev/null || true)
 SYSTEMCTL=$(command -v systemctl 2>/dev/null || true)
+SYSTEMD_RUN=$(command -v systemd-run 2>/dev/null || true)
 
 if [ -n "$SERVICE" ] && [ -n "$SYSTEMCTL" ]; then
-    # Hard restart: stop the service, pkill -9 any orphaned workers that didn't
-    # respond to SIGTERM, then start fresh.  This is the same strategy used by
-    # the web UI "Force Restart" button and is the only reliable way to ensure
-    # every worker is on the new code when a previous restart was partial.
-    RESTART_SCHEDULED=0
-
-    if [ -n "$SYSTEMD_RUN" ]; then
-        HARD_RESTART_CMD="$SYSTEMCTL stop $SERVICE; /usr/bin/pkill -9 -f gunicorn 2>/dev/null || true; sleep 1; $SYSTEMCTL start $SERVICE"
-        if sudo "$SYSTEMD_RUN" --on-active=5 --system /bin/bash -c "$HARD_RESTART_CMD" 2>/dev/null; then
-            log "Step 5/5: Hard restart of '$SERVICE' scheduled via systemd-run (5-second delay)"
-            RESTART_SCHEDULED=1
-        else
-            log "[WARN] systemd-run failed — falling back to nohup"
+    # Graceful reload: sends SIGHUP to the gunicorn master (ExecReload=kill -HUP $MAINPID).
+    # Workers are replaced one-by-one while the master stays alive — zero downtime.
+    if sudo "$SYSTEMCTL" reload "$SERVICE" 2>/dev/null; then
+        log "Step 5/5: Graceful reload of '$SERVICE' completed (zero downtime)"
+    else
+        # Service not running or reload unsupported — fall back to a clean restart.
+        log "[WARN] reload failed — falling back to restart (brief downtime expected)"
+        RESTART_SCHEDULED=0
+        if [ -n "$SYSTEMD_RUN" ]; then
+            if sudo "$SYSTEMD_RUN" --on-active=3 --system "$SYSTEMCTL" restart "$SERVICE" 2>/dev/null; then
+                log "Step 5/5: Restart of '$SERVICE' scheduled via systemd-run (3-second delay)"
+                RESTART_SCHEDULED=1
+            fi
+        fi
+        if [ "$RESTART_SCHEDULED" -eq 0 ]; then
+            nohup sudo "$SYSTEMCTL" restart "$SERVICE" >/dev/null 2>&1 &
+            disown 2>/dev/null || true
+            log "Step 5/5: Restart of '$SERVICE' scheduled via nohup"
         fi
     fi
-
-    if [ "$RESTART_SCHEDULED" -eq 0 ]; then
-        nohup sudo /bin/bash -c "sleep 5; $SYSTEMCTL stop $SERVICE; /usr/bin/pkill -9 -f gunicorn 2>/dev/null || true; sleep 1; $SYSTEMCTL start $SERVICE" >/dev/null 2>&1 &
-        disown 2>/dev/null || true
-        log "Step 5/5: Hard restart of '$SERVICE' scheduled via nohup (5-second delay)"
-    fi
 else
-    # No systemd service — kill all gunicorn workers then restart master
-    nohup sudo /bin/bash -c "sleep 5 && pkill -9 -f gunicorn 2>/dev/null || true" >/dev/null 2>&1 &
-    disown 2>/dev/null || true
-    log "Step 5/5: Gunicorn hard-kill scheduled via nohup (5-second delay)"
+    # No systemd service — send SIGHUP to gunicorn master for graceful reload.
+    if pkill -HUP -f 'gunicorn.*wsgi:application' 2>/dev/null; then
+        log "Step 5/5: Graceful reload signal sent to gunicorn master"
+    else
+        log "[WARN] Could not send SIGHUP to gunicorn — workers may be stale"
+    fi
 fi
 
 log ""
