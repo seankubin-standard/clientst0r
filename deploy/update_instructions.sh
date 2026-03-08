@@ -185,16 +185,22 @@ SYSTEMD_RUN=$(command -v systemd-run 2>/dev/null || true)
 SYSTEMCTL=$(command -v systemctl 2>/dev/null || true)
 
 if [ -n "$SERVICE" ] && [ -n "$SYSTEMCTL" ]; then
-    # Hard restart: stop the service, pkill -9 any orphaned workers that didn't
-    # respond to SIGTERM, then start fresh.  This is the same strategy used by
-    # the web UI "Force Restart" button and is the only reliable way to ensure
-    # every worker is on the new code when a previous restart was partial.
+    # Two-step restart:
+    # 1. systemctl restart handles the systemd-tracked workers cleanly.
+    # 2. A targeted pkill afterwards cleans up any orphaned workers that were
+    #    started outside systemd (e.g. from a previous manual start or failed
+    #    restart) and therefore not tracked by the service unit.
+    #
+    # IMPORTANT: pkill pattern must match only actual gunicorn worker processes,
+    # NOT this restart script — `-f gunicorn` alone would match any bash -c
+    # command that contains the word "gunicorn" in its arguments, killing the
+    # script itself and preventing the start step from running (which is exactly
+    # what caused the 502 in v3.13.90).
     RESTART_SCHEDULED=0
 
     if [ -n "$SYSTEMD_RUN" ]; then
-        HARD_RESTART_CMD="$SYSTEMCTL stop $SERVICE; /usr/bin/pkill -9 -f gunicorn 2>/dev/null || true; sleep 1; $SYSTEMCTL start $SERVICE"
-        if sudo "$SYSTEMD_RUN" --on-active=5 --system /bin/bash -c "$HARD_RESTART_CMD" 2>/dev/null; then
-            log "Step 5/5: Hard restart of '$SERVICE' scheduled via systemd-run (5-second delay)"
+        if sudo "$SYSTEMD_RUN" --on-active=5 --system "$SYSTEMCTL" restart "$SERVICE" 2>/dev/null; then
+            log "Step 5/5: Restart of '$SERVICE' scheduled via systemd-run (5-second delay)"
             RESTART_SCHEDULED=1
         else
             log "[WARN] systemd-run failed — falling back to nohup"
@@ -202,15 +208,21 @@ if [ -n "$SERVICE" ] && [ -n "$SYSTEMCTL" ]; then
     fi
 
     if [ "$RESTART_SCHEDULED" -eq 0 ]; then
-        nohup sudo /bin/bash -c "sleep 5; $SYSTEMCTL stop $SERVICE; /usr/bin/pkill -9 -f gunicorn 2>/dev/null || true; sleep 1; $SYSTEMCTL start $SERVICE" >/dev/null 2>&1 &
+        nohup sudo "$SYSTEMCTL" restart "$SERVICE" >/dev/null 2>&1 &
         disown 2>/dev/null || true
-        log "Step 5/5: Hard restart of '$SERVICE' scheduled via nohup (5-second delay)"
+        log "Step 5/5: Restart of '$SERVICE' scheduled via nohup"
     fi
-else
-    # No systemd service — kill all gunicorn workers then restart master
-    nohup sudo /bin/bash -c "sleep 5 && pkill -9 -f gunicorn 2>/dev/null || true" >/dev/null 2>&1 &
+
+    # Kill orphaned workers (specific pattern — matches gunicorn workers only,
+    # not bash scripts that happen to mention gunicorn in their arguments).
+    nohup sudo /usr/bin/pkill -9 -f 'gunicorn.*wsgi:application' >/dev/null 2>&1 &
     disown 2>/dev/null || true
-    log "Step 5/5: Gunicorn hard-kill scheduled via nohup (5-second delay)"
+    log "Orphan worker cleanup scheduled"
+else
+    # No systemd service — reload via HUP then kill stale workers
+    nohup sudo /bin/bash -c "sleep 5 && pkill -HUP -f 'gunicorn.*wsgi:application' 2>/dev/null || true" >/dev/null 2>&1 &
+    disown 2>/dev/null || true
+    log "Step 5/5: Gunicorn reload signal scheduled via nohup (5-second delay)"
 fi
 
 log ""
