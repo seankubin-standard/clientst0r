@@ -2,7 +2,7 @@
 Integrations forms
 """
 from django import forms
-from .models import PSAConnection, RMMConnection
+from .models import PSAConnection, RMMConnection, UnifiConnection, M365Connection
 
 
 class PSAConnectionForm(forms.ModelForm):
@@ -562,3 +562,100 @@ class RMMConnectionForm(forms.ModelForm):
             connection.save()
 
         return connection
+
+
+class UnifiConnectionForm(forms.ModelForm):
+    """Form for creating/editing UniFi connections."""
+
+    api_key = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'UniFi API key'}),
+        required=True,
+        label='API Key',
+        help_text='Generate in UniFi OS → Settings → API → Create API Key',
+    )
+
+    class Meta:
+        model = UnifiConnection
+        fields = ['name', 'host', 'verify_ssl', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Main Office UniFi'}),
+            'host': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://192.168.1.1'}),
+            'verify_ssl': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+    def __init__(self, *args, organization=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.organization = organization
+        if self.instance and self.instance.pk:
+            self.fields['api_key'].required = False
+            self.fields['api_key'].help_text += ' (leave blank to keep existing key)'
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.organization:
+            instance.organization = self.organization
+        api_key = self.cleaned_data.get('api_key', '').strip()
+        if api_key:
+            instance.set_credentials({'api_key': api_key})
+        if commit:
+            instance.save()
+        return instance
+
+
+class M365ConnectionForm(forms.ModelForm):
+    """Form for creating/editing M365 tenant connections."""
+
+    client_id = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Application (client) ID'}),
+        required=True,
+        label='Client ID',
+        help_text='App registration → Overview → Application (client) ID',
+    )
+    client_secret = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Client secret value'}),
+        required=True,
+        label='Client Secret',
+        help_text='App registration → Certificates & secrets → New client secret',
+    )
+
+    class Meta:
+        model = M365Connection
+        fields = ['name', 'tenant_id', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Contoso M365'}),
+            'tenant_id': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+        help_texts = {
+            'tenant_id': 'Azure portal → Azure Active Directory → Overview → Directory (tenant) ID',
+        }
+
+    def __init__(self, *args, organization=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.organization = organization
+        if self.instance and self.instance.pk:
+            self.fields['client_id'].required = False
+            self.fields['client_secret'].required = False
+            for f in ('client_id', 'client_secret'):
+                self.fields[f].help_text += ' (leave blank to keep existing)'
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.organization:
+            instance.organization = self.organization
+        client_id = self.cleaned_data.get('client_id', '').strip()
+        client_secret = self.cleaned_data.get('client_secret', '').strip()
+        if client_id and client_secret:
+            instance.set_credentials({'client_id': client_id, 'client_secret': client_secret})
+        elif client_id or client_secret:
+            # Partial update: merge with existing
+            existing = instance.get_credentials()
+            if client_id:
+                existing['client_id'] = client_id
+            if client_secret:
+                existing['client_secret'] = client_secret
+            instance.set_credentials(existing)
+        if commit:
+            instance.save()
+        return instance

@@ -43,4 +43,20 @@ urlpatterns = [
     path('rmm/global-device-map-data/', views.global_rmm_device_map_data, name='global_rmm_device_map_data'),
     path('rmm/alerts/', views.rmm_alerts, name='rmm_alerts'),
     path('rmm/software/', views.rmm_software, name='rmm_software'),
+
+    # UniFi
+    path('unifi/create/', views.unifi_create, name='unifi_create'),
+    path('unifi/<int:pk>/', views.unifi_detail, name='unifi_detail'),
+    path('unifi/<int:pk>/edit/', views.unifi_edit, name='unifi_edit'),
+    path('unifi/<int:pk>/delete/', views.unifi_delete, name='unifi_delete'),
+    path('unifi/<int:pk>/test/', views.unifi_test, name='unifi_test'),
+    path('unifi/<int:pk>/sync/', views.unifi_sync, name='unifi_sync'),
+
+    # M365
+    path('m365/create/', views.m365_create, name='m365_create'),
+    path('m365/<int:pk>/', views.m365_detail, name='m365_detail'),
+    path('m365/<int:pk>/edit/', views.m365_edit, name='m365_edit'),
+    path('m365/<int:pk>/delete/', views.m365_delete, name='m365_delete'),
+    path('m365/<int:pk>/test/', views.m365_test, name='m365_test'),
+    path('m365/<int:pk>/sync/', views.m365_sync, name='m365_sync'),
 ]

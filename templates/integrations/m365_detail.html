@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ connection.name }} - M365 - Client St0r{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fab fa-microsoft"></i> {{ connection.name }}</h2>
+    <div class="btn-group">
+        <a href="{% url 'integrations:m365_sync' connection.pk %}" class="btn btn-success">
+            <i class="fas fa-sync"></i> Sync Now
+        </a>
+        <a href="{% url 'integrations:m365_test' connection.pk %}" class="btn btn-outline-info">
+            <i class="fas fa-plug"></i> Test
+        </a>
+        <a href="{% url 'integrations:m365_edit' connection.pk %}" class="btn btn-outline-secondary">
+            <i class="fas fa-edit"></i> Edit
+        </a>
+        <a href="{% url 'integrations:m365_delete' connection.pk %}" class="btn btn-outline-danger">
+            <i class="fas fa-trash"></i> Delete
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Connection Details</div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr><th style="width:40%">Tenant ID</th><td><code>{{ connection.tenant_id }}</code></td></tr>
+                    <tr><th>Status</th><td>
+                        {% if connection.last_sync_status == 'ok' %}<span class="badge bg-success">OK</span>
+                        {% elif connection.last_sync_status == 'error' %}<span class="badge bg-danger">Error</span>
+                        {% else %}<span class="badge bg-secondary">Never synced</span>{% endif %}
+                    </td></tr>
+                    <tr><th>Last Sync</th><td>{{ connection.last_sync_at|default:"Never" }}</td></tr>
+                    {% if connection.last_error %}<tr><th>Last Error</th><td class="text-danger small">{{ connection.last_error }}</td></tr>{% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Documentation</div>
+            <div class="card-body">
+                {% if connection.doc %}
+                <p>Tenant documentation has been generated.</p>
+                <a href="{% url 'docs:document_detail' slug=connection.doc.slug %}" class="btn btn-outline-primary">
+                    <i class="fas fa-file-alt"></i> View Documentation
+                </a>
+                {% else %}
+                <p class="text-muted">No documentation yet. Click <strong>Sync Now</strong> to generate.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if users or licenses %}
+<div class="row">
+    <div class="col-md-3">
+        <div class="card text-center mb-3">
+            <div class="card-body">
+                <h3>{{ users|length }}</h3>
+                <p class="text-muted mb-0">Licensed Users</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center mb-3">
+            <div class="card-body">
+                <h3>{{ licenses|length }}</h3>
+                <p class="text-muted mb-0">License SKUs</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center mb-3">
+            <div class="card-body">
+                <h3>{{ teams|length }}</h3>
+                <p class="text-muted mb-0">Teams</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center mb-3">
+            <div class="card-body">
+                <h3>{{ sharepoint_sites|length }}</h3>
+                <p class="text-muted mb-0">SharePoint Sites</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

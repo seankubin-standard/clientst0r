@@ -603,3 +603,97 @@ class RMMSoftware(BaseModel):
         vendor_str = f" by {self.vendor}" if self.vendor else ""
         version_str = f" {self.version}" if self.version else ""
         return f"{self.name}{version_str}{vendor_str}"
+
+
+# ============================================================================
+# UniFi Integration Models
+# ============================================================================
+
+class UnifiConnection(BaseModel):
+    """
+    UniFi Network Application connection per organization.
+    Pulls network topology data for documentation generation.
+    """
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='unifi_connections')
+    name = models.CharField(max_length=255, help_text="Friendly name for this connection")
+    host = models.URLField(max_length=500, help_text="UniFi controller URL, e.g. https://192.168.1.1")
+    verify_ssl = models.BooleanField(default=False, help_text="Verify SSL certificate (disable for self-signed)")
+
+    # Encrypted API key
+    encrypted_credentials = models.TextField(blank=True, help_text="Encrypted JSON with api_key")
+
+    is_active = models.BooleanField(default=True)
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    last_sync_status = models.CharField(max_length=50, blank=True)
+    last_error = models.TextField(blank=True)
+    cached_data = models.JSONField(default=dict, blank=True)
+
+    # Link to generated doc
+    doc = models.ForeignKey('docs.Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='unifi_connections')
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'unifi_connections'
+        unique_together = [['organization', 'name']]
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.organization.slug}:{self.name}"
+
+    def set_credentials(self, credentials_dict):
+        encrypted = encrypt_dict(credentials_dict)
+        self.encrypted_credentials = json.dumps(encrypted)
+
+    def get_credentials(self):
+        if not self.encrypted_credentials:
+            return {}
+        encrypted = json.loads(self.encrypted_credentials)
+        return decrypt_dict(encrypted)
+
+
+# ============================================================================
+# Microsoft 365 Integration Models
+# ============================================================================
+
+class M365Connection(BaseModel):
+    """
+    Microsoft 365 tenant connection per organization.
+    Uses Azure AD app registration (client credentials flow) to read tenant data via Graph API.
+    Credentials are encrypted at rest.
+    """
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='m365_connections')
+    name = models.CharField(max_length=255, help_text="Friendly name for this connection")
+    tenant_id = models.CharField(max_length=255, help_text="Azure AD tenant ID (Directory ID)")
+
+    # Encrypted credentials: client_id, client_secret
+    encrypted_credentials = models.TextField(blank=True, help_text="Encrypted JSON with client_id and client_secret")
+
+    is_active = models.BooleanField(default=True)
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    last_sync_status = models.CharField(max_length=50, blank=True)
+    last_error = models.TextField(blank=True)
+    cached_data = models.JSONField(default=dict, blank=True)
+
+    # Link to generated doc
+    doc = models.ForeignKey('docs.Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='m365_connections')
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'm365_connections'
+        unique_together = [['organization', 'name']]
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.organization.slug}:{self.name}"
+
+    def set_credentials(self, credentials_dict):
+        encrypted = encrypt_dict(credentials_dict)
+        self.encrypted_credentials = json.dumps(encrypted)
+
+    def get_credentials(self):
+        if not self.encrypted_credentials:
+            return {}
+        encrypted = json.loads(self.encrypted_credentials)
+        return decrypt_dict(encrypted)

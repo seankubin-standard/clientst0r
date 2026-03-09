@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Delete UniFi Connection - Client St0r{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header text-bg-danger">Confirm Deletion</div>
+    <div class="card-body">
+        <p>Are you sure you want to delete the UniFi connection <strong>{{ connection.name }}</strong>?</p>
+        {% if connection.doc %}<p class="text-warning">The linked documentation page will <strong>not</strong> be deleted.</p>{% endif %}
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Delete</button>
+            <a href="{% url 'integrations:unifi_detail' connection.pk %}" class="btn btn-outline-secondary ms-2">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

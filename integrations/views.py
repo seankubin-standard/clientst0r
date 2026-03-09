@@ -8,9 +8,9 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.db import IntegrityError
 from core.middleware import get_request_organization
-from core.decorators import require_admin
-from .models import PSAConnection, PSACompany, PSAContact, PSATicket, RMMConnection, RMMDevice, RMMAlert, RMMSoftware
-from .forms import PSAConnectionForm, RMMConnectionForm
+from core.decorators import require_admin, require_write
+from .models import PSAConnection, PSACompany, PSAContact, PSATicket, RMMConnection, RMMDevice, RMMAlert, RMMSoftware, UnifiConnection, M365Connection
+from .forms import PSAConnectionForm, RMMConnectionForm, UnifiConnectionForm, M365ConnectionForm
 from .sync import PSASync
 from .providers import get_provider
 from .providers.rmm import get_rmm_provider
@@ -23,14 +23,18 @@ logger = logging.getLogger('integrations')
 
 @login_required
 def integration_list(request):
-    """List PSA and RMM connections."""
+    """List PSA, RMM, UniFi, and M365 connections."""
     org = get_request_organization(request)
     psa_connections = PSAConnection.objects.for_organization(org)
     rmm_connections = RMMConnection.objects.for_organization(org)
+    unifi_connections = UnifiConnection.objects.for_organization(org)
+    m365_connections = M365Connection.objects.for_organization(org)
 
     return render(request, 'integrations/integration_list.html', {
         'psa_connections': psa_connections,
         'rmm_connections': rmm_connections,
+        'unifi_connections': unifi_connections,
+        'm365_connections': m365_connections,
     })
 
 
@@ -1124,3 +1128,488 @@ def rmm_organization_mapping(request, pk):
         'site_mapping_data': site_mapping_data,
         'all_organizations': all_organizations,
     })
+
+# ============================================================================
+# UniFi Integration Views
+# ============================================================================
+
+@login_required
+@require_admin
+def unifi_create(request):
+    """Create new UniFi connection."""
+    org = get_request_organization(request)
+    if not org:
+        messages.error(request, "Please select an organization first.")
+        return redirect('integrations:integration_list')
+
+    if request.method == 'POST':
+        form = UnifiConnectionForm(request.POST, organization=org)
+        if form.is_valid():
+            connection = form.save()
+            messages.success(request, f"UniFi connection '{connection.name}' created.")
+            return redirect('integrations:unifi_detail', pk=connection.pk)
+    else:
+        form = UnifiConnectionForm(organization=org)
+
+    return render(request, 'integrations/unifi_form.html', {'form': form, 'action': 'Create'})
+
+
+@login_required
+def unifi_detail(request, pk):
+    """View UniFi connection details and cached data."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+    return render(request, 'integrations/unifi_detail.html', {'connection': connection})
+
+
+@login_required
+@require_admin
+def unifi_edit(request, pk):
+    """Edit UniFi connection."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+
+    if request.method == 'POST':
+        form = UnifiConnectionForm(request.POST, instance=connection, organization=org)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"UniFi connection '{connection.name}' updated.")
+            return redirect('integrations:unifi_detail', pk=connection.pk)
+    else:
+        form = UnifiConnectionForm(instance=connection, organization=org)
+
+    return render(request, 'integrations/unifi_form.html', {'form': form, 'connection': connection, 'action': 'Edit'})
+
+
+@login_required
+@require_admin
+def unifi_delete(request, pk):
+    """Delete UniFi connection."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+
+    if request.method == 'POST':
+        name = connection.name
+        connection.delete()
+        messages.success(request, f"UniFi connection '{name}' deleted.")
+        return redirect('integrations:integration_list')
+
+    return render(request, 'integrations/unifi_confirm_delete.html', {'connection': connection})
+
+
+@login_required
+@require_write
+def unifi_test(request, pk):
+    """Test UniFi connection."""
+    from integrations.providers.unifi import UnifiProvider
+    org = get_request_organization(request)
+    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+    creds = connection.get_credentials()
+    provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl)
+    result = provider.test_connection()
+    if result['success']:
+        messages.success(request, f"Connected: {result['message']}")
+    else:
+        messages.error(request, f"Connection failed: {result['error']}")
+    return redirect('integrations:unifi_detail', pk=pk)
+
+
+@login_required
+@require_write
+def unifi_sync(request, pk):
+    """Sync UniFi data and regenerate documentation."""
+    from integrations.providers.unifi import UnifiProvider
+    from django.utils import timezone
+    from django.utils.text import slugify
+    from docs.models import Document
+    import html as html_lib
+
+    org = get_request_organization(request)
+    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+    creds = connection.get_credentials()
+
+    provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl)
+    try:
+        data = provider.sync()
+        connection.cached_data = data
+        connection.last_sync_at = timezone.now()
+        connection.last_sync_status = 'ok'
+        connection.last_error = ''
+
+        # Build documentation HTML
+        now = timezone.now().strftime('%Y-%m-%d %H:%M')
+        site_sections = ''
+        for site in data.get('sites', []):
+            # Devices table
+            device_rows = ''
+            for d in site.get('devices', []):
+                name = html_lib.escape(d.get('name') or d.get('hostname') or '—')
+                model = html_lib.escape(d.get('model', '—'))
+                dtype = html_lib.escape(d.get('type', '—'))
+                ip = html_lib.escape(str(d.get('ip') or d.get('ipAddress') or '—'))
+                mac = html_lib.escape(str(d.get('mac') or '—'))
+                state = d.get('state', 0)
+                status_badge = '<span class="badge bg-success">Online</span>' if state == 1 else '<span class="badge bg-secondary">Offline</span>'
+                device_rows += f'<tr><td>{name}</td><td>{dtype}</td><td>{model}</td><td>{ip}</td><td>{mac}</td><td>{status_badge}</td></tr>'
+
+            devices_table = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-network-wired me-2"></i>Devices ({len(site["devices"])})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Name</th><th>Type</th><th>Model</th><th>IP</th><th>MAC</th><th>Status</th></tr></thead>
+      <tbody>{device_rows or "<tr><td colspan='6' class='text-muted'>No devices found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if site.get('devices') else ''
+
+            # WLANs table
+            wlan_rows = ''
+            for w in site.get('wlans', []):
+                ssid = html_lib.escape(w.get('name', '—'))
+                enabled = '<span class="badge bg-success">Enabled</span>' if w.get('enabled', True) else '<span class="badge bg-secondary">Disabled</span>'
+                security = html_lib.escape(w.get('security', '—'))
+                wlan_rows += f'<tr><td>{ssid}</td><td>{security}</td><td>{enabled}</td></tr>'
+
+            wlans_table = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-wifi me-2"></i>Wireless Networks ({len(site["wlans"])})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>SSID</th><th>Security</th><th>Status</th></tr></thead>
+      <tbody>{wlan_rows or "<tr><td colspan='3' class='text-muted'>No wireless networks.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if site.get('wlans') else ''
+
+            # VLANs table
+            vlan_rows = ''
+            for v in site.get('vlans', []):
+                vname = html_lib.escape(v.get('name', '—'))
+                purpose = html_lib.escape(v.get('purpose', '—'))
+                subnet = html_lib.escape(v.get('ip_subnet') or v.get('subnet') or '—')
+                vlan_id = html_lib.escape(str(v.get('vlan') or v.get('vlan_id') or '—'))
+                vlan_rows += f'<tr><td>{vname}</td><td>{vlan_id}</td><td>{subnet}</td><td>{purpose}</td></tr>'
+
+            vlans_table = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-sitemap me-2"></i>Networks / VLANs ({len(site["vlans"])})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Name</th><th>VLAN ID</th><th>Subnet</th><th>Purpose</th></tr></thead>
+      <tbody>{vlan_rows or "<tr><td colspan='4' class='text-muted'>No networks found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if site.get('vlans') else ''
+
+            site_sections += f'''
+<div class="card mb-4">
+  <div class="card-header bg-primary text-white">
+    <i class="fas fa-map-marker-alt me-2"></i><strong>{html_lib.escape(site["name"])}</strong>
+    <span class="badge bg-light text-dark ms-2">{site["client_count"]} clients connected</span>
+  </div>
+  <div class="card-body">
+    {devices_table}{wlans_table}{vlans_table}
+  </div>
+</div>'''
+
+        content = f'''<div class="container-fluid p-0">
+<div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from UniFi — last updated {now}</span>
+  <span class="badge bg-primary">{len(data.get("sites", []))} site(s)</span>
+</div>
+{site_sections or "<p class='text-muted'>No sites found.</p>"}
+</div>'''
+
+        # Create or update document
+        doc_title = f'{connection.name} — UniFi Network Documentation'
+        if connection.doc:
+            connection.doc.title = doc_title
+            connection.doc.body = content
+            connection.doc.content_type = 'html'
+            connection.doc.save()
+        else:
+            base_slug = slugify(f'{connection.name}-unifi-network')
+            slug = base_slug
+            counter = 1
+            while Document.objects.filter(organization=connection.organization, slug=slug).exists():
+                slug = f'{base_slug}-{counter}'
+                counter += 1
+            doc = Document.objects.create(
+                organization=connection.organization,
+                title=doc_title,
+                body=content,
+                content_type='html',
+                slug=slug,
+            )
+            connection.doc = doc
+
+        connection.save()
+        site_count = len(data.get('sites', []))
+        messages.success(request, f"Synced {site_count} site(s). Documentation updated.")
+    except Exception as e:
+        connection.last_sync_status = 'error'
+        connection.last_error = str(e)
+        connection.save(update_fields=['last_sync_status', 'last_error'])
+        messages.error(request, f"Sync failed: {e}")
+
+    return redirect('integrations:unifi_detail', pk=pk)
+
+
+# ============================================================================
+# M365 Integration Views
+# ============================================================================
+
+@login_required
+@require_admin
+def m365_create(request):
+    """Create new M365 connection."""
+    org = get_request_organization(request)
+    if not org:
+        messages.error(request, "Please select an organization first.")
+        return redirect('integrations:integration_list')
+
+    if request.method == 'POST':
+        form = M365ConnectionForm(request.POST, organization=org)
+        if form.is_valid():
+            connection = form.save()
+            messages.success(request, f"M365 connection '{connection.name}' created.")
+            return redirect('integrations:m365_detail', pk=connection.pk)
+    else:
+        form = M365ConnectionForm(organization=org)
+
+    return render(request, 'integrations/m365_form.html', {'form': form, 'action': 'Create'})
+
+
+@login_required
+def m365_detail(request, pk):
+    """View M365 connection details and cached data."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(M365Connection, pk=pk, organization=org)
+    data = connection.cached_data or {}
+    return render(request, 'integrations/m365_detail.html', {
+        'connection': connection,
+        'users': data.get('users', []),
+        'licenses': data.get('licenses', []),
+        'teams': data.get('teams', []),
+        'sharepoint_sites': data.get('sharepoint_sites', []),
+        'roles': data.get('roles', []),
+    })
+
+
+@login_required
+@require_admin
+def m365_edit(request, pk):
+    """Edit M365 connection."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(M365Connection, pk=pk, organization=org)
+
+    if request.method == 'POST':
+        form = M365ConnectionForm(request.POST, instance=connection, organization=org)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"M365 connection '{connection.name}' updated.")
+            return redirect('integrations:m365_detail', pk=connection.pk)
+    else:
+        form = M365ConnectionForm(instance=connection, organization=org)
+
+    return render(request, 'integrations/m365_form.html', {'form': form, 'connection': connection, 'action': 'Edit'})
+
+
+@login_required
+@require_admin
+def m365_delete(request, pk):
+    """Delete M365 connection."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(M365Connection, pk=pk, organization=org)
+
+    if request.method == 'POST':
+        name = connection.name
+        connection.delete()
+        messages.success(request, f"M365 connection '{name}' deleted.")
+        return redirect('integrations:integration_list')
+
+    return render(request, 'integrations/m365_confirm_delete.html', {'connection': connection})
+
+
+@login_required
+@require_write
+def m365_test(request, pk):
+    """Test M365 connection."""
+    from integrations.providers.m365 import M365Provider
+    org = get_request_organization(request)
+    connection = get_object_or_404(M365Connection, pk=pk, organization=org)
+    creds = connection.get_credentials()
+    provider = M365Provider(connection.tenant_id, creds.get('client_id', ''), creds.get('client_secret', ''))
+    result = provider.test_connection()
+    if result['success']:
+        messages.success(request, f"\u2713 {result['message']}")
+    else:
+        messages.error(request, f"\u2717 {result['error']}")
+    return redirect('integrations:m365_detail', pk=pk)
+
+
+@login_required
+@require_write
+def m365_sync(request, pk):
+    """Sync M365 data and regenerate documentation."""
+    from integrations.providers.m365 import M365Provider
+    from django.utils import timezone
+    from django.utils.text import slugify
+    from docs.models import Document
+    import html as html_lib
+
+    org = get_request_organization(request)
+    connection = get_object_or_404(M365Connection, pk=pk, organization=org)
+    creds = connection.get_credentials()
+
+    provider = M365Provider(connection.tenant_id, creds.get('client_id', ''), creds.get('client_secret', ''))
+    try:
+        data = provider.sync()
+        connection.cached_data = data
+        connection.last_sync_at = timezone.now()
+        connection.last_sync_status = 'ok'
+        connection.last_error = ''
+
+        now = timezone.now().strftime('%Y-%m-%d %H:%M')
+        users = data.get('users', [])
+        licenses = data.get('licenses', [])
+        teams = data.get('teams', [])
+        sites = data.get('sharepoint_sites', [])
+        roles = data.get('roles', [])
+
+        # Users section
+        user_rows = ''
+        for u in users[:200]:  # cap at 200 for doc size
+            name = html_lib.escape(u.get('displayName', '\u2014'))
+            upn = html_lib.escape(u.get('userPrincipalName', '\u2014'))
+            title = html_lib.escape(u.get('jobTitle') or '\u2014')
+            dept = html_lib.escape(u.get('department') or '\u2014')
+            user_rows += f'<tr><td>{name}</td><td>{upn}</td><td>{title}</td><td>{dept}</td></tr>'
+        users_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-users me-2"></i>Licensed Users ({len(users)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Name</th><th>UPN</th><th>Title</th><th>Department</th></tr></thead>
+      <tbody>{user_rows or "<tr><td colspan='4' class='text-muted'>No users found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>'''
+
+        # Licenses section
+        lic_rows = ''
+        for lic in licenses:
+            sku = html_lib.escape(lic.get('skuPartNumber', '\u2014'))
+            consumed = lic.get('consumedUnits', 0)
+            available = lic.get('prepaidUnits', {}).get('enabled', 0)
+            lic_rows += f'<tr><td>{sku}</td><td>{consumed}</td><td>{available}</td></tr>'
+        licenses_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-key me-2"></i>Assigned Licenses ({len(licenses)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>License SKU</th><th>Assigned</th><th>Available</th></tr></thead>
+      <tbody>{lic_rows or "<tr><td colspan='3' class='text-muted'>No licenses found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>'''
+
+        # Teams section
+        team_rows = ''
+        for t in teams:
+            tname = html_lib.escape(t.get('displayName', '\u2014'))
+            vis = html_lib.escape(t.get('visibility') or 'Private')
+            desc = html_lib.escape((t.get('description') or '')[:80])
+            team_rows += f'<tr><td>{tname}</td><td>{vis}</td><td>{desc}</td></tr>'
+        teams_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-comments me-2"></i>Microsoft Teams ({len(teams)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Name</th><th>Visibility</th><th>Description</th></tr></thead>
+      <tbody>{team_rows or "<tr><td colspan='3' class='text-muted'>No Teams found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if teams else ''
+
+        # SharePoint sites section
+        sp_rows = ''
+        for s in sites[:50]:
+            sname = html_lib.escape(s.get('displayName', '\u2014'))
+            url = html_lib.escape(s.get('webUrl', ''))
+            sp_rows += f'<tr><td>{sname}</td><td><a href="{url}" target="_blank">{url}</a></td></tr>'
+        sp_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-globe me-2"></i>SharePoint Sites ({len(sites)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Name</th><th>URL</th></tr></thead>
+      <tbody>{sp_rows or "<tr><td colspan='2' class='text-muted'>No sites found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if sites else ''
+
+        # Roles section
+        role_rows = ''
+        for r in roles:
+            rname = html_lib.escape(r.get('displayName', '\u2014'))
+            members = r.get('members', [])
+            member_names = ', '.join(html_lib.escape(m.get('displayName', '')) for m in members[:5])
+            if len(members) > 5:
+                member_names += f' +{len(members)-5} more'
+            role_rows += f'<tr><td>{rname}</td><td>{len(members)}</td><td>{member_names}</td></tr>'
+        roles_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-shield-alt me-2"></i>Entra ID Roles ({len(roles)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Role</th><th>Members</th><th>Assigned To</th></tr></thead>
+      <tbody>{role_rows or "<tr><td colspan='3' class='text-muted'>No active roles found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if roles else ''
+
+        content = f'''<div class="container-fluid p-0">
+<div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from Microsoft 365 \u2014 last updated {now}</span>
+  <span class="badge bg-primary">Tenant: {html_lib.escape(connection.tenant_id[:8])}...</span>
+</div>
+{users_section}
+{licenses_section}
+{teams_section}
+{sp_section}
+{roles_section}
+</div>'''
+
+        doc_title = f'{connection.name} \u2014 M365 Tenant Documentation'
+        if connection.doc:
+            connection.doc.title = doc_title
+            connection.doc.body = content
+            connection.doc.content_type = 'html'
+            connection.doc.save()
+        else:
+            base_slug = slugify(f'{connection.name}-m365-tenant')
+            slug = base_slug
+            counter = 1
+            while Document.objects.filter(organization=connection.organization, slug=slug).exists():
+                slug = f'{base_slug}-{counter}'
+                counter += 1
+            doc = Document.objects.create(
+                organization=connection.organization,
+                title=doc_title,
+                body=content,
+                content_type='html',
+                slug=slug,
+            )
+            connection.doc = doc
+
+        connection.save()
+        messages.success(request, f"\u2713 M365 sync complete. {len(users)} users, {len(licenses)} licenses, {len(teams)} teams.")
+    except Exception as e:
+        connection.last_sync_status = 'error'
+        connection.last_error = str(e)
+        connection.save(update_fields=['last_sync_status', 'last_error'])
+        messages.error(request, f"Sync failed: {e}")
+
+    return redirect('integrations:m365_detail', pk=pk)
