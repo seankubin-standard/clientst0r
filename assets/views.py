@@ -402,11 +402,14 @@ def asset_generate_profile(request, pk):
         row('Model', asset.model)
     )
 
-    # Network section
+    # Network section — prefer asset fields, fall back to RMM device values
+    net_hostname = asset.hostname or (rmm.hostname if rmm else '')
+    net_ip = str(asset.ip_address) if asset.ip_address else (str(rmm.ip_address) if rmm and rmm.ip_address else '')
+    net_mac = asset.mac_address or (rmm.mac_address if rmm else '')
     network_rows = (
-        row('Hostname', asset.hostname) +
-        row('IP Address', asset.ip_address) +
-        row('MAC Address', asset.mac_address)
+        row('Hostname', net_hostname) +
+        row('IP Address', net_ip) +
+        row('MAC Address', net_mac)
     )
 
     # OS / Hardware section
@@ -545,7 +548,7 @@ def asset_generate_profile(request, pk):
         asset.save(update_fields=['profile_document'])
         messages.success(request, f'Profile document created for {asset.name}.')
 
-    return redirect('docs:document_detail', pk=doc.pk)
+    return redirect('docs:document_detail', slug=doc.slug)
 
 
 @login_required
@@ -656,7 +659,7 @@ def asset_ai_doc(request, pk):
     return JsonResponse({
         'success': True,
         'title': doc_title,
-        'url': reverse('docs:document_detail', kwargs={'pk': doc.pk}),
+        'url': reverse('docs:document_detail', kwargs={'slug': doc.slug}),
     })
 
 
