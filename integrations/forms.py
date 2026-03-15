@@ -573,6 +573,17 @@ class UnifiConnectionForm(forms.ModelForm):
         label='API Key',
         help_text='Generate in UniFi OS → Settings → API → Create API Key',
     )
+    username = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'UniFi local admin username'}),
+        required=False,
+        label='Username (optional)',
+        help_text='Local admin account for legacy API — enables WLAN, VLAN and client data. Leave blank for devices-only.',
+    )
+    password = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Password'}),
+        required=False,
+        label='Password (optional)',
+    )
 
     class Meta:
         model = UnifiConnection
@@ -590,14 +601,26 @@ class UnifiConnectionForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             self.fields['api_key'].required = False
             self.fields['api_key'].help_text += ' (leave blank to keep existing key)'
+            self.fields['password'].help_text = 'Leave blank to keep existing password.'
 
     def save(self, commit=True):
         instance = super().save(commit=False)
         if self.organization:
             instance.organization = self.organization
         api_key = self.cleaned_data.get('api_key', '').strip()
+        username = self.cleaned_data.get('username', '').strip()
+        password = self.cleaned_data.get('password', '').strip()
+        # Merge with existing credentials so partial edits don't wipe fields
+        existing = instance.get_credentials() if instance.pk else {}
+        creds = dict(existing)
         if api_key:
-            instance.set_credentials({'api_key': api_key})
+            creds['api_key'] = api_key
+        if username:
+            creds['username'] = username
+        if password:
+            creds['password'] = password
+        if creds:
+            instance.set_credentials(creds)
         if commit:
             instance.save()
         return instance

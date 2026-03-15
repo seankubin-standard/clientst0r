@@ -1,6 +1,8 @@
 """
 UniFi Network Application API provider.
-Uses the official UniFi API with X-API-Key header authentication.
+Authentication:
+  - Primary:  X-API-Key header (official API v1, UniFi OS 3.x+)
+  - Optional: username + password (session cookie, legacy API for WLANs/VLANs/clients)
 Reference: https://help.ui.com/hc/en-us/articles/30076656117655
 """
 import logging
@@ -13,10 +15,15 @@ logger = logging.getLogger(__name__)
 class UnifiProvider:
     """Read-only UniFi Network Application API client."""
 
-    def __init__(self, host: str, api_key: str, verify_ssl: bool = False):
+    def __init__(self, host: str, api_key: str, verify_ssl: bool = False,
+                 username: str = '', password: str = ''):
         self.host = host.rstrip('/')
         self.api_key = api_key
         self.verify_ssl = verify_ssl
+        self.username = username
+        self.password = password
+        self._session_cookie = None
+
         self.session = requests.Session()
         self.session.headers.update({
             'X-API-Key': api_key,
@@ -26,6 +33,10 @@ class UnifiProvider:
         if not verify_ssl:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+    # ------------------------------------------------------------------
+    # Official API v1 (X-API-Key)
+    # ------------------------------------------------------------------
+
     def _get(self, path: str, **kwargs) -> dict:
         url = f"{self.host}{path}"
         resp = self.session.get(url, verify=self.verify_ssl, timeout=15, **kwargs)
@@ -33,11 +44,15 @@ class UnifiProvider:
         return resp.json()
 
     def test_connection(self) -> dict:
-        """Test credentials by fetching the site list."""
+        """Test credentials by fetching the site list via official API."""
         try:
             data = self._get('/proxy/network/integration/v1/sites')
             sites = data.get('data', [])
-            return {'success': True, 'message': f"Connected. Found {len(sites)} site(s)."}
+            msg = f"Connected. Found {len(sites)} site(s)."
+            if self.username and self.password:
+                legacy_ok = self._legacy_login()
+                msg += f" Legacy API ({'OK — WLANs/VLANs enabled' if legacy_ok else 'failed — check username/password'})."
+            return {'success': True, 'message': msg}
         except requests.exceptions.SSLError:
             return {'success': False, 'error': 'SSL error — try disabling SSL verification for self-signed certificates.'}
         except requests.exceptions.ConnectionError as e:
@@ -58,6 +73,9 @@ class UnifiProvider:
             return []
 
     def get_devices(self, site_id: str) -> list:
+        """site_id must be the siteId UUID from the official API."""
+        if not site_id:
+            return []
         try:
             data = self._get(f'/proxy/network/integration/v1/sites/{site_id}/devices')
             return data.get('data', [])
@@ -65,46 +83,101 @@ class UnifiProvider:
             logger.warning(f"UniFi get_devices({site_id}) failed: {e}")
             return []
 
-    def get_wlans(self, site_id: str) -> list:
-        """Get wireless networks for a site."""
+    # ------------------------------------------------------------------
+    # Legacy API (session cookie — needs username + password)
+    # ------------------------------------------------------------------
+
+    def _legacy_login(self) -> bool:
+        """Log in to the legacy API and store session cookie."""
         try:
-            data = self._get(f'/proxy/network/api/s/{site_id}/rest/wlanconf')
+            # Try UniFi OS path first
+            for login_path in ('/api/auth/login', '/api/login'):
+                try:
+                    resp = requests.post(
+                        f"{self.host}{login_path}",
+                        json={'username': self.username, 'password': self.password},
+                        verify=self.verify_ssl,
+                        timeout=10,
+                    )
+                    if resp.status_code == 200:
+                        self._session_cookie = resp.cookies
+                        return True
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.warning(f"UniFi legacy login failed: {e}")
+        return False
+
+    def _legacy_get(self, path: str) -> dict:
+        """GET via legacy session-cookie API."""
+        if not self._session_cookie:
+            if not self._legacy_login():
+                return {}
+        resp = requests.get(
+            f"{self.host}{path}",
+            cookies=self._session_cookie,
+            verify=self.verify_ssl,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_wlans(self, site_ref: str) -> list:
+        """Get wireless networks. site_ref = internalReference (e.g. 'default').
+        Requires username/password (legacy API)."""
+        if not (self.username and self.password):
+            return []
+        try:
+            data = self._legacy_get(f'/proxy/network/api/s/{site_ref}/rest/wlanconf')
             return data.get('data', [])
         except Exception as e:
-            logger.warning(f"UniFi get_wlans({site_id}) failed: {e}")
+            logger.warning(f"UniFi get_wlans({site_ref}) failed: {e}")
             return []
 
-    def get_vlans(self, site_id: str) -> list:
-        """Get VLANs/networks for a site."""
+    def get_vlans(self, site_ref: str) -> list:
+        """Get network/VLAN config. site_ref = internalReference (e.g. 'default').
+        Requires username/password (legacy API)."""
+        if not (self.username and self.password):
+            return []
         try:
-            data = self._get(f'/proxy/network/api/s/{site_id}/rest/networkconf')
+            data = self._legacy_get(f'/proxy/network/api/s/{site_ref}/rest/networkconf')
             return data.get('data', [])
         except Exception as e:
-            logger.warning(f"UniFi get_vlans({site_id}) failed: {e}")
+            logger.warning(f"UniFi get_vlans({site_ref}) failed: {e}")
             return []
 
-    def get_client_count(self, site_id: str) -> int:
-        """Get active client count for a site."""
+    def get_client_count(self, site_ref: str) -> int:
+        """Get active client count. Requires username/password (legacy API)."""
+        if not (self.username and self.password):
+            return 0
         try:
-            data = self._get(f'/proxy/network/api/s/{site_id}/stat/sta')
+            data = self._legacy_get(f'/proxy/network/api/s/{site_ref}/stat/sta')
             return len(data.get('data', []))
         except Exception as e:
-            logger.warning(f"UniFi get_client_count({site_id}) failed: {e}")
+            logger.warning(f"UniFi get_client_count({site_ref}) failed: {e}")
             return 0
+
+    # ------------------------------------------------------------------
+    # Sync
+    # ------------------------------------------------------------------
 
     def sync(self) -> dict:
         """Pull all data and return structured summary."""
         sites = self.get_sites()
-        result = {'sites': []}
-        for site in sites:
-            site_id = site.get('siteId') or site.get('name', '')
-            site_name = site.get('meta', {}).get('desc') or site.get('name', site_id)
-            devices = self.get_devices(site_id)
-            wlans = self.get_wlans(site_id)
-            vlans = self.get_vlans(site_id)
-            client_count = self.get_client_count(site_id)
+        has_legacy = bool(self.username and self.password)
+        result = {'sites': [], 'has_legacy_data': has_legacy}
 
-            # Count device types
+        for site in sites:
+            # Official API uses 'siteId' (UUID); legacy API uses 'internalReference' (short name)
+            site_id = site.get('siteId') or site.get('id') or ''
+            site_ref = site.get('internalReference') or site.get('name') or 'default'
+            site_name = (site.get('meta') or {}).get('desc') or site.get('name') or site_ref
+
+            devices = self.get_devices(site_id)
+            wlans = self.get_wlans(site_ref)
+            vlans = self.get_vlans(site_ref)
+            client_count = self.get_client_count(site_ref)
+
             type_counts = {}
             for d in devices:
                 dtype = d.get('type', 'unknown')

@@ -881,6 +881,28 @@ class RMMSync:
             }
             asset_type = asset_type_map.get(device.device_type, 'other')
 
+            raw = device.raw_data or {}
+            cpu = raw.get('cpu_model') or raw.get('cpu') or ''
+            ram_gb = None
+            try:
+                total_ram_mb = raw.get('total_ram') or 0
+                if total_ram_mb:
+                    ram_gb = round(int(total_ram_mb) / 1024, 1)
+            except (ValueError, TypeError):
+                pass
+            disks = raw.get('disks') or []
+            storage_parts = []
+            for disk in disks:
+                dev = disk.get('dev', '?')
+                total = disk.get('total_gb') or disk.get('total') or 0
+                used = disk.get('used_gb') or disk.get('used') or 0
+                if total:
+                    pct = round(used / total * 100) if total else 0
+                    storage_parts.append(f"{dev} {int(total)}GB ({pct}% used)")
+            storage = ', '.join(storage_parts)
+            agent_notes = raw.get('notes') or raw.get('description') or ''
+            notes_text = agent_notes or f'Auto-mapped from RMM device {device.external_id}. Online: {device.is_online}'
+
             asset = Asset.objects.create(
                 organization=device_org,
                 name=device.device_name,
@@ -891,19 +913,60 @@ class RMMSync:
                 hostname=device.hostname or '',
                 ip_address=device.ip_address or '',
                 mac_address=device.mac_address or '',
-                notes=f'Auto-mapped from RMM device {device.external_id}. Online: {device.is_online}',
+                os_name=device.os_type or '',
+                os_version=device.os_version or '',
+                cpu=cpu,
+                ram_gb=ram_gb,
+                storage=storage or '',
+                notes=notes_text,
                 custom_fields={
                     'rmm_synced': True,
                     'rmm_provider': self.connection.provider_type,
                     'rmm_external_id': device.external_id,
-                    'os_type': device.os_type,
-                    'os_version': device.os_version,
                     'is_online': device.is_online,
                     'last_rmm_sync': timezone.now().isoformat(),
                 }
             )
 
             logger.info(f"Created asset {asset.id} from RMM device {device.external_id}")
+        else:
+            # Update existing asset's hardware fields if they're blank
+            update_fields = []
+            raw = device.raw_data or {}
+            if not asset.cpu:
+                cpu = raw.get('cpu_model') or raw.get('cpu') or ''
+                if cpu:
+                    asset.cpu = cpu
+                    update_fields.append('cpu')
+            if not asset.ram_gb:
+                try:
+                    total_ram_mb = raw.get('total_ram') or 0
+                    if total_ram_mb:
+                        asset.ram_gb = round(int(total_ram_mb) / 1024, 1)
+                        update_fields.append('ram_gb')
+                except (ValueError, TypeError):
+                    pass
+            if not asset.storage:
+                disks = raw.get('disks') or []
+                storage_parts = []
+                for disk in disks:
+                    dev = disk.get('dev', '?')
+                    total = disk.get('total_gb') or disk.get('total') or 0
+                    used = disk.get('used_gb') or disk.get('used') or 0
+                    if total:
+                        pct = round(used / total * 100) if total else 0
+                        storage_parts.append(f"{dev} {int(total)}GB ({pct}% used)")
+                if storage_parts:
+                    asset.storage = ', '.join(storage_parts)
+                    update_fields.append('storage')
+            if not asset.os_name and device.os_type:
+                asset.os_name = device.os_type
+                update_fields.append('os_name')
+            if not asset.os_version and device.os_version:
+                asset.os_version = device.os_version
+                update_fields.append('os_version')
+            if update_fields:
+                asset.save(update_fields=update_fields)
 
         # Link device to asset
         device.linked_asset = asset

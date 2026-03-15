@@ -311,6 +311,34 @@ class TacticalRMMProvider(BaseRMMProvider):
         location_data = raw_data.get('location') or raw_data.get('gps_location') or raw_data.get('coordinates')
         latitude, longitude = self._parse_location(location_data)
 
+        # Hardware specs
+        cpu = raw_data.get('cpu_model') or raw_data.get('cpu') or ''
+
+        ram_gb = None
+        total_ram_mb = raw_data.get('total_ram') or 0
+        if total_ram_mb:
+            try:
+                ram_gb = round(int(total_ram_mb) / 1024, 1)
+            except (ValueError, TypeError):
+                pass
+
+        # Disk summary: "C: 200GB (75% used), D: 500GB"
+        storage = ''
+        disks = raw_data.get('disks') or []
+        if disks:
+            parts = []
+            for disk in disks:
+                dev = disk.get('dev', '?')
+                total = disk.get('total_gb') or disk.get('total') or 0
+                used = disk.get('used_gb') or disk.get('used') or 0
+                if total:
+                    pct = round(used / total * 100) if total else 0
+                    parts.append(f"{dev} {int(total)}GB ({pct}% used)")
+            storage = ', '.join(parts)
+
+        # Agent notes/description
+        agent_notes = raw_data.get('notes') or raw_data.get('description') or ''
+
         return {
             'external_id': str(raw_data['agent_id']),
             'device_name': raw_data.get('hostname', ''),
@@ -327,6 +355,11 @@ class TacticalRMMProvider(BaseRMMProvider):
             'longitude': longitude,
             'is_online': raw_data.get('online', False),
             'last_seen': last_seen,
+            # Hardware specs from TRMM
+            'cpu': cpu,
+            'ram_gb': ram_gb,
+            'storage': storage,
+            'agent_notes': agent_notes,
             # Site/Client information for organization mapping
             'site_name': site_name,
             'site_id': site_id,

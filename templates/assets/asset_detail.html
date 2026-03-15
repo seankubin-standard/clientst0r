@@ -649,12 +649,13 @@ function deleteImage(imageId, button) {
 (function() {
     let selectedTemplate = 'server_blueprint';
 
-    document.querySelectorAll('.ai-doc-template').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.ai-doc-template').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            selectedTemplate = this.dataset.template;
-        });
+    // Use event delegation so clicks on inner elements (icon, h6, p) still select the template
+    document.getElementById('ai-doc-template-list').addEventListener('click', function(e) {
+        const btn = e.target.closest('.ai-doc-template');
+        if (!btn) return;
+        document.querySelectorAll('.ai-doc-template').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedTemplate = btn.dataset.template;
     });
 
     document.getElementById('ai-doc-generate-btn').addEventListener('click', function() {

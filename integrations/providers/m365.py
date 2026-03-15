@@ -148,6 +148,40 @@ class M365Provider:
             logger.warning(f"M365 get_roles failed: {e}")
             return []
 
+    def get_conditional_access_policies(self) -> list:
+        """Get Conditional Access policies. Requires Policy.Read.All permission."""
+        try:
+            return self._get_all('/identity/conditionalAccess/policies', params={
+                '$select': 'displayName,state,createdDateTime,modifiedDateTime,conditions,grantControls',
+            })
+        except Exception as e:
+            logger.warning(f"M365 get_conditional_access_policies failed: {e}")
+            return []
+
+    def get_secure_score(self) -> dict:
+        """Get latest Secure Score. Requires SecurityEvents.Read.All or SecurityActions.Read.All."""
+        try:
+            data = self._get('/security/secureScores', params={
+                '$top': '1',
+                '$select': 'currentScore,maxScore,percentageScore,createdDateTime,controlScores',
+            })
+            scores = data.get('value', [])
+            return scores[0] if scores else {}
+        except Exception as e:
+            logger.warning(f"M365 get_secure_score failed: {e}")
+            return {}
+
+    def get_devices(self) -> list:
+        """Get Entra ID registered/joined devices. Requires Device.Read.All."""
+        try:
+            return self._get_all('/devices', params={
+                '$select': 'displayName,operatingSystem,operatingSystemVersion,trustType,approximateLastSignInDateTime,isCompliant,isManaged',
+                '$top': '999',
+            })
+        except Exception as e:
+            logger.warning(f"M365 get_devices failed: {e}")
+            return []
+
     def sync(self) -> dict:
         """Pull all data and return structured summary."""
         return {
@@ -157,4 +191,7 @@ class M365Provider:
             'teams': self.get_teams(),
             'sharepoint_sites': self.get_sharepoint_sites(),
             'roles': self.get_roles(),
+            'conditional_access_policies': self.get_conditional_access_policies(),
+            'secure_score': self.get_secure_score(),
+            'devices': self.get_devices(),
         }

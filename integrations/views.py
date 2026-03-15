@@ -1205,7 +1205,8 @@ def unifi_test(request, pk):
     org = get_request_organization(request)
     connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
     creds = connection.get_credentials()
-    provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl)
+    provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl,
+                             username=creds.get('username', ''), password=creds.get('password', ''))
     result = provider.test_connection()
     if result['success']:
         messages.success(request, f"Connected: {result['message']}")
@@ -1228,7 +1229,8 @@ def unifi_sync(request, pk):
     connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
     creds = connection.get_credentials()
 
-    provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl)
+    provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl,
+                             username=creds.get('username', ''), password=creds.get('password', ''))
     try:
         data = provider.sync()
         connection.cached_data = data
@@ -1477,6 +1479,9 @@ def m365_sync(request, pk):
         teams = data.get('teams', [])
         sites = data.get('sharepoint_sites', [])
         roles = data.get('roles', [])
+        ca_policies = data.get('conditional_access_policies', [])
+        secure_score = data.get('secure_score', {})
+        devices = data.get('devices', [])
 
         # Users section
         user_rows = ''
@@ -1570,16 +1575,101 @@ def m365_sync(request, pk):
   </div>
 </div>''' if roles else ''
 
+        # Shared mailboxes section
+        shared_mbs = data.get('shared_mailboxes', [])
+        smb_rows = ''
+        for u in shared_mbs[:100]:
+            sname = html_lib.escape(u.get('displayName', '\u2014'))
+            mail = html_lib.escape(u.get('mail') or u.get('userPrincipalName', '\u2014'))
+            smb_rows += f'<tr><td>{sname}</td><td>{mail}</td></tr>'
+        smb_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-envelope me-2"></i>Shared Mailboxes ({len(shared_mbs)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Name</th><th>Address</th></tr></thead>
+      <tbody>{smb_rows or "<tr><td colspan='2' class='text-muted'>No shared mailboxes found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if shared_mbs else ''
+
+        # Conditional access policies section
+        ca_rows = ''
+        for p in ca_policies:
+            pname = html_lib.escape(p.get('displayName', '\u2014'))
+            state = p.get('state', 'unknown')
+            badge = {'enabled': 'bg-success', 'disabled': 'bg-secondary', 'enabledForReportingButNotEnforced': 'bg-warning text-dark'}.get(state, 'bg-secondary')
+            state_label = html_lib.escape(state.replace('enabledForReportingButNotEnforced', 'Report-only'))
+            modified = (p.get('modifiedDateTime') or p.get('createdDateTime') or '')[:10]
+            ca_rows += f'<tr><td>{pname}</td><td><span class="badge {badge}">{state_label}</span></td><td>{modified}</td></tr>'
+        ca_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-lock me-2"></i>Conditional Access Policies ({len(ca_policies)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Policy</th><th>State</th><th>Modified</th></tr></thead>
+      <tbody>{ca_rows or "<tr><td colspan='3' class='text-muted'>No CA policies found (may need Policy.Read.All permission).</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>'''
+
+        # Secure score section
+        score_section = ''
+        if secure_score:
+            current = secure_score.get('currentScore', 0)
+            maximum = secure_score.get('maxScore', 0)
+            pct = secure_score.get('percentageScore') or (round(current / maximum * 100, 1) if maximum else 0)
+            score_date = (secure_score.get('createdDateTime') or '')[:10]
+            bar_colour = 'bg-danger' if pct < 40 else ('bg-warning' if pct < 70 else 'bg-success')
+            score_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-shield-alt me-2"></i>Microsoft Secure Score</div>
+  <div class="card-body">
+    <div class="d-flex align-items-center mb-2">
+      <span class="display-6 fw-bold me-3">{current:.0f}</span>
+      <span class="text-muted">/ {maximum:.0f} points &nbsp;({pct:.1f}%)</span>
+      <span class="ms-auto text-muted small">as of {score_date}</span>
+    </div>
+    <div class="progress" style="height:12px">
+      <div class="progress-bar {bar_colour}" style="width:{min(pct,100):.1f}%"></div>
+    </div>
+  </div>
+</div>'''
+
+        # Devices section
+        dev_rows = ''
+        for d in devices[:200]:
+            dname = html_lib.escape(d.get('displayName', '\u2014'))
+            os_name = html_lib.escape(d.get('operatingSystem', '\u2014'))
+            os_ver = html_lib.escape(d.get('operatingSystemVersion', ''))
+            trust = html_lib.escape(d.get('trustType', '\u2014'))
+            compliant = '\u2705' if d.get('isCompliant') else ('\u274c' if d.get('isManaged') else '\u2014')
+            dev_rows += f'<tr><td>{dname}</td><td>{os_name} {os_ver}</td><td>{trust}</td><td>{compliant}</td></tr>'
+        devices_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-laptop me-2"></i>Entra ID Devices ({len(devices)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Device</th><th>OS</th><th>Join Type</th><th>Compliant</th></tr></thead>
+      <tbody>{dev_rows or "<tr><td colspan='4' class='text-muted'>No devices found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if devices else ''
+
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
   <span><i class="fas fa-info-circle me-2"></i>Auto-generated from Microsoft 365 \u2014 last updated {now}</span>
   <span class="badge bg-primary">Tenant: {html_lib.escape(connection.tenant_id[:8])}...</span>
 </div>
+{score_section}
 {users_section}
 {licenses_section}
+{smb_section}
 {teams_section}
 {sp_section}
+{devices_section}
 {roles_section}
+{ca_section}
 </div>'''
 
         doc_title = f'{connection.name} \u2014 M365 Tenant Documentation'
@@ -1605,7 +1695,13 @@ def m365_sync(request, pk):
             connection.doc = doc
 
         connection.save()
-        messages.success(request, f"\u2713 M365 sync complete. {len(users)} users, {len(licenses)} licenses, {len(teams)} teams.")
+        extras = []
+        if ca_policies:
+            extras.append(f"{len(ca_policies)} CA policies")
+        if secure_score:
+            extras.append(f"secure score {secure_score.get('currentScore', 0):.0f}/{secure_score.get('maxScore', 0):.0f}")
+        extra_str = (', ' + ', '.join(extras)) if extras else ''
+        messages.success(request, f"\u2713 M365 sync complete. {len(users)} users, {len(licenses)} licenses, {len(teams)} teams{extra_str}.")
     except Exception as e:
         connection.last_sync_status = 'error'
         connection.last_error = str(e)
