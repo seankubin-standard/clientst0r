@@ -1597,7 +1597,7 @@ def m365_sync(request, pk):
         ca_rows = ''
         for p in ca_policies:
             pname = html_lib.escape(p.get('displayName', '\u2014'))
-            state = p.get('state', 'unknown')
+            state = p.get('state') or 'unknown'
             badge = {'enabled': 'bg-success', 'disabled': 'bg-secondary', 'enabledForReportingButNotEnforced': 'bg-warning text-dark'}.get(state, 'bg-secondary')
             state_label = html_lib.escape(state.replace('enabledForReportingButNotEnforced', 'Report-only'))
             modified = (p.get('modifiedDateTime') or p.get('createdDateTime') or '')[:10]
