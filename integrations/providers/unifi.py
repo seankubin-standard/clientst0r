@@ -146,6 +146,18 @@ class UnifiProvider:
             logger.warning(f"UniFi get_vlans({site_ref}) failed: {e}")
             return []
 
+    def get_firewall_rules(self, site_ref: str) -> list:
+        """Get firewall rules. site_ref = internalReference (e.g. 'default').
+        Requires username/password (legacy API)."""
+        if not (self.username and self.password):
+            return []
+        try:
+            data = self._legacy_get(f'/proxy/network/api/s/{site_ref}/rest/firewallrule')
+            return data.get('data', [])
+        except Exception as e:
+            logger.warning(f"UniFi get_firewall_rules({site_ref}) failed: {e}")
+            return []
+
     def get_client_count(self, site_ref: str) -> int:
         """Get active client count. Requires username/password (legacy API)."""
         if not (self.username and self.password):
@@ -176,6 +188,7 @@ class UnifiProvider:
             devices = self.get_devices(site_id)
             wlans = self.get_wlans(site_ref)
             vlans = self.get_vlans(site_ref)
+            firewall_rules = self.get_firewall_rules(site_ref)
             client_count = self.get_client_count(site_ref)
 
             type_counts = {}
@@ -190,6 +203,7 @@ class UnifiProvider:
                 'device_type_counts': type_counts,
                 'wlans': wlans,
                 'vlans': vlans,
+                'firewall_rules': firewall_rules,
                 'client_count': client_count,
             })
         return result

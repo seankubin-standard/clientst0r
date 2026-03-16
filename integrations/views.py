@@ -1304,6 +1304,30 @@ def unifi_sync(request, pk):
   </div>
 </div>''' if site.get('vlans') else ''
 
+            # Firewall rules table
+            fw_rules = site.get('firewall_rules', [])
+            fw_rows = ''
+            for r in fw_rules:
+                rname = html_lib.escape(r.get('name') or r.get('_id') or '—')
+                action = html_lib.escape(r.get('action', '—'))
+                proto = html_lib.escape(r.get('protocol') or 'all')
+                src = html_lib.escape(r.get('src_address') or r.get('src_networkconf_id') or 'any')
+                dst = html_lib.escape(r.get('dst_address') or r.get('dst_networkconf_id') or 'any')
+                dport = html_lib.escape(r.get('dst_port') or '')
+                enabled = '\u2705' if r.get('enabled', True) else '\u274c'
+                action_badge = 'bg-danger' if action == 'drop' else ('bg-warning text-dark' if action == 'reject' else 'bg-success')
+                fw_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{proto}</td><td>{src}</td><td>{dst}{(" :" + dport) if dport else ""}</td></tr>'
+            fw_table = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-fire-alt me-2"></i>Firewall Rules ({len(fw_rules)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Rule</th><th>Action</th><th>Protocol</th><th>Source</th><th>Destination</th></tr></thead>
+      <tbody>{fw_rows or "<tr><td colspan='5' class='text-muted'>No firewall rules found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if fw_rules else ''
+
             site_sections += f'''
 <div class="card mb-4">
   <div class="card-header bg-primary text-white">
@@ -1311,7 +1335,7 @@ def unifi_sync(request, pk):
     <span class="badge bg-light text-dark ms-2">{site["client_count"]} clients connected</span>
   </div>
   <div class="card-body">
-    {devices_table}{wlans_table}{vlans_table}
+    {devices_table}{wlans_table}{vlans_table}{fw_table}
   </div>
 </div>'''
 
