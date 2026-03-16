@@ -129,12 +129,17 @@ def asset_detail(request, pk):
     from docs.services.llm_providers import is_llm_configured
     has_ai, _ = is_llm_configured()
 
+    # RMM device data for the RMM tab
+    from integrations.models import RMMDevice
+    rmm_devices = asset.rmm_devices.select_related('connection').prefetch_related('software', 'alerts').all()
+
     return render(request, 'assets/asset_detail.html', {
         'asset': asset,
         'relationships': relationships,
         'asset_images': asset_images,
         'in_global_view': in_global_view,
         'has_ai': has_ai,
+        'rmm_devices': rmm_devices,
     })
 
 

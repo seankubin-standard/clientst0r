@@ -1620,12 +1620,17 @@ def m365_sync(request, pk):
         # Conditional access policies section
         ca_rows = ''
         for p in ca_policies:
-            pname = html_lib.escape(p.get('displayName', '\u2014'))
-            state = p.get('state') or 'unknown'
-            badge = {'enabled': 'bg-success', 'disabled': 'bg-secondary', 'enabledForReportingButNotEnforced': 'bg-warning text-dark'}.get(state, 'bg-secondary')
-            state_label = html_lib.escape(state.replace('enabledForReportingButNotEnforced', 'Report-only'))
-            modified = (p.get('modifiedDateTime') or p.get('createdDateTime') or '')[:10]
-            ca_rows += f'<tr><td>{pname}</td><td><span class="badge {badge}">{state_label}</span></td><td>{modified}</td></tr>'
+            try:
+                if not isinstance(p, dict):
+                    continue
+                pname = html_lib.escape(p.get('displayName') or '\u2014')
+                state = str(p.get('state') or 'unknown')
+                badge = {'enabled': 'bg-success', 'disabled': 'bg-secondary', 'enabledForReportingButNotEnforced': 'bg-warning text-dark'}.get(state, 'bg-secondary')
+                state_label = html_lib.escape(state.replace('enabledForReportingButNotEnforced', 'Report-only'))
+                modified = (p.get('modifiedDateTime') or p.get('createdDateTime') or '')[:10]
+                ca_rows += f'<tr><td>{pname}</td><td><span class="badge {badge}">{state_label}</span></td><td>{modified}</td></tr>'
+            except Exception:
+                continue
         ca_section = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-lock me-2"></i>Conditional Access Policies ({len(ca_policies)})</div>

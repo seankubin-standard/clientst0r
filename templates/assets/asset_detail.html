@@ -101,6 +101,13 @@
                         </button>
                     </li>
                     {% endif %}
+                    {% if rmm_devices %}
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="rmm-tab" data-bs-toggle="tab" data-bs-target="#rmm" type="button" role="tab">
+                            <i class="fas fa-satellite-dish"></i> RMM <span class="badge bg-secondary">{{ rmm_devices.count }}</span>
+                        </button>
+                    </li>
+                    {% endif %}
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="images-tab" data-bs-toggle="tab" data-bs-target="#images" type="button" role="tab">
                             <i class="fas fa-images"></i> Images <span class="badge bg-secondary">{{ asset_images.count }}</span>
@@ -388,6 +395,99 @@
                     </div>
                     {% endif %}
 
+                    <!-- RMM Tab -->
+                    {% if rmm_devices %}
+                    <div class="tab-pane fade" id="rmm" role="tabpanel">
+                        {% for rmm in rmm_devices %}
+                        <div class="card mb-3 {% if not forloop.first %}mt-3{% endif %}">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span>
+                                    <i class="fas fa-desktop me-1"></i>
+                                    <strong>{{ rmm.device_name }}</strong>
+                                    {% if rmm.is_online %}<span class="badge bg-success ms-2">Online</span>{% else %}<span class="badge bg-secondary ms-2">Offline</span>{% endif %}
+                                </span>
+                                <a href="{% url 'integrations:rmm_device_detail' rmm.pk %}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-external-link-alt"></i> View in RMM
+                                </a>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6 class="text-muted text-uppercase small mb-2">System</h6>
+                                        <dl class="row mb-0 small">
+                                            <dt class="col-sm-5">Provider</dt><dd class="col-sm-7">{{ rmm.connection.get_provider_type_display }}</dd>
+                                            <dt class="col-sm-5">OS</dt><dd class="col-sm-7">{{ rmm.os_version|default:"—" }}</dd>
+                                            <dt class="col-sm-5">Hostname</dt><dd class="col-sm-7"><code>{{ rmm.hostname|default:"—" }}</code></dd>
+                                            <dt class="col-sm-5">IP</dt><dd class="col-sm-7">{% if rmm.ip_address %}<code>{{ rmm.ip_address }}</code>{% else %}—{% endif %}</dd>
+                                            <dt class="col-sm-5">Site / Client</dt><dd class="col-sm-7">{{ rmm.site_name|default:"—" }}</dd>
+                                            <dt class="col-sm-5">Last Seen</dt><dd class="col-sm-7">{{ rmm.last_seen|date:"Y-m-d H:i"|default:"—" }}</dd>
+                                            {% with raw=rmm.raw_data %}
+                                            {% if raw.logged_username %}<dt class="col-sm-5">Logged In</dt><dd class="col-sm-7">{{ raw.logged_username }}</dd>{% endif %}
+                                            {% if raw.last_patched %}<dt class="col-sm-5">Last Patched</dt><dd class="col-sm-7">{{ raw.last_patched|slice:":10" }}</dd>{% endif %}
+                                            {% if raw.needs_reboot %}<dt class="col-sm-5">Reboot</dt><dd class="col-sm-7"><span class="badge bg-warning text-dark">Needs Reboot</span></dd>{% endif %}
+                                            {% if raw.agent_version %}<dt class="col-sm-5">Agent</dt><dd class="col-sm-7">{{ raw.agent_version }}</dd>{% endif %}
+                                            {% endwith %}
+                                        </dl>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6 class="text-muted text-uppercase small mb-2">Hardware</h6>
+                                        <dl class="row mb-0 small">
+                                            {% with raw=rmm.raw_data %}
+                                            {% if raw.cpu_model or raw.cpu %}<dt class="col-sm-5">CPU</dt><dd class="col-sm-7">{{ raw.cpu_model|default:raw.cpu }}</dd>{% endif %}
+                                            {% if raw.total_ram %}<dt class="col-sm-5">RAM</dt><dd class="col-sm-7">{{ raw.total_ram|floatformat:0 }} MB</dd>{% endif %}
+                                            {% if raw.make_model %}<dt class="col-sm-5">Model</dt><dd class="col-sm-7">{{ raw.make_model }}</dd>{% endif %}
+                                            {% if raw.serial_number %}<dt class="col-sm-5">Serial</dt><dd class="col-sm-7"><code>{{ raw.serial_number }}</code></dd>{% endif %}
+                                            {% if raw.public_ip %}<dt class="col-sm-5">Public IP</dt><dd class="col-sm-7"><code>{{ raw.public_ip }}</code></dd>{% endif %}
+                                            {% endwith %}
+                                        </dl>
+                                    </div>
+                                </div>
+
+                                {% with alerts=rmm.alerts.filter %}
+                                {% with active_alerts=rmm.alerts.all %}
+                                {% if active_alerts %}
+                                <hr class="my-2">
+                                <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-bell me-1"></i>Active Alerts ({{ active_alerts.count }})</h6>
+                                {% for alert in active_alerts|slice:":5" %}
+                                <div class="alert alert-{% if alert.severity == 'critical' %}danger{% elif alert.severity == 'warning' %}warning{% else %}secondary{% endif %} py-1 px-2 mb-1 small">
+                                    <strong>{{ alert.alert_type }}</strong> — {{ alert.message|truncatechars:120 }}
+                                </div>
+                                {% endfor %}
+                                {% endif %}
+                                {% endwith %}
+                                {% endwith %}
+
+                                {% with software=rmm.software.all %}
+                                {% if software %}
+                                <hr class="my-2">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="text-muted text-uppercase small mb-0"><i class="fas fa-box me-1"></i>Installed Software ({{ software.count }})</h6>
+                                    <input type="text" class="form-control form-control-sm w-auto" placeholder="Filter…" id="sw-filter-{{ rmm.pk }}" onkeyup="filterSoftware(this, 'sw-table-{{ rmm.pk }}')">
+                                </div>
+                                <div style="max-height: 300px; overflow-y: auto;">
+                                    <table class="table table-sm table-striped mb-0" id="sw-table-{{ rmm.pk }}">
+                                        <thead class="table-light sticky-top"><tr><th>Name</th><th>Version</th><th>Vendor</th></tr></thead>
+                                        <tbody>
+                                            {% for sw in software %}
+                                            <tr>
+                                                <td>{{ sw.name }}</td>
+                                                <td class="text-muted">{{ sw.version|default:"—" }}</td>
+                                                <td class="text-muted">{{ sw.vendor|default:"—" }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {% else %}
+                                <p class="text-muted small mt-2 mb-0"><i class="fas fa-info-circle me-1"></i>No software inventory — enable <em>Sync Software</em> on the RMM connection to populate this.</p>
+                                {% endif %}
+                                {% endwith %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
                     <!-- Images Tab -->
                     <div class="tab-pane fade" id="images" role="tabpanel">
                         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -645,6 +745,14 @@ function deleteImage(imageId, button) {
     </div>
 </div>
 
+<script>
+function filterSoftware(input, tableId) {
+    const filter = input.value.toLowerCase();
+    document.querySelectorAll('#' + tableId + ' tbody tr').forEach(function(row) {
+        row.style.display = row.textContent.toLowerCase().includes(filter) ? '' : 'none';
+    });
+}
+</script>
 <script>
 (function() {
     let selectedTemplate = 'server_blueprint';
