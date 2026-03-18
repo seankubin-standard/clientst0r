@@ -182,6 +182,29 @@ class M365Provider:
             logger.warning(f"M365 get_devices failed: {e}")
             return []
 
+    def get_sharepoint_usage(self) -> list:
+        """Get SharePoint site usage (storage). Requires Reports.Read.All."""
+        try:
+            # Usage detail report (last 30 days) — returns CSV-like JSON
+            data = self._get('/reports/getSharePointSiteUsageDetail(period=\'D30\')',
+                             params={'$format': 'application/json'})
+            return data.get('value', [])
+        except Exception as e:
+            logger.warning(f"M365 get_sharepoint_usage failed: {e}")
+            return []
+
+    def get_defender_alerts(self) -> list:
+        """Get recent Defender/security alerts. Requires SecurityAlert.Read.All."""
+        try:
+            return self._get_all('/security/alerts_v2', params={
+                '$select': 'id,title,severity,status,createdDateTime,serviceSource,category,description',
+                '$top': '100',
+                '$orderby': 'createdDateTime desc',
+            })
+        except Exception as e:
+            logger.warning(f"M365 get_defender_alerts failed: {e}")
+            return []
+
     def sync(self) -> dict:
         """Pull all data and return structured summary."""
         return {
@@ -194,4 +217,6 @@ class M365Provider:
             'conditional_access_policies': self.get_conditional_access_policies(),
             'secure_score': self.get_secure_score(),
             'devices': self.get_devices(),
+            'sharepoint_usage': self.get_sharepoint_usage(),
+            'defender_alerts': self.get_defender_alerts(),
         }

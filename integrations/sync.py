@@ -789,6 +789,45 @@ class RMMSync:
 
         return software
 
+    def _update_asset_hardware(self, asset, device):
+        """Fill in blank hardware/OS fields on an asset from the RMM device's raw_data."""
+        update_fields = []
+        raw = device.raw_data or {}
+        if not asset.cpu:
+            cpu = raw.get('cpu_model') or raw.get('cpu') or ''
+            if cpu:
+                asset.cpu = cpu
+                update_fields.append('cpu')
+        if not asset.ram_gb:
+            try:
+                total_ram_mb = raw.get('total_ram') or 0
+                if total_ram_mb:
+                    asset.ram_gb = int(round(int(total_ram_mb) / 1024))
+                    update_fields.append('ram_gb')
+            except (ValueError, TypeError):
+                pass
+        if not asset.storage:
+            disks = raw.get('disks') or []
+            storage_parts = []
+            for disk in disks:
+                dev = disk.get('dev', '?')
+                total = disk.get('total_gb') or disk.get('total') or 0
+                used = disk.get('used_gb') or disk.get('used') or 0
+                if total:
+                    pct = round(used / total * 100) if total else 0
+                    storage_parts.append(f"{dev} {int(total)}GB ({pct}% used)")
+            if storage_parts:
+                asset.storage = ', '.join(storage_parts)
+                update_fields.append('storage')
+        if not asset.os_name and device.os_type:
+            asset.os_name = device.os_type
+            update_fields.append('os_name')
+        if not asset.os_version and device.os_version:
+            asset.os_version = device.os_version
+            update_fields.append('os_version')
+        if update_fields:
+            asset.save(update_fields=update_fields)
+
     def _map_device_to_asset(self, device):
         """
         Automatically map RMM device to Asset record.
@@ -825,6 +864,7 @@ class RMMSync:
             hostname_match = (device.hostname and linked.hostname and
                               device.hostname.lower() == linked.hostname.lower())
             if org_match and (serial_match or hostname_match):
+                self._update_asset_hardware(linked, device)
                 return  # Link is legitimate — keep it
             # Link looks wrong — clear it so we can re-evaluate
             logger.info(
@@ -891,7 +931,7 @@ class RMMSync:
             try:
                 total_ram_mb = raw.get('total_ram') or 0
                 if total_ram_mb:
-                    ram_gb = round(int(total_ram_mb) / 1024, 1)
+                    ram_gb = int(round(int(total_ram_mb) / 1024))
             except (ValueError, TypeError):
                 pass
             disks = raw.get('disks') or []
@@ -934,43 +974,7 @@ class RMMSync:
 
             logger.info(f"Created asset {asset.id} from RMM device {device.external_id}")
         else:
-            # Update existing asset's hardware fields if they're blank
-            update_fields = []
-            raw = device.raw_data or {}
-            if not asset.cpu:
-                cpu = raw.get('cpu_model') or raw.get('cpu') or ''
-                if cpu:
-                    asset.cpu = cpu
-                    update_fields.append('cpu')
-            if not asset.ram_gb:
-                try:
-                    total_ram_mb = raw.get('total_ram') or 0
-                    if total_ram_mb:
-                        asset.ram_gb = round(int(total_ram_mb) / 1024, 1)
-                        update_fields.append('ram_gb')
-                except (ValueError, TypeError):
-                    pass
-            if not asset.storage:
-                disks = raw.get('disks') or []
-                storage_parts = []
-                for disk in disks:
-                    dev = disk.get('dev', '?')
-                    total = disk.get('total_gb') or disk.get('total') or 0
-                    used = disk.get('used_gb') or disk.get('used') or 0
-                    if total:
-                        pct = round(used / total * 100) if total else 0
-                        storage_parts.append(f"{dev} {int(total)}GB ({pct}% used)")
-                if storage_parts:
-                    asset.storage = ', '.join(storage_parts)
-                    update_fields.append('storage')
-            if not asset.os_name and device.os_type:
-                asset.os_name = device.os_type
-                update_fields.append('os_name')
-            if not asset.os_version and device.os_version:
-                asset.os_version = device.os_version
-                update_fields.append('os_version')
-            if update_fields:
-                asset.save(update_fields=update_fields)
+            self._update_asset_hardware(asset, device)
 
         # Link device to asset
         device.linked_asset = asset

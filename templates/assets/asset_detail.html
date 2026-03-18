@@ -766,9 +766,16 @@ function filterSoftware(input, tableId) {
     document.getElementById('ai-doc-template-list').addEventListener('click', function(e) {
         const btn = e.target.closest('.ai-doc-template');
         if (!btn) return;
-        document.querySelectorAll('.ai-doc-template').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.ai-doc-template').forEach(b => {
+            b.classList.remove('active');
+            b.querySelectorAll('.ai-selected-check').forEach(el => el.remove());
+        });
         btn.classList.add('active');
         selectedTemplate = btn.dataset.template;
+        const check = document.createElement('span');
+        check.className = 'ai-selected-check badge bg-success ms-2 float-end';
+        check.textContent = '✓ Selected';
+        btn.querySelector('h6,strong,.fw-bold') ? btn.querySelector('h6,strong,.fw-bold').after(check) : btn.prepend(check);
     });
 
     document.getElementById('ai-doc-generate-btn').addEventListener('click', function() {

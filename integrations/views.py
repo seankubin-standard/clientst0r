@@ -1249,19 +1249,20 @@ def unifi_sync(request, pk):
                 model = html_lib.escape(d.get('model', '—'))
                 dtype = html_lib.escape(d.get('type', '—'))
                 ip = html_lib.escape(str(d.get('ip') or d.get('ipAddress') or '—'))
-                mac = html_lib.escape(str(d.get('mac') or '—'))
+                mac = html_lib.escape(str(d.get('mac') or d.get('macAddress') or '—'))
+                serial = html_lib.escape(str(d.get('serial') or d.get('serialNumber') or d.get('serialno') or '—'))
                 firmware = html_lib.escape(str(d.get('version') or d.get('firmwareVersion') or '—'))
                 state = d.get('state', 0)
                 status_badge = '<span class="badge bg-success">Online</span>' if state == 1 else '<span class="badge bg-secondary">Offline</span>'
-                device_rows += f'<tr><td>{name}</td><td>{dtype}</td><td>{model}</td><td>{ip}</td><td>{mac}</td><td>{firmware}</td><td>{status_badge}</td></tr>'
+                device_rows += f'<tr><td>{name}</td><td>{dtype}</td><td>{model}</td><td>{ip}</td><td>{mac}</td><td>{serial}</td><td>{firmware}</td><td>{status_badge}</td></tr>'
 
             devices_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-network-wired me-2"></i>Devices ({len(site["devices"])})</div>
   <div class="card-body p-0">
     <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>Name</th><th>Type</th><th>Model</th><th>IP</th><th>MAC</th><th>Firmware</th><th>Status</th></tr></thead>
-      <tbody>{device_rows or "<tr><td colspan='7' class='text-muted'>No devices found.</td></tr>"}</tbody>
+      <thead><tr><th>Name</th><th>Type</th><th>Model</th><th>IP</th><th>MAC</th><th>Serial</th><th>Firmware</th><th>Status</th></tr></thead>
+      <tbody>{device_rows or "<tr><td colspan='8' class='text-muted'>No devices found.</td></tr>"}</tbody>
     </table>
   </div>
 </div>''' if site.get('devices') else ''
@@ -1320,14 +1321,35 @@ def unifi_sync(request, pk):
                 fw_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{proto}</td><td>{src}</td><td>{dst}{(" :" + dport) if dport else ""}</td></tr>'
             fw_table = f'''
 <div class="card mb-3">
-  <div class="card-header"><i class="fas fa-fire-alt me-2"></i>Firewall Rules ({len(fw_rules)})</div>
+  <div class="card-header"><i class="fas fa-fire-alt me-2"></i>Legacy Firewall Rules ({len(fw_rules)})</div>
   <div class="card-body p-0">
     <table class="table table-sm table-striped mb-0">
       <thead><tr><th>Rule</th><th>Action</th><th>Protocol</th><th>Source</th><th>Destination</th></tr></thead>
-      <tbody>{fw_rows or "<tr><td colspan='5' class='text-muted'>No firewall rules found.</td></tr>"}</tbody>
+      <tbody>{fw_rows or "<tr><td colspan='5' class='text-muted'>No legacy firewall rules found.</td></tr>"}</tbody>
     </table>
   </div>
 </div>''' if fw_rules else ''
+
+            # Traffic Rules (UniFi OS 3.x+)
+            tr_rules = site.get('traffic_rules', [])
+            tr_rows = ''
+            for r in tr_rules:
+                rname = html_lib.escape(r.get('description') or r.get('name') or r.get('_id') or '—')
+                action = html_lib.escape(r.get('action', '—'))
+                matching = html_lib.escape(r.get('matching_target') or 'all')
+                enabled = '\u2705' if r.get('enabled', True) else '\u274c'
+                action_badge = 'bg-danger' if action in ('BLOCK', 'REJECT') else ('bg-warning text-dark' if action == 'THROTTLE' else 'bg-success')
+                tr_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{matching}</td></tr>'
+            tr_table = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-traffic-light me-2"></i>Traffic Rules ({len(tr_rules)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Rule</th><th>Action</th><th>Target</th></tr></thead>
+      <tbody>{tr_rows or "<tr><td colspan='3' class='text-muted'>No traffic rules found.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if tr_rules else ''
 
             site_sections += f'''
 <div class="card mb-4">
@@ -1336,7 +1358,7 @@ def unifi_sync(request, pk):
     <span class="badge bg-light text-dark ms-2">{site["client_count"]} clients connected</span>
   </div>
   <div class="card-body">
-    {devices_table}{wlans_table}{vlans_table}{fw_table}
+    {devices_table}{wlans_table}{vlans_table}{fw_table}{tr_table}
   </div>
 </div>'''
 
@@ -1507,6 +1529,8 @@ def m365_sync(request, pk):
         ca_policies = data.get('conditional_access_policies', [])
         secure_score = data.get('secure_score', {})
         devices = data.get('devices', [])
+        sp_usage = data.get('sharepoint_usage', [])
+        defender_alerts = data.get('defender_alerts', [])
 
         def _safe_section(fn, label):
             try:
@@ -1667,6 +1691,52 @@ def m365_sync(request, pk):
   </div>
 </div>'''
 
+        def _build_sp_usage():
+            if not sp_usage:
+                return ''
+            sp_rows = ''
+            for s in sp_usage[:100]:
+                sname = html_lib.escape(s.get('siteUrl') or s.get('siteName') or s.get('displayName') or '\u2014')
+                owner = html_lib.escape(s.get('ownerDisplayName') or s.get('ownerPrincipalName') or '\u2014')
+                used_bytes = s.get('storageUsedInBytes') or s.get('storageUsedInMB', 0)
+                alloc_bytes = s.get('storageAllocatedInBytes') or s.get('storageAllocatedInMB', 0)
+                # Handle MB vs bytes — report API returns bytes
+                if used_bytes > 1_000_000:
+                    used_gb = round(used_bytes / 1_073_741_824, 2)
+                    alloc_gb = round(alloc_bytes / 1_073_741_824, 2) if alloc_bytes else 0
+                else:
+                    used_gb = round(used_bytes / 1024, 2)
+                    alloc_gb = round(alloc_bytes / 1024, 2) if alloc_bytes else 0
+                pct = round(used_gb / alloc_gb * 100, 1) if alloc_gb else 0
+                bar = f'<div class="progress" style="height:6px;min-width:60px"><div class="progress-bar {"bg-danger" if pct>85 else "bg-warning" if pct>60 else "bg-success"}" style="width:{min(pct,100):.1f}%"></div></div>'
+                sp_rows += f'<tr><td class="small">{sname}</td><td class="small">{owner}</td><td class="small">{used_gb:.2f} GB</td><td class="small">{alloc_gb:.2f} GB</td><td>{bar} {pct:.1f}%</td></tr>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-chart-pie me-2"></i>SharePoint Storage Usage ({len(sp_usage)} sites)</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Site</th><th>Owner</th><th>Used</th><th>Quota</th><th>Usage</th></tr></thead>
+    <tbody>{sp_rows}</tbody>
+  </table></div></div>'''
+
+        def _build_defender():
+            if not defender_alerts:
+                return ''
+            sev_badge = {'high': 'bg-danger', 'medium': 'bg-warning text-dark', 'low': 'bg-info text-dark', 'informational': 'bg-secondary'}
+            da_rows = ''
+            for a in defender_alerts[:50]:
+                title = html_lib.escape(a.get('title') or '\u2014')
+                sev = (a.get('severity') or 'informational').lower()
+                status = html_lib.escape(a.get('status') or '—')
+                source = html_lib.escape(a.get('serviceSource') or a.get('category') or '—')
+                created = (a.get('createdDateTime') or '')[:10]
+                badge = sev_badge.get(sev, 'bg-secondary')
+                da_rows += f'<tr><td>{title}</td><td><span class="badge {badge}">{sev}</span></td><td>{status}</td><td>{source}</td><td>{created}</td></tr>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-shield-virus me-2"></i>Microsoft Defender Alerts ({len(defender_alerts)})</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Alert</th><th>Severity</th><th>Status</th><th>Source</th><th>Date</th></tr></thead>
+    <tbody>{da_rows}</tbody>
+  </table></div></div>'''
+
         score_section    = _safe_section(_build_secure_score,     'Secure Score')
         users_section    = _safe_section(_build_users,            'Users')
         licenses_section = _safe_section(_build_licenses,         'Licenses')
@@ -1676,6 +1746,8 @@ def m365_sync(request, pk):
         devices_section  = _safe_section(_build_entra_devices,    'Entra Devices')
         roles_section    = _safe_section(_build_roles,            'Roles')
         ca_section       = _safe_section(_build_ca_policies,      'Conditional Access')
+        sp_usage_section = _safe_section(_build_sp_usage,         'SharePoint Usage')
+        defender_section = _safe_section(_build_defender,         'Defender Alerts')
 
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
@@ -1683,11 +1755,13 @@ def m365_sync(request, pk):
   <span class="badge bg-primary">Tenant: {html_lib.escape(connection.tenant_id[:8])}...</span>
 </div>
 {score_section}
+{defender_section}
 {users_section}
 {licenses_section}
 {smb_section}
 {teams_section}
 {sp_section}
+{sp_usage_section}
 {devices_section}
 {roles_section}
 {ca_section}
