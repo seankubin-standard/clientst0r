@@ -182,13 +182,30 @@ class M365Provider:
             logger.warning(f"M365 get_devices failed: {e}")
             return []
 
+    def _get_json(self, path: str, params: dict = None) -> dict:
+        """GET with explicit Accept: application/json — needed for Reports API."""
+        headers = {
+            'Authorization': f'Bearer {self._get_token()}',
+            'Accept': 'application/json',
+        }
+        url = path if path.startswith('http') else f'{GRAPH_BASE}{path}'
+        resp = requests.get(url, headers=headers, params=params, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
     def get_sharepoint_usage(self) -> list:
         """Get SharePoint site usage (storage). Requires Reports.Read.All."""
         try:
-            # Usage detail report (last 30 days) — returns CSV-like JSON
-            data = self._get('/reports/getSharePointSiteUsageDetail(period=\'D30\')',
-                             params={'$format': 'application/json'})
+            data = self._get_json(
+                "/reports/getSharePointSiteUsageDetail(period='D30')",
+            )
             return data.get('value', [])
+        except requests.exceptions.HTTPError as e:
+            code = e.response.status_code if e.response is not None else 0
+            logger.warning(f"M365 get_sharepoint_usage failed (HTTP {code}): {e}")
+            if code == 403:
+                return [{'_permission_error': True, 'required': 'Reports.Read.All'}]
+            return []
         except Exception as e:
             logger.warning(f"M365 get_sharepoint_usage failed: {e}")
             return []
@@ -201,6 +218,12 @@ class M365Provider:
                 '$top': '100',
                 '$orderby': 'createdDateTime desc',
             })
+        except requests.exceptions.HTTPError as e:
+            code = e.response.status_code if e.response is not None else 0
+            logger.warning(f"M365 get_defender_alerts failed (HTTP {code}): {e}")
+            if code == 403:
+                return [{'_permission_error': True, 'required': 'SecurityAlert.Read.All'}]
+            return []
         except Exception as e:
             logger.warning(f"M365 get_defender_alerts failed: {e}")
             return []

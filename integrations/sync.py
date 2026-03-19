@@ -825,6 +825,15 @@ class RMMSync:
         if not asset.os_version and device.os_version:
             asset.os_version = device.os_version
             update_fields.append('os_version')
+        if not asset.hostname and device.hostname:
+            asset.hostname = device.hostname
+            update_fields.append('hostname')
+        if not asset.ip_address and device.ip_address:
+            asset.ip_address = device.ip_address
+            update_fields.append('ip_address')
+        if not asset.mac_address and device.mac_address:
+            asset.mac_address = device.mac_address
+            update_fields.append('mac_address')
         if update_fields:
             asset.save(update_fields=update_fields)
 

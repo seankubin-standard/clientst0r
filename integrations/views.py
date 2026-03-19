@@ -1694,6 +1694,8 @@ def m365_sync(request, pk):
         def _build_sp_usage():
             if not sp_usage:
                 return ''
+            if sp_usage[0].get('_permission_error'):
+                return f'<div class="alert alert-warning mb-3"><i class="fas fa-key me-2"></i><strong>SharePoint Storage Usage</strong> — missing permission: <code>{sp_usage[0].get("required")}</code>. Add this to your Azure AD app registration.</div>'
             sp_rows = ''
             for s in sp_usage[:100]:
                 sname = html_lib.escape(s.get('siteUrl') or s.get('siteName') or s.get('displayName') or '\u2014')
@@ -1720,6 +1722,8 @@ def m365_sync(request, pk):
         def _build_defender():
             if not defender_alerts:
                 return ''
+            if defender_alerts[0].get('_permission_error'):
+                return f'<div class="alert alert-warning mb-3"><i class="fas fa-key me-2"></i><strong>Defender Alerts</strong> — missing permission: <code>{defender_alerts[0].get("required")}</code>. Add this to your Azure AD app registration.</div>'
             sev_badge = {'high': 'bg-danger', 'medium': 'bg-warning text-dark', 'low': 'bg-info text-dark', 'informational': 'bg-secondary'}
             da_rows = ''
             for a in defender_alerts[:50]:

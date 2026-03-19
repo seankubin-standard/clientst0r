@@ -159,16 +159,41 @@ class UnifiProvider:
             return []
 
     def get_traffic_rules(self, site_ref: str) -> list:
-        """Get Traffic Rules (UniFi OS 3.x+). site_ref = internalReference.
-        Requires username/password (legacy API)."""
+        """Get Traffic Rules (UniFi OS 3.x+). Tries v2 API first, falls back to legacy REST.
+        Requires username/password."""
         if not (self.username and self.password):
             return []
+        # Try v2 API path first (UniFi OS 3.x Network app)
+        for path in (
+            f'/proxy/network/v2/api/site/{site_ref}/trafficrules',
+            f'/proxy/network/api/s/{site_ref}/rest/trafficrule',
+        ):
+            try:
+                raw = self._legacy_get(path)
+                items = raw if isinstance(raw, list) else raw.get('data', raw.get('trafficRules', []))
+                if items:
+                    return items
+            except Exception:
+                continue
+        return []
+
+    def get_device_serials(self, site_ref: str) -> dict:
+        """Get MAC→serial mapping from legacy stat/device endpoint.
+        Requires username/password."""
+        if not (self.username and self.password):
+            return {}
         try:
-            data = self._legacy_get(f'/proxy/network/api/s/{site_ref}/rest/trafficrule')
-            return data.get('data', [])
+            data = self._legacy_get(f'/proxy/network/api/s/{site_ref}/stat/device')
+            result = {}
+            for d in data.get('data', []):
+                mac = d.get('mac', '')
+                serial = d.get('serial', '')
+                if mac and serial:
+                    result[mac.lower()] = serial
+            return result
         except Exception as e:
-            logger.warning(f"UniFi get_traffic_rules({site_ref}) failed: {e}")
-            return []
+            logger.warning(f"UniFi get_device_serials({site_ref}) failed: {e}")
+            return {}
 
     def get_client_count(self, site_ref: str) -> int:
         """Get active client count. Requires username/password (legacy API)."""
@@ -198,6 +223,12 @@ class UnifiProvider:
             site_name = (site.get('meta') or {}).get('desc') or site.get('name') or site_ref
 
             devices = self.get_devices(site_id)
+            serials = self.get_device_serials(site_ref)
+            # Merge serial into each device by MAC
+            for d in devices:
+                mac = (d.get('macAddress') or d.get('mac') or '').lower()
+                if mac and mac in serials and not d.get('serial'):
+                    d['serial'] = serials[mac]
             wlans = self.get_wlans(site_ref)
             vlans = self.get_vlans(site_ref)
             firewall_rules = self.get_firewall_rules(site_ref)
