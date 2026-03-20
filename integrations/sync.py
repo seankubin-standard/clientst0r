@@ -790,50 +790,57 @@ class RMMSync:
         return software
 
     def _update_asset_hardware(self, asset, device):
-        """Fill in blank hardware/OS fields on an asset from the RMM device's raw_data."""
+        """Update hardware/OS fields on an asset from the RMM device. Always overwrites
+        RMM-sourced fields so that re-syncing fixes stale or missing values."""
         update_fields = []
         raw = device.raw_data or {}
-        if not asset.cpu:
-            cpu = raw.get('cpu_model') or raw.get('cpu') or ''
-            if cpu:
-                asset.cpu = cpu
-                update_fields.append('cpu')
-        if not asset.ram_gb:
-            try:
-                total_ram_mb = raw.get('total_ram') or 0
-                if total_ram_mb:
-                    asset.ram_gb = int(round(int(total_ram_mb) / 1024))
+
+        cpu = raw.get('cpu_model') or raw.get('cpu') or ''
+        if cpu and cpu != asset.cpu:
+            asset.cpu = cpu
+            update_fields.append('cpu')
+
+        try:
+            total_ram_mb = raw.get('total_ram') or 0
+            if total_ram_mb:
+                ram_gb = int(round(int(total_ram_mb) / 1024))
+                if ram_gb != asset.ram_gb:
+                    asset.ram_gb = ram_gb
                     update_fields.append('ram_gb')
-            except (ValueError, TypeError):
-                pass
-        if not asset.storage:
-            disks = raw.get('disks') or []
-            storage_parts = []
-            for disk in disks:
-                dev = disk.get('dev', '?')
-                total = disk.get('total_gb') or disk.get('total') or 0
-                used = disk.get('used_gb') or disk.get('used') or 0
-                if total:
-                    pct = round(used / total * 100) if total else 0
-                    storage_parts.append(f"{dev} {int(total)}GB ({pct}% used)")
-            if storage_parts:
-                asset.storage = ', '.join(storage_parts)
+        except (ValueError, TypeError):
+            pass
+
+        disks = raw.get('disks') or []
+        storage_parts = []
+        for disk in disks:
+            dev = disk.get('dev', '?')
+            total = disk.get('total_gb') or disk.get('total') or 0
+            used = disk.get('used_gb') or disk.get('used') or 0
+            if total:
+                pct = round(used / total * 100) if total else 0
+                storage_parts.append(f"{dev} {int(total)}GB ({pct}% used)")
+        if storage_parts:
+            storage = ', '.join(storage_parts)
+            if storage != asset.storage:
+                asset.storage = storage
                 update_fields.append('storage')
-        if not asset.os_name and device.os_type:
+
+        if device.os_type and device.os_type != asset.os_name:
             asset.os_name = device.os_type
             update_fields.append('os_name')
-        if not asset.os_version and device.os_version:
+        if device.os_version and device.os_version != asset.os_version:
             asset.os_version = device.os_version
             update_fields.append('os_version')
-        if not asset.hostname and device.hostname:
+        if device.hostname and device.hostname != asset.hostname:
             asset.hostname = device.hostname
             update_fields.append('hostname')
-        if not asset.ip_address and device.ip_address:
+        if device.ip_address and str(device.ip_address) != str(asset.ip_address or ''):
             asset.ip_address = device.ip_address
             update_fields.append('ip_address')
-        if not asset.mac_address and device.mac_address:
+        if device.mac_address and device.mac_address != asset.mac_address:
             asset.mac_address = device.mac_address
             update_fields.append('mac_address')
+
         if update_fields:
             asset.save(update_fields=update_fields)
 

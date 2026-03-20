@@ -41,7 +41,12 @@ class M365Provider:
         return self._token
 
     def _get(self, path: str, params: dict = None) -> dict:
-        headers = {'Authorization': f'Bearer {self._get_token()}', 'Accept': 'application/json'}
+        headers = {
+            'Authorization': f'Bearer {self._get_token()}',
+            'Accept': 'application/json',
+            # Required for $search and advanced $filter queries (Graph API ignores for others)
+            'ConsistencyLevel': 'eventual',
+        }
         url = path if path.startswith('http') else f'{GRAPH_BASE}{path}'
         resp = requests.get(url, headers=headers, params=params, timeout=20)
         resp.raise_for_status()

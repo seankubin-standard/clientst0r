@@ -1239,7 +1239,8 @@ def unifi_sync(request, pk):
         connection.last_error = ''
 
         # Build documentation HTML
-        now = timezone.now().strftime('%Y-%m-%d %H:%M')
+        now = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
+        has_legacy = data.get('has_legacy_data', False)
         site_sections = ''
         for site in data.get('sites', []):
             # Devices table
@@ -1319,16 +1320,20 @@ def unifi_sync(request, pk):
                 enabled = '\u2705' if r.get('enabled', True) else '\u274c'
                 action_badge = 'bg-danger' if action == 'drop' else ('bg-warning text-dark' if action == 'reject' else 'bg-success')
                 fw_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{proto}</td><td>{src}</td><td>{dst}{(" :" + dport) if dport else ""}</td></tr>'
+            if not has_legacy:
+                fw_empty = "<tr><td colspan='5' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required to fetch firewall rules via legacy API.</td></tr>"
+            else:
+                fw_empty = "<tr><td colspan='5' class='text-muted'>No legacy firewall rules configured.</td></tr>"
             fw_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-fire-alt me-2"></i>Legacy Firewall Rules ({len(fw_rules)})</div>
   <div class="card-body p-0">
     <table class="table table-sm table-striped mb-0">
       <thead><tr><th>Rule</th><th>Action</th><th>Protocol</th><th>Source</th><th>Destination</th></tr></thead>
-      <tbody>{fw_rows or "<tr><td colspan='5' class='text-muted'>No legacy firewall rules found.</td></tr>"}</tbody>
+      <tbody>{fw_rows or fw_empty}</tbody>
     </table>
   </div>
-</div>''' if fw_rules else ''
+</div>'''
 
             # Traffic Rules (UniFi OS 3.x+)
             tr_rules = site.get('traffic_rules', [])
@@ -1340,16 +1345,20 @@ def unifi_sync(request, pk):
                 enabled = '\u2705' if r.get('enabled', True) else '\u274c'
                 action_badge = 'bg-danger' if action in ('BLOCK', 'REJECT') else ('bg-warning text-dark' if action == 'THROTTLE' else 'bg-success')
                 tr_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{matching}</td></tr>'
+            if not has_legacy:
+                tr_empty = "<tr><td colspan='3' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required to fetch traffic rules via legacy API.</td></tr>"
+            else:
+                tr_empty = "<tr><td colspan='3' class='text-muted'>No traffic rules configured.</td></tr>"
             tr_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-traffic-light me-2"></i>Traffic Rules ({len(tr_rules)})</div>
   <div class="card-body p-0">
     <table class="table table-sm table-striped mb-0">
       <thead><tr><th>Rule</th><th>Action</th><th>Target</th></tr></thead>
-      <tbody>{tr_rows or "<tr><td colspan='3' class='text-muted'>No traffic rules found.</td></tr>"}</tbody>
+      <tbody>{tr_rows or tr_empty}</tbody>
     </table>
   </div>
-</div>''' if tr_rules else ''
+</div>'''
 
             site_sections += f'''
 <div class="card mb-4">
@@ -1520,7 +1529,7 @@ def m365_sync(request, pk):
         connection.last_sync_status = 'ok'
         connection.last_error = ''
 
-        now = timezone.now().strftime('%Y-%m-%d %H:%M')
+        now = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
         users = data.get('users', [])
         licenses = data.get('licenses', [])
         teams = data.get('teams', [])
