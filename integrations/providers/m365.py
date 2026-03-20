@@ -182,33 +182,38 @@ class M365Provider:
             logger.warning(f"M365 get_devices failed: {e}")
             return []
 
-    def _get_json(self, path: str, params: dict = None) -> dict:
-        """GET with explicit Accept: application/json — needed for Reports API."""
-        headers = {
-            'Authorization': f'Bearer {self._get_token()}',
-            'Accept': 'application/json',
-        }
-        url = path if path.startswith('http') else f'{GRAPH_BASE}{path}'
-        resp = requests.get(url, headers=headers, params=params, timeout=30)
-        resp.raise_for_status()
-        return resp.json()
-
     def get_sharepoint_usage(self) -> list:
-        """Get SharePoint site usage (storage). Requires Reports.Read.All."""
+        """Get SharePoint site storage via per-site drive quota. Requires Sites.Read.All."""
+        results = []
         try:
-            data = self._get_json(
-                "/reports/getSharePointSiteUsageDetail(period='D30')",
-            )
-            return data.get('value', [])
+            sites = self._get_all('/sites', params={
+                '$search': '*',
+                '$select': 'id,displayName,webUrl',
+            })
         except requests.exceptions.HTTPError as e:
             code = e.response.status_code if e.response is not None else 0
-            logger.warning(f"M365 get_sharepoint_usage failed (HTTP {code}): {e}")
             if code == 403:
-                return [{'_permission_error': True, 'required': 'Reports.Read.All'}]
+                return [{'_permission_error': True, 'required': 'Sites.Read.All'}]
             return []
         except Exception as e:
-            logger.warning(f"M365 get_sharepoint_usage failed: {e}")
+            logger.warning(f"M365 get_sharepoint_usage (sites) failed: {e}")
             return []
+
+        for site in sites[:50]:  # cap to avoid too many requests
+            try:
+                drive = self._get(f"/sites/{site['id']}/drive",
+                                  params={'$select': 'quota'})
+                quota = drive.get('quota') or {}
+                results.append({
+                    'displayName': site.get('displayName') or '',
+                    'siteUrl': site.get('webUrl') or '',
+                    'storageUsedInBytes': quota.get('used') or 0,
+                    'storageAllocatedInBytes': quota.get('total') or 0,
+                    'ownerDisplayName': '',
+                })
+            except Exception:
+                continue
+        return results
 
     def get_defender_alerts(self) -> list:
         """Get recent Defender/security alerts. Requires SecurityAlert.Read.All."""

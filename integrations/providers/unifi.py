@@ -158,16 +158,20 @@ class UnifiProvider:
             logger.warning(f"UniFi get_firewall_rules({site_ref}) failed: {e}")
             return []
 
-    def get_traffic_rules(self, site_ref: str) -> list:
+    def get_traffic_rules(self, site_ref: str, site_id: str = '') -> list:
         """Get Traffic Rules (UniFi OS 3.x+). Tries v2 API first, falls back to legacy REST.
         Requires username/password."""
         if not (self.username and self.password):
             return []
-        # Try v2 API path first (UniFi OS 3.x Network app)
-        for path in (
+        # Try v2 API with UUID first (most reliable on OS 3.x), then short name, then legacy REST
+        paths = []
+        if site_id:
+            paths.append(f'/proxy/network/v2/api/site/{site_id}/trafficrules')
+        paths += [
             f'/proxy/network/v2/api/site/{site_ref}/trafficrules',
             f'/proxy/network/api/s/{site_ref}/rest/trafficrule',
-        ):
+        ]
+        for path in paths:
             try:
                 raw = self._legacy_get(path)
                 items = raw if isinstance(raw, list) else raw.get('data', raw.get('trafficRules', []))
@@ -232,7 +236,7 @@ class UnifiProvider:
             wlans = self.get_wlans(site_ref)
             vlans = self.get_vlans(site_ref)
             firewall_rules = self.get_firewall_rules(site_ref)
-            traffic_rules = self.get_traffic_rules(site_ref)
+            traffic_rules = self.get_traffic_rules(site_ref, site_id=site_id)
             client_count = self.get_client_count(site_ref)
 
             type_counts = {}
