@@ -312,27 +312,44 @@ class TacticalRMMProvider(BaseRMMProvider):
         latitude, longitude = self._parse_location(location_data)
 
         # Hardware specs
-        cpu = raw_data.get('cpu_model') or raw_data.get('cpu') or ''
+        # cpu_model in TRMM is a list of CPU strings; join them for display
+        cpu_raw = raw_data.get('cpu_model') or raw_data.get('cpu') or ''
+        if isinstance(cpu_raw, list):
+            cpu = ', '.join(str(c) for c in cpu_raw if c)
+        else:
+            cpu = str(cpu_raw) if cpu_raw else ''
 
+        # total_ram in Tactical RMM is stored in GB (integer), not MB
         ram_gb = None
-        total_ram_mb = raw_data.get('total_ram') or 0
-        if total_ram_mb:
+        total_ram_val = raw_data.get('total_ram') or 0
+        if total_ram_val:
             try:
-                ram_gb = round(int(total_ram_mb) / 1024, 1)
+                ram_gb = round(float(total_ram_val), 1)
             except (ValueError, TypeError):
                 pass
 
         # Disk summary: "C: 200GB (75% used), D: 500GB"
+        # TRMM disk fields: device (not dev), total/used/free in GB (float), percent
         storage = ''
         disks = raw_data.get('disks') or []
         if disks:
             parts = []
             for disk in disks:
-                dev = disk.get('dev', '?')
+                dev = disk.get('device') or disk.get('dev', '?')
                 total = disk.get('total_gb') or disk.get('total') or 0
                 used = disk.get('used_gb') or disk.get('used') or 0
+                percent = disk.get('percent')
+                try:
+                    total = float(total)
+                    used = float(used)
+                except (ValueError, TypeError):
+                    total = 0
+                    used = 0
                 if total:
-                    pct = round(used / total * 100) if total else 0
+                    if percent is not None:
+                        pct = round(float(percent))
+                    else:
+                        pct = round(used / total * 100) if total else 0
                     parts.append(f"{dev} {int(total)}GB ({pct}% used)")
             storage = ', '.join(parts)
 

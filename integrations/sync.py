@@ -670,11 +670,11 @@ class RMMSync:
         response uses different/absent field names."""
         raw = dict(device_data.get('raw_data') or {})
         if device_data.get('ram_gb') is not None:
-            raw.setdefault('_norm_ram_gb', device_data['ram_gb'])
+            raw['_norm_ram_gb'] = device_data['ram_gb']
         if device_data.get('storage'):
-            raw.setdefault('_norm_storage', device_data['storage'])
+            raw['_norm_storage'] = device_data['storage']
         if device_data.get('cpu'):
-            raw.setdefault('_norm_cpu', device_data['cpu'])
+            raw['_norm_cpu'] = device_data['cpu']
         return raw
 
     def _upsert_device(self, device_data, target_org):
@@ -808,15 +808,17 @@ class RMMSync:
         update_fields = []
         raw = device.raw_data or {}
 
-        cpu = raw.get('cpu_model') or raw.get('cpu') or raw.get('_norm_cpu') or ''
+        cpu_raw = raw.get('cpu_model') or raw.get('cpu') or raw.get('_norm_cpu') or ''
+        cpu = ', '.join(str(c) for c in cpu_raw if c) if isinstance(cpu_raw, list) else str(cpu_raw)
         if cpu and cpu != asset.cpu:
             asset.cpu = cpu
             update_fields.append('cpu')
 
         try:
-            total_ram_mb = raw.get('total_ram') or 0
-            if total_ram_mb:
-                ram_gb = int(round(int(total_ram_mb) / 1024))
+            total_ram_val = raw.get('total_ram') or 0
+            if total_ram_val:
+                # TRMM stores total_ram in GB; use directly
+                ram_gb = int(round(float(total_ram_val)))
             elif raw.get('_norm_ram_gb') is not None:
                 ram_gb = int(round(float(raw['_norm_ram_gb'])))
             else:
@@ -830,11 +832,18 @@ class RMMSync:
         disks = raw.get('disks') or []
         storage_parts = []
         for disk in disks:
-            dev = disk.get('dev', '?')
+            dev = disk.get('device') or disk.get('dev', '?')
             total = disk.get('total_gb') or disk.get('total') or 0
             used = disk.get('used_gb') or disk.get('used') or 0
+            percent = disk.get('percent')
+            try:
+                total = float(total)
+                used = float(used)
+            except (ValueError, TypeError):
+                total = 0
+                used = 0
             if total:
-                pct = round(used / total * 100) if total else 0
+                pct = round(float(percent)) if percent is not None else (round(used / total * 100) if total else 0)
                 storage_parts.append(f"{dev} {int(total)}GB ({pct}% used)")
         if storage_parts:
             storage = ', '.join(storage_parts)
@@ -961,24 +970,35 @@ class RMMSync:
             asset_type = asset_type_map.get(device.device_type, 'other')
 
             raw = device.raw_data or {}
-            cpu = raw.get('cpu_model') or raw.get('cpu') or ''
+            cpu_raw = raw.get('cpu_model') or raw.get('cpu') or raw.get('_norm_cpu') or ''
+            cpu = ', '.join(str(c) for c in cpu_raw if c) if isinstance(cpu_raw, list) else str(cpu_raw)
             ram_gb = None
             try:
-                total_ram_mb = raw.get('total_ram') or 0
-                if total_ram_mb:
-                    ram_gb = int(round(int(total_ram_mb) / 1024))
+                total_ram_val = raw.get('total_ram') or 0
+                if total_ram_val:
+                    # TRMM stores total_ram in GB; other providers may use MB via _norm_ram_gb
+                    ram_gb = int(round(float(total_ram_val)))
+                elif raw.get('_norm_ram_gb') is not None:
+                    ram_gb = int(round(float(raw['_norm_ram_gb'])))
             except (ValueError, TypeError):
                 pass
             disks = raw.get('disks') or []
             storage_parts = []
             for disk in disks:
-                dev = disk.get('dev', '?')
+                dev = disk.get('device') or disk.get('dev', '?')
                 total = disk.get('total_gb') or disk.get('total') or 0
                 used = disk.get('used_gb') or disk.get('used') or 0
+                percent = disk.get('percent')
+                try:
+                    total = float(total)
+                    used = float(used)
+                except (ValueError, TypeError):
+                    total = 0
+                    used = 0
                 if total:
-                    pct = round(used / total * 100) if total else 0
+                    pct = round(float(percent)) if percent is not None else (round(used / total * 100) if total else 0)
                     storage_parts.append(f"{dev} {int(total)}GB ({pct}% used)")
-            storage = ', '.join(storage_parts)
+            storage = ', '.join(storage_parts) or raw.get('_norm_storage', '')
             agent_notes = raw.get('notes') or raw.get('description') or ''
             notes_text = agent_notes or f'Auto-mapped from RMM device {device.external_id}. Online: {device.is_online}'
 
