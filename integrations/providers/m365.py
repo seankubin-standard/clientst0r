@@ -251,7 +251,7 @@ class M365Provider:
         """Get recent Defender/security alerts. Requires SecurityAlert.Read.All."""
         try:
             return self._get_all('/security/alerts_v2', params={
-                '$select': 'id,title,severity,status,createdDateTime,serviceSource,category,description',
+                '$select': 'id,title,severity,status,createdDateTime,serviceSource,category,description,assignedTo,userStates',
                 '$top': '100',
                 '$orderby': 'createdDateTime desc',
             })

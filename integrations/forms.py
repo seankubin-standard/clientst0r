@@ -587,9 +587,10 @@ class UnifiConnectionForm(forms.ModelForm):
 
     class Meta:
         model = UnifiConnection
-        fields = ['name', 'host', 'verify_ssl', 'is_active']
+        fields = ['name', 'mode', 'host', 'verify_ssl', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Main Office UniFi'}),
+            'mode': forms.Select(attrs={'class': 'form-control'}),
             'host': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://192.168.1.1'}),
             'verify_ssl': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),

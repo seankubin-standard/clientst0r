@@ -1202,11 +1202,15 @@ def unifi_delete(request, pk):
 def unifi_test(request, pk):
     """Test UniFi connection."""
     from integrations.providers.unifi import UnifiProvider
+    from integrations.providers.unifi_cloud import UnifiCloudProvider
     org = get_request_organization(request)
     connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
     creds = connection.get_credentials()
-    provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl,
-                             username=creds.get('username', ''), password=creds.get('password', ''))
+    if connection.mode == 'cloud':
+        provider = UnifiCloudProvider(creds.get('api_key', ''))
+    else:
+        provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl,
+                                 username=creds.get('username', ''), password=creds.get('password', ''))
     result = provider.test_connection()
     if result['success']:
         messages.success(request, f"Connected: {result['message']}")
@@ -1220,6 +1224,7 @@ def unifi_test(request, pk):
 def unifi_sync(request, pk):
     """Sync UniFi data and regenerate documentation."""
     from integrations.providers.unifi import UnifiProvider
+    from integrations.providers.unifi_cloud import UnifiCloudProvider
     from django.utils import timezone
     from django.utils.text import slugify
     from docs.models import Document
@@ -1229,8 +1234,11 @@ def unifi_sync(request, pk):
     connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
     creds = connection.get_credentials()
 
-    provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl,
-                             username=creds.get('username', ''), password=creds.get('password', ''))
+    if connection.mode == 'cloud':
+        provider = UnifiCloudProvider(creds.get('api_key', ''))
+    else:
+        provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl,
+                                 username=creds.get('username', ''), password=creds.get('password', ''))
     try:
         data = provider.sync()
         connection.cached_data = data
@@ -1239,7 +1247,8 @@ def unifi_sync(request, pk):
         connection.last_error = ''
 
         # Build documentation HTML
-        now = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
+        now_utc = timezone.now().isoformat()
+        now_display = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
         has_legacy = data.get('has_legacy_data', False)
         legacy_login_ok = data.get('legacy_login_ok', False)
         site_sections = ''
@@ -1404,12 +1413,16 @@ def unifi_sync(request, pk):
   </div>
 </div>'''
 
+        cloud_note = ''
+        if data.get('_cloud_mode'):
+            cloud_note = '<div class="alert alert-info mb-3"><i class="fas fa-cloud me-2"></i><strong>Cloud mode:</strong> WLANs, VLANs, firewall rules and traffic rules are not available via the UniFi Site Manager cloud API.</div>'
+
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
-  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from UniFi — last updated {now}</span>
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from UniFi — last updated <span data-utc="{now_utc}">{now_display}</span></span>
   <span class="badge bg-primary">{len(data.get("sites", []))} site(s)</span>
 </div>
-{site_sections or "<p class='text-muted'>No sites found.</p>"}
+{cloud_note}{site_sections or "<p class='text-muted'>No sites found.</p>"}
 </div>'''
 
         # Create or update document
@@ -1562,7 +1575,8 @@ def m365_sync(request, pk):
         connection.last_sync_status = 'ok'
         connection.last_error = ''
 
-        now = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
+        now_utc = timezone.now().isoformat()
+        now_display = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
         users = data.get('users', [])
         licenses = data.get('licenses', [])
         teams = data.get('teams', [])
@@ -1775,13 +1789,15 @@ def m365_sync(request, pk):
                 sev = (a.get('severity') or 'informational').lower()
                 status = html_lib.escape(a.get('status') or '—')
                 source = html_lib.escape(a.get('serviceSource') or a.get('category') or '—')
-                created = (a.get('createdDateTime') or '')[:10]
+                created = (a.get('createdDateTime') or '')[:16].replace('T', ' ') + ' UTC'
                 badge = sev_badge.get(sev, 'bg-secondary')
-                da_rows += f'<tr><td>{title}</td><td><span class="badge {badge}">{sev}</span></td><td>{status}</td><td>{source}</td><td>{created}</td></tr>'
+                user_states = a.get('userStates') or []
+                user = html_lib.escape(a.get('assignedTo') or (user_states[0].get('userPrincipalName') if user_states else '') or '—')
+                da_rows += f'<tr><td>{title}</td><td><span class="badge {badge}">{sev}</span></td><td>{status}</td><td>{source}</td><td>{user}</td><td>{created}</td></tr>'
             return f'''<div class="card mb-3">
   <div class="card-header"><i class="fas fa-shield-virus me-2"></i>Microsoft Defender Alerts ({len(defender_alerts)})</div>
   <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
-    <thead><tr><th>Alert</th><th>Severity</th><th>Status</th><th>Source</th><th>Date</th></tr></thead>
+    <thead><tr><th>Alert</th><th>Severity</th><th>Status</th><th>Source</th><th>User</th><th>Date</th></tr></thead>
     <tbody>{da_rows}</tbody>
   </table></div></div>'''
 
@@ -1799,7 +1815,7 @@ def m365_sync(request, pk):
 
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
-  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from Microsoft 365 \u2014 last updated {now}</span>
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from Microsoft 365 \u2014 last updated <span data-utc="{now_utc}">{now_display}</span></span>
   <span class="badge bg-primary">Tenant: {html_lib.escape(connection.tenant_id[:8])}...</span>
 </div>
 {score_section}
