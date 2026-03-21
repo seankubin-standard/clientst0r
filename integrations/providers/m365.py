@@ -3,7 +3,8 @@ Microsoft 365 / Graph API provider.
 Uses Azure AD app registration with client credentials OAuth2 flow.
 Required Graph API permissions (application, not delegated):
   User.Read.All, Group.Read.All, Sites.Read.All, TeamSettings.Read.All,
-  Directory.Read.All, Organization.Read.All
+  Directory.Read.All, Organization.Read.All, SecurityAlert.Read.All,
+  Reports.Read.All
 """
 import logging
 import requests
@@ -251,7 +252,7 @@ class M365Provider:
         """Get recent Defender/security alerts. Requires SecurityAlert.Read.All."""
         try:
             return self._get_all('/security/alerts_v2', params={
-                '$select': 'id,title,severity,status,createdDateTime,serviceSource,category,description',
+                '$select': 'id,title,severity,status,createdDateTime,serviceSource,category,description,assignedTo,userStates',
                 '$top': '100',
                 '$orderby': 'createdDateTime desc',
             })

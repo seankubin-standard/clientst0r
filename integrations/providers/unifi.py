@@ -4,12 +4,20 @@ Authentication:
   - Primary:  X-API-Key header (official API v1, UniFi OS 3.x+)
   - Optional: username + password (session cookie, legacy API for WLANs/VLANs/clients)
 Reference: https://help.ui.com/hc/en-us/articles/30076656117655
+
+UniFi Site Manager (cloud) provider.
+Authentication:
+  - API key from https://account.ui.com → API Keys
+  - Base URL: https://api.ui.com
+Reference: https://developer.ui.com/site-manager/v1.0.0/gettingstarted
 """
 import logging
 import urllib3
 import requests
 
 logger = logging.getLogger(__name__)
+
+SITE_MANAGER_BASE = 'https://api.ui.com'
 
 
 class UnifiProvider:
@@ -291,3 +299,122 @@ class UnifiProvider:
                 'client_count': client_count,
             })
         return result
+
+
+class UnifiCloudProvider:
+    """
+    UniFi Site Manager cloud API client.
+    Uses the api.ui.com REST API with an X-API-Key generated at account.ui.com.
+    Reference: https://developer.ui.com/site-manager/v1.0.0/gettingstarted
+    """
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.session = requests.Session()
+        self.session.headers.update({
+            'X-API-Key': api_key,
+            'Accept': 'application/json',
+        })
+
+    def _get(self, path: str, params: dict = None) -> dict:
+        url = f"{SITE_MANAGER_BASE}{path}"
+        resp = self.session.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _get_all(self, path: str, params: dict = None) -> list:
+        """Follow nextToken/nextPageToken pagination."""
+        results = []
+        p = dict(params or {})
+        while True:
+            data = self._get(path, params=p)
+            items = data.get('data', [])
+            results.extend(items)
+            next_token = data.get('nextToken') or data.get('nextPageToken') or ''
+            if not next_token or not items:
+                break
+            p['nextToken'] = next_token
+        return results
+
+    def test_connection(self) -> dict:
+        """Test API key by fetching the hosts list."""
+        try:
+            data = self._get('/v1/hosts')
+            hosts = data.get('data', [])
+            return {'success': True, 'message': f"Connected to UniFi Site Manager. Found {len(hosts)} host(s)."}
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 401:
+                return {'success': False, 'error': 'Authentication failed — check your API key.'}
+            return {'success': False, 'error': str(e)}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def get_hosts(self) -> list:
+        """List all hosts (controllers/gateways) visible to this API key."""
+        try:
+            return self._get_all('/v1/hosts')
+        except Exception as e:
+            logger.warning(f"UniFi Cloud get_hosts failed: {e}")
+            return []
+
+    def get_sites(self) -> list:
+        """List all sites across all hosts."""
+        try:
+            return self._get_all('/v1/sites')
+        except Exception as e:
+            logger.warning(f"UniFi Cloud get_sites failed: {e}")
+            return []
+
+    def get_devices(self, host_id: str = '') -> list:
+        """List all devices; optionally filter by hostId."""
+        try:
+            params = {'hostId': host_id} if host_id else None
+            return self._get_all('/v1/devices', params=params)
+        except Exception as e:
+            logger.warning(f"UniFi Cloud get_devices failed: {e}")
+            return []
+
+    def sync(self) -> dict:
+        """Pull all cloud data and return a structured summary compatible with UnifiProvider.sync()."""
+        hosts = self.get_hosts()
+        sites = self.get_sites()
+        devices = self.get_devices()
+
+        # Group devices and sites by hostId for per-host breakdown
+        host_map = {h.get('id') or h.get('hostId', ''): h for h in hosts}
+        site_list = []
+
+        for site in sites:
+            site_id = site.get('siteId') or site.get('id') or ''
+            host_id = site.get('hostId') or ''
+            site_name = site.get('name') or site.get('desc') or site_id
+
+            site_devices = [d for d in devices if d.get('siteId') == site_id or d.get('hostId') == host_id]
+            type_counts = {}
+            for d in site_devices:
+                dtype = d.get('type', 'unknown')
+                type_counts[dtype] = type_counts.get(dtype, 0) + 1
+
+            site_list.append({
+                'id': site_id,
+                'name': site_name,
+                'host_id': host_id,
+                'host_name': (host_map.get(host_id) or {}).get('name') or host_id,
+                'devices': site_devices,
+                'device_type_counts': type_counts,
+                # Cloud API doesn't expose WLANs/VLANs/firewall rules via Site Manager
+                'wlans': [],
+                'vlans': [],
+                'firewall_rules': [],
+                'firewall_policies': [],
+                'traffic_rules': [],
+                'client_count': 0,
+            })
+
+        return {
+            'mode': 'cloud',
+            'hosts': hosts,
+            'sites': site_list,
+            'has_legacy_data': False,
+            'legacy_login_ok': False,
+        }

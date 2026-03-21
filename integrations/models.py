@@ -613,10 +613,22 @@ class UnifiConnection(BaseModel):
     """
     UniFi Network Application connection per organization.
     Pulls network topology data for documentation generation.
+    mode='self_hosted' uses a local controller URL (default).
+    mode='cloud' uses the UniFi Site Manager cloud API (api.ui.com).
     """
+    MODE_SELF_HOSTED = 'self_hosted'
+    MODE_CLOUD = 'cloud'
+    MODE_CHOICES = [
+        (MODE_SELF_HOSTED, 'Self-hosted (local controller)'),
+        (MODE_CLOUD, 'Cloud (UniFi Site Manager / ui.com)'),
+    ]
+
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='unifi_connections')
     name = models.CharField(max_length=255, help_text="Friendly name for this connection")
-    host = models.URLField(max_length=500, help_text="UniFi controller URL, e.g. https://192.168.1.1")
+    mode = models.CharField(max_length=20, choices=MODE_CHOICES, default=MODE_SELF_HOSTED,
+                            help_text="Self-hosted controller or UniFi Site Manager cloud API")
+    host = models.URLField(max_length=500, blank=True,
+                           help_text="UniFi controller URL (self-hosted only), e.g. https://192.168.1.1")
     verify_ssl = models.BooleanField(default=False, help_text="Verify SSL certificate (disable for self-signed)")
 
     # Encrypted API key

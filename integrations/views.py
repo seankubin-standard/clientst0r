@@ -1197,16 +1197,23 @@ def unifi_delete(request, pk):
     return render(request, 'integrations/unifi_confirm_delete.html', {'connection': connection})
 
 
+def _get_unifi_provider(connection):
+    """Return the appropriate UniFi provider instance based on connection mode."""
+    from integrations.providers.unifi import UnifiProvider, UnifiCloudProvider
+    creds = connection.get_credentials()
+    if getattr(connection, 'mode', 'self_hosted') == UnifiConnection.MODE_CLOUD:
+        return UnifiCloudProvider(api_key=creds.get('api_key', ''))
+    return UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl,
+                         username=creds.get('username', ''), password=creds.get('password', ''))
+
+
 @login_required
 @require_write
 def unifi_test(request, pk):
     """Test UniFi connection."""
-    from integrations.providers.unifi import UnifiProvider
     org = get_request_organization(request)
     connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
-    creds = connection.get_credentials()
-    provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl,
-                             username=creds.get('username', ''), password=creds.get('password', ''))
+    provider = _get_unifi_provider(connection)
     result = provider.test_connection()
     if result['success']:
         messages.success(request, f"Connected: {result['message']}")
@@ -1219,7 +1226,6 @@ def unifi_test(request, pk):
 @require_write
 def unifi_sync(request, pk):
     """Sync UniFi data and regenerate documentation."""
-    from integrations.providers.unifi import UnifiProvider
     from django.utils import timezone
     from django.utils.text import slugify
     from docs.models import Document
@@ -1227,10 +1233,8 @@ def unifi_sync(request, pk):
 
     org = get_request_organization(request)
     connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
-    creds = connection.get_credentials()
 
-    provider = UnifiProvider(connection.host, creds.get('api_key', ''), connection.verify_ssl,
-                             username=creds.get('username', ''), password=creds.get('password', ''))
+    provider = _get_unifi_provider(connection)
     try:
         data = provider.sync()
         connection.cached_data = data
@@ -1767,7 +1771,7 @@ def m365_sync(request, pk):
             if not defender_alerts:
                 return ''
             if defender_alerts[0].get('_permission_error'):
-                return f'<div class="alert alert-warning mb-3"><i class="fas fa-key me-2"></i><strong>Defender Alerts</strong> — missing permission: <code>{defender_alerts[0].get("required")}</code>. Add this to your Azure AD app registration.</div>'
+                return f'<div class="alert alert-warning mb-3"><i class="fas fa-key me-2"></i><strong>Defender Alerts</strong> — missing permission: <code>{defender_alerts[0].get("required")}</code>. Add <code>SecurityAlert.Read.All</code> to your Azure AD app registration (Application permission) and grant admin consent.</div>'
             sev_badge = {'high': 'bg-danger', 'medium': 'bg-warning text-dark', 'low': 'bg-info text-dark', 'informational': 'bg-secondary'}
             da_rows = ''
             for a in defender_alerts[:50]:
@@ -1775,13 +1779,23 @@ def m365_sync(request, pk):
                 sev = (a.get('severity') or 'informational').lower()
                 status = html_lib.escape(a.get('status') or '—')
                 source = html_lib.escape(a.get('serviceSource') or a.get('category') or '—')
-                created = (a.get('createdDateTime') or '')[:10]
+                # Format timestamp: Graph API returns UTC ISO 8601; show as "YYYY-MM-DD HH:MM UTC"
+                raw_ts = a.get('createdDateTime') or ''
+                created = (raw_ts[:16].replace('T', ' ') + ' UTC') if raw_ts else '—'
+                # Username: assignedTo or first entry in userStates
+                assigned = a.get('assignedTo') or ''
+                if not assigned:
+                    user_states = a.get('userStates') or []
+                    if user_states and isinstance(user_states, list):
+                        assigned = (user_states[0].get('userPrincipalName') or
+                                    user_states[0].get('accountName') or '')
+                user_cell = html_lib.escape(assigned) if assigned else '<span class="text-muted">—</span>'
                 badge = sev_badge.get(sev, 'bg-secondary')
-                da_rows += f'<tr><td>{title}</td><td><span class="badge {badge}">{sev}</span></td><td>{status}</td><td>{source}</td><td>{created}</td></tr>'
+                da_rows += f'<tr><td>{title}</td><td><span class="badge {badge}">{sev}</span></td><td>{status}</td><td>{source}</td><td>{user_cell}</td><td>{created}</td></tr>'
             return f'''<div class="card mb-3">
   <div class="card-header"><i class="fas fa-shield-virus me-2"></i>Microsoft Defender Alerts ({len(defender_alerts)})</div>
   <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
-    <thead><tr><th>Alert</th><th>Severity</th><th>Status</th><th>Source</th><th>Date</th></tr></thead>
+    <thead><tr><th>Alert</th><th>Severity</th><th>Status</th><th>Source</th><th>User</th><th>Date (UTC)</th></tr></thead>
     <tbody>{da_rows}</tbody>
   </table></div></div>'''
 
