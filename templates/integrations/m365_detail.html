@@ -32,7 +32,7 @@
                         {% elif connection.last_sync_status == 'error' %}<span class="badge bg-danger">Error</span>
                         {% else %}<span class="badge bg-secondary">Never synced</span>{% endif %}
                     </td></tr>
-                    <tr><th>Last Sync</th><td>{{ connection.last_sync_at|localtime|date:"Y-m-d H:i"|default:"Never" }}</td></tr>
+                    <tr><th>Last Sync</th><td>{% if connection.last_sync_at %}<span data-utc="{{ connection.last_sync_at|date:"c" }}">{{ connection.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td></tr>
                     {% if connection.last_error %}<tr><th>Last Error</th><td class="text-danger small">{{ connection.last_error }}</td></tr>{% endif %}
                 </table>
             </div>

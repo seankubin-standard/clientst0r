@@ -1241,6 +1241,7 @@ def unifi_sync(request, pk):
         # Build documentation HTML
         now = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
         has_legacy = data.get('has_legacy_data', False)
+        legacy_login_ok = data.get('legacy_login_ok', False)
         site_sections = ''
         for site in data.get('sites', []):
             # Devices table
@@ -1321,9 +1322,11 @@ def unifi_sync(request, pk):
                 action_badge = 'bg-danger' if action == 'drop' else ('bg-warning text-dark' if action == 'reject' else 'bg-success')
                 fw_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{proto}</td><td>{src}</td><td>{dst}{(" :" + dport) if dport else ""}</td></tr>'
             if not has_legacy:
-                fw_empty = "<tr><td colspan='5' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required to fetch firewall rules via legacy API.</td></tr>"
+                fw_empty = "<tr><td colspan='5' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required — configure on the UniFi connection settings.</td></tr>"
+            elif not legacy_login_ok:
+                fw_empty = "<tr><td colspan='5' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — check username/password on the connection settings.</td></tr>"
             else:
-                fw_empty = "<tr><td colspan='5' class='text-muted'>No legacy firewall rules configured.</td></tr>"
+                fw_empty = "<tr><td colspan='5' class='text-muted'>No legacy firewall rules found.</td></tr>"
             fw_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-fire-alt me-2"></i>Legacy Firewall Rules ({len(fw_rules)})</div>
@@ -1347,9 +1350,11 @@ def unifi_sync(request, pk):
                 action_badge = 'bg-danger' if action.upper() in ('DROP', 'REJECT', 'BLOCK') else 'bg-success'
                 fp_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{src_zone}</td><td>{dst_zone}</td></tr>'
             if not has_legacy:
-                fp_empty = "<tr><td colspan='4' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required to fetch firewall policies via legacy API.</td></tr>"
+                fp_empty = "<tr><td colspan='4' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required — configure on the UniFi connection settings.</td></tr>"
+            elif not legacy_login_ok:
+                fp_empty = "<tr><td colspan='4' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — check username/password on the connection settings.</td></tr>"
             else:
-                fp_empty = "<tr><td colspan='4' class='text-muted'>No firewall policies configured.</td></tr>"
+                fp_empty = "<tr><td colspan='4' class='text-muted'>No firewall policies found.</td></tr>"
             fp_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-shield-alt me-2"></i>Firewall Policies / Zone Rules ({len(fp_rules)})</div>
@@ -1372,9 +1377,11 @@ def unifi_sync(request, pk):
                 action_badge = 'bg-danger' if action in ('BLOCK', 'REJECT') else ('bg-warning text-dark' if action == 'THROTTLE' else 'bg-success')
                 tr_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{matching}</td></tr>'
             if not has_legacy:
-                tr_empty = "<tr><td colspan='3' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required to fetch traffic rules via legacy API.</td></tr>"
+                tr_empty = "<tr><td colspan='3' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required — configure on the UniFi connection settings.</td></tr>"
+            elif not legacy_login_ok:
+                tr_empty = "<tr><td colspan='3' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — check username/password on the connection settings.</td></tr>"
             else:
-                tr_empty = "<tr><td colspan='3' class='text-muted'>No traffic rules configured.</td></tr>"
+                tr_empty = "<tr><td colspan='3' class='text-muted'>No traffic rules found.</td></tr>"
             tr_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-traffic-light me-2"></i>Traffic Rules ({len(tr_rules)})</div>
@@ -1731,6 +1738,8 @@ def m365_sync(request, pk):
                 return ''
             if sp_usage[0].get('_permission_error'):
                 return f'<div class="alert alert-warning mb-3"><i class="fas fa-key me-2"></i><strong>SharePoint Storage Usage</strong> — missing permission: <code>{sp_usage[0].get("required")}</code>. Add this to your Azure AD app registration.</div>'
+            if sp_usage[0].get('_no_sites'):
+                return '<div class="alert alert-info mb-3"><i class="fas fa-info-circle me-2"></i><strong>SharePoint Storage</strong> — no sites returned by the Graph API. Ensure admin consent has been granted for <code>Sites.Read.All</code> and that your tenant has SharePoint Online enabled.</div>'
             sp_rows = ''
             for s in sp_usage[:100]:
                 sname = html_lib.escape(s.get('siteUrl') or s.get('siteName') or s.get('displayName') or '\u2014')

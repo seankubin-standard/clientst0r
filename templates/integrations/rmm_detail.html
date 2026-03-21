@@ -82,7 +82,7 @@
                     </tr>
                     <tr>
                         <th>Last Sync:</th>
-                        <td>{{ connection.last_sync_at|localtime|date:"Y-m-d H:i:s"|default:"Never" }}</td>
+                        <td>{% if connection.last_sync_at %}<span data-utc="{{ connection.last_sync_at|date:"c" }}">{{ connection.last_sync_at|localtime|date:"Y-m-d H:i:s" }}</span>{% else %}Never{% endif %}</td>
                     </tr>
                     <tr>
                         <th>Sync Status:</th>

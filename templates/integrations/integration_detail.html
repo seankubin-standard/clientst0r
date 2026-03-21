@@ -86,7 +86,7 @@
                     <dt class="col-sm-4">Last Sync:</dt>
                     <dd class="col-sm-8">
                         {% if connection.last_sync_at %}
-                        {{ connection.last_sync_at|localtime|date:"F j, Y g:i A" }}
+                        <span data-utc="{{ connection.last_sync_at|date:"c" }}">{{ connection.last_sync_at|localtime|date:"F j, Y g:i A" }}</span>
                         {% else %}
                         <span class="text-muted">Never</span>
                         {% endif %}

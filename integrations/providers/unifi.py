@@ -23,6 +23,7 @@ class UnifiProvider:
         self.username = username
         self.password = password
         self._session_cookie = None
+        self._auth_token = ''
 
         self.session = requests.Session()
         self.session.headers.update({
@@ -88,34 +89,44 @@ class UnifiProvider:
     # ------------------------------------------------------------------
 
     def _legacy_login(self) -> bool:
-        """Log in to the legacy API and store session cookie."""
-        try:
-            # Try UniFi OS path first
-            for login_path in ('/api/auth/login', '/api/login'):
-                try:
-                    resp = requests.post(
-                        f"{self.host}{login_path}",
-                        json={'username': self.username, 'password': self.password},
-                        verify=self.verify_ssl,
-                        timeout=10,
-                    )
-                    if resp.status_code == 200:
-                        self._session_cookie = resp.cookies
-                        return True
-                except Exception:
-                    continue
-        except Exception as e:
-            logger.warning(f"UniFi legacy login failed: {e}")
+        """Log in to the legacy API and store session cookie/token."""
+        for login_path in ('/api/auth/login', '/api/login'):
+            try:
+                resp = requests.post(
+                    f"{self.host}{login_path}",
+                    json={'username': self.username, 'password': self.password},
+                    verify=self.verify_ssl,
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    self._session_cookie = resp.cookies
+                    # UniFi OS 3.x also returns token in JSON body — store for header auth
+                    try:
+                        body = resp.json()
+                        self._auth_token = body.get('token') or body.get('access_token') or ''
+                    except Exception:
+                        self._auth_token = ''
+                    logger.debug(f"UniFi legacy login OK via {login_path}")
+                    return True
+                logger.debug(f"UniFi login {login_path} returned {resp.status_code}")
+            except Exception as e:
+                logger.debug(f"UniFi login attempt {login_path} failed: {e}")
+                continue
+        logger.warning("UniFi legacy login failed on all paths — check username/password")
         return False
 
     def _legacy_get(self, path: str) -> dict:
-        """GET via legacy session-cookie API."""
+        """GET via legacy session-cookie API (with token header fallback for UniFi OS 3.x)."""
         if not self._session_cookie:
             if not self._legacy_login():
                 return {}
+        headers = {}
+        if getattr(self, '_auth_token', ''):
+            headers['Authorization'] = f'Bearer {self._auth_token}'
         resp = requests.get(
             f"{self.host}{path}",
             cookies=self._session_cookie,
+            headers=headers,
             verify=self.verify_ssl,
             timeout=15,
         )
@@ -239,7 +250,8 @@ class UnifiProvider:
         """Pull all data and return structured summary."""
         sites = self.get_sites()
         has_legacy = bool(self.username and self.password)
-        result = {'sites': [], 'has_legacy_data': has_legacy}
+        legacy_login_ok = self._legacy_login() if has_legacy else False
+        result = {'sites': [], 'has_legacy_data': has_legacy, 'legacy_login_ok': legacy_login_ok}
 
         for site in sites:
             # Official API uses 'siteId' (UUID); legacy API uses 'internalReference' (short name)

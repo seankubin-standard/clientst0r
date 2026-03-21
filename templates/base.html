@@ -772,5 +772,21 @@
     </script>
 
     {% block extra_js %}{% endblock %}
+    <script>
+    // Convert all elements with data-utc attribute to local browser time
+    document.querySelectorAll('[data-utc]').forEach(function(el) {
+        var utc = el.getAttribute('data-utc');
+        if (!utc) return;
+        try {
+            var d = new Date(utc);
+            if (isNaN(d.getTime())) return;
+            el.textContent = d.getFullYear() + '-' +
+                String(d.getMonth()+1).padStart(2,'0') + '-' +
+                String(d.getDate()).padStart(2,'0') + ' ' +
+                String(d.getHours()).padStart(2,'0') + ':' +
+                String(d.getMinutes()).padStart(2,'0');
+        } catch(e) {}
+    });
+    </script>
 </body>
 </html>

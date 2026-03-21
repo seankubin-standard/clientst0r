@@ -126,13 +126,40 @@ class M365Provider:
             logger.warning(f"M365 get_teams failed: {e}")
             return []
 
-    def get_sharepoint_sites(self) -> list:
+    def _get_sites_list(self, select: str = 'id,displayName,webUrl') -> list:
+        """Enumerate SharePoint sites. Tries $search=* first; falls back to root + subsites."""
+        # Primary: search-based enumeration (requires ConsistencyLevel + $count)
         try:
-            return self._get_all('/sites', params={
-                '$select': 'displayName,webUrl,description,createdDateTime',
+            results = self._get_all('/sites', params={
                 '$search': '*',
+                '$select': select,
                 '$count': 'true',
             })
+            if results:
+                return results
+        except Exception as e:
+            logger.debug(f"M365 sites $search failed: {e}")
+
+        # Fallback: root site + its direct children
+        sites = []
+        try:
+            root = self._get('/sites/root', params={'$select': select})
+            if root.get('id'):
+                sites.append(root)
+        except Exception:
+            pass
+        try:
+            children = self._get_all('/sites/root/sites', params={'$select': select})
+            sites.extend(children)
+        except Exception:
+            pass
+        return sites
+
+    def get_sharepoint_sites(self) -> list:
+        try:
+            return self._get_sites_list(
+                select='displayName,webUrl,description,createdDateTime'
+            )
         except Exception as e:
             logger.warning(f"M365 get_sharepoint_sites failed: {e}")
             return []
@@ -192,11 +219,7 @@ class M365Provider:
         """Get SharePoint site storage via per-site drive quota. Requires Sites.Read.All."""
         results = []
         try:
-            sites = self._get_all('/sites', params={
-                '$search': '*',
-                '$select': 'id,displayName,webUrl',
-                '$count': 'true',
-            })
+            sites = self._get_sites_list(select='id,displayName,webUrl')
         except requests.exceptions.HTTPError as e:
             code = e.response.status_code if e.response is not None else 0
             if code == 403:
@@ -205,6 +228,8 @@ class M365Provider:
         except Exception as e:
             logger.warning(f"M365 get_sharepoint_usage (sites) failed: {e}")
             return []
+        if not sites:
+            return [{'_permission_error': False, '_no_sites': True}]
 
         for site in sites[:50]:  # cap to avoid too many requests
             try:
