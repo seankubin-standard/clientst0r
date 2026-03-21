@@ -1243,7 +1243,8 @@ def unifi_sync(request, pk):
         connection.last_error = ''
 
         # Build documentation HTML
-        now = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
+        now_utc = timezone.now().isoformat()
+        now_display = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
         has_legacy = data.get('has_legacy_data', False)
         legacy_login_ok = data.get('legacy_login_ok', False)
         site_sections = ''
@@ -1408,12 +1409,16 @@ def unifi_sync(request, pk):
   </div>
 </div>'''
 
+        cloud_note = ''
+        if data.get('_cloud_mode'):
+            cloud_note = '<div class="alert alert-info mb-3"><i class="fas fa-cloud me-2"></i><strong>Cloud mode:</strong> WLANs, VLANs, firewall rules and traffic rules are not available via the UniFi Site Manager cloud API.</div>'
+
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
-  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from UniFi — last updated {now}</span>
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from UniFi — last updated <span data-utc="{now_utc}">{now_display}</span></span>
   <span class="badge bg-primary">{len(data.get("sites", []))} site(s)</span>
 </div>
-{site_sections or "<p class='text-muted'>No sites found.</p>"}
+{cloud_note}{site_sections or "<p class='text-muted'>No sites found.</p>"}
 </div>'''
 
         # Create or update document
@@ -1566,7 +1571,8 @@ def m365_sync(request, pk):
         connection.last_sync_status = 'ok'
         connection.last_error = ''
 
-        now = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
+        now_utc = timezone.now().isoformat()
+        now_display = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
         users = data.get('users', [])
         licenses = data.get('licenses', [])
         teams = data.get('teams', [])
@@ -1813,7 +1819,7 @@ def m365_sync(request, pk):
 
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
-  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from Microsoft 365 \u2014 last updated {now}</span>
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from Microsoft 365 \u2014 last updated <span data-utc="{now_utc}">{now_display}</span></span>
   <span class="badge bg-primary">Tenant: {html_lib.escape(connection.tenant_id[:8])}...</span>
 </div>
 {score_section}

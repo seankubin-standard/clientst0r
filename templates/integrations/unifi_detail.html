@@ -27,6 +27,7 @@
             <div class="card-body">
                 <table class="table table-sm">
                     <tr><th style="width:40%">Host</th><td>{{ connection.host }}</td></tr>
+                    <tr><th>Mode</th><td>{{ connection.get_mode_display }}</td></tr>
                     <tr><th>SSL Verify</th><td>{{ connection.verify_ssl|yesno:"Yes,No" }}</td></tr>
                     <tr><th>Active</th><td>{{ connection.is_active|yesno:"Yes,No" }}</td></tr>
                     <tr><th>Status</th><td>
