@@ -389,11 +389,16 @@ class UnifiCloudProvider:
             host_id = site.get('hostId') or ''
             # Site Manager API stores the display name in meta.desc
             site_name = (site.get('meta') or {}).get('desc') or site.get('name') or site.get('desc') or site_id
+            host_name = (host_map.get(host_id) or {}).get('name') or host_id
+            # When the site name is the generic "default" placeholder, use the host name instead
+            # so MSP setups (one host per client, each with a "Default" site) show the client name.
+            if not site_name or site_name.strip().lower() in ('default', 'default site'):
+                site_name = host_name
 
-            # Match devices by siteId first; fall back to hostId only when no device has siteId
-            site_devices = [d for d in devices if d.get('siteId') == site_id]
-            if not site_devices:
-                site_devices = [d for d in devices if d.get('hostId') == host_id]
+            # Match devices by siteId first; require matching hostId too when available
+            site_devices = [d for d in devices
+                            if d.get('siteId') == site_id
+                            or (not d.get('siteId') and d.get('hostId') == host_id)]
             type_counts = {}
             for d in site_devices:
                 dtype = d.get('type', 'unknown')
@@ -403,7 +408,7 @@ class UnifiCloudProvider:
                 'id': site_id,
                 'name': site_name,
                 'host_id': host_id,
-                'host_name': (host_map.get(host_id) or {}).get('name') or host_id,
+                'host_name': host_name,
                 'devices': site_devices,
                 'device_type_counts': type_counts,
                 # Cloud API doesn't expose WLANs/VLANs/firewall rules via Site Manager

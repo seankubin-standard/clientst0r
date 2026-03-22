@@ -74,7 +74,7 @@
 <ul class="list-group">
     {% for version in versions %}
     <li class="list-group-item">
-        Version {{ version.version_number }} - {{ version.created_at|date:"Y-m-d H:i" }} by {{ version.created_by.username %}
+        Version {{ version.version_number }} - {{ version.created_at|date:"Y-m-d H:i" }} by {{ version.created_by.username }}
     </li>
     {% endfor %}
 </ul>

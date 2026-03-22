@@ -375,7 +375,7 @@ class TacticalRMMProvider(BaseRMMProvider):
             'mac_address': '',  # Tactical RMM doesn't expose MAC in main agent data
             'latitude': latitude,
             'longitude': longitude,
-            'is_online': raw_data.get('online', False),
+            'is_online': bool(raw_data.get('online')) or raw_data.get('status') == 'online',
             'last_seen': last_seen,
             # Hardware specs from TRMM
             'cpu': cpu,
