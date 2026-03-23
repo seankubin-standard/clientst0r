@@ -193,31 +193,41 @@ class UnifiProvider:
         for path in paths:
             try:
                 raw = self._legacy_get(path)
-                items = raw if isinstance(raw, list) else raw.get('data', raw.get('trafficRules', []))
+                items = raw if isinstance(raw, list) else raw.get('data', raw.get('trafficRules', raw.get('rules', [])))
                 if items:
+                    logger.debug(f"UniFi traffic rules found via {path}: {len(items)} items")
                     return items
-            except Exception:
+            except Exception as e:
+                logger.debug(f"UniFi traffic rules path {path} failed: {e}")
                 continue
         return []
 
     def get_firewall_policies(self, site_ref: str, site_id: str = '') -> list:
-        """Get zone-based Firewall Policies (UniFi OS 3.x+). Requires username/password."""
+        """Get zone-based Firewall Policies (UniFi OS 3.x+). Requires username/password.
+        UniFi 8.x renamed the endpoint from /firewall/policies to /firewall/zone-policies."""
         if not (self.username and self.password):
             return []
         paths = []
+        # Try UUID-based paths first (most reliable for v2 API)
         if site_id:
+            paths.append(f'/proxy/network/v2/api/site/{site_id}/firewall/zone-policies')
             paths.append(f'/proxy/network/v2/api/site/{site_id}/firewall/policies')
+        # Then short-name paths
         paths += [
+            f'/proxy/network/v2/api/site/{site_ref}/firewall/zone-policies',
             f'/proxy/network/v2/api/site/{site_ref}/firewall/policies',
             f'/proxy/network/api/s/{site_ref}/rest/firewallpolicy',
         ]
         for path in paths:
             try:
                 raw = self._legacy_get(path)
-                items = raw if isinstance(raw, list) else raw.get('data', raw.get('policies', []))
+                items = (raw if isinstance(raw, list)
+                         else raw.get('data', raw.get('policies', raw.get('zonePolicies', []))))
                 if items:
+                    logger.debug(f"UniFi firewall policies found via {path}: {len(items)} items")
                     return items
-            except Exception:
+            except Exception as e:
+                logger.debug(f"UniFi firewall policies path {path} failed: {e}")
                 continue
         return []
 

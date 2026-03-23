@@ -124,6 +124,20 @@ class TacticalRMMProvider(BaseRMMProvider):
 
             for agent_data in data:
                 try:
+                    # If hardware fields are absent/null in the list response, fetch full
+                    # agent detail — some TRMM deployments only populate hardware on the
+                    # per-agent endpoint, not the bulk list.
+                    if not agent_data.get('total_ram') and not agent_data.get('disks'):
+                        agent_id = agent_data.get('agent_id') or agent_data.get('id')
+                        if agent_id:
+                            try:
+                                detail_resp = self._make_request('GET', f'/agents/{agent_id}/')
+                                detail = self._safe_json(detail_resp)
+                                if isinstance(detail, dict):
+                                    # Merge detail fields into list data (detail wins)
+                                    agent_data = {**agent_data, **detail}
+                            except Exception as detail_err:
+                                logger.debug(f"TRMM: could not fetch detail for agent {agent_id}: {detail_err}")
                     devices.append(self.normalize_device(agent_data))
                 except Exception as e:
                     logger.error(f"Error normalizing Tactical RMM agent {agent_data.get('agent_id')}: {e}")

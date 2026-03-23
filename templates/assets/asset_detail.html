@@ -436,9 +436,12 @@
                                         <dl class="row mb-0 small">
                                             {% with raw=rmm.raw_data %}
                                             {% if raw %}
-                                            {% if raw.cpu_model %}<dt class="col-sm-5">CPU</dt><dd class="col-sm-7">{{ raw.cpu_model }}</dd>
+                                            {% if raw._norm_cpu %}<dt class="col-sm-5">CPU</dt><dd class="col-sm-7">{{ raw._norm_cpu }}</dd>
+                                            {% elif raw.cpu_model %}<dt class="col-sm-5">CPU</dt><dd class="col-sm-7">{% if raw.cpu_model|length > 1 %}{{ raw.cpu_model|join:", " }}{% else %}{{ raw.cpu_model|first|default:raw.cpu_model }}{% endif %}</dd>
                                             {% elif raw.cpu %}<dt class="col-sm-5">CPU</dt><dd class="col-sm-7">{{ raw.cpu }}</dd>{% endif %}
-                                            {% if raw.total_ram %}<dt class="col-sm-5">RAM</dt><dd class="col-sm-7">{{ raw.total_ram|floatformat:0 }} MB</dd>{% endif %}
+                                            {% if raw._norm_ram_gb %}<dt class="col-sm-5">RAM</dt><dd class="col-sm-7">{{ raw._norm_ram_gb|floatformat:0 }} GB</dd>
+                                            {% elif raw.total_ram %}<dt class="col-sm-5">RAM</dt><dd class="col-sm-7">{{ raw.total_ram|floatformat:0 }} GB</dd>{% endif %}
+                                            {% if raw._norm_storage %}<dt class="col-sm-5">Storage</dt><dd class="col-sm-7">{{ raw._norm_storage }}</dd>{% endif %}
                                             {% if raw.make_model %}<dt class="col-sm-5">Model</dt><dd class="col-sm-7">{{ raw.make_model }}</dd>{% endif %}
                                             {% if raw.serial_number %}<dt class="col-sm-5">Serial</dt><dd class="col-sm-7"><code>{{ raw.serial_number }}</code></dd>{% endif %}
                                             {% if raw.public_ip %}<dt class="col-sm-5">Public IP</dt><dd class="col-sm-7"><code>{{ raw.public_ip }}</code></dd>{% endif %}
