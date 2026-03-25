@@ -33,8 +33,8 @@ class SessionIdleTimeoutMiddleware:
 
             if last_activity and (now - last_activity) > self.idle_timeout:
                 logout(request)
-                login_url = getattr(settings, 'LOGIN_URL', '/account/login/')
-                return redirect(f'{login_url}?next={request.path}')
+                from django.contrib.auth.views import redirect_to_login
+                return redirect_to_login(request.path)
 
             request.session['_last_activity'] = now
 
