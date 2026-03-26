@@ -74,7 +74,7 @@
 <ul class="list-group">
     {% for version in versions %}
     <li class="list-group-item">
-        Version {{ version.version_number }} - {{ version.created_at|date:"Y-m-d H:i" }} by {{ version.created_by.username }}
+        Version {{ version.version_number }} - <span class="local-time" data-utc="{{ version.created_at|date:'c' }}">{{ version.created_at|date:"Y-m-d H:i" }}</span> by {{ version.created_by.username|default:"System" }}
     </li>
     {% endfor %}
 </ul>
@@ -83,6 +83,18 @@
 
 {% block extra_js %}
 <script>
+// Convert UTC timestamps to browser local time
+document.querySelectorAll('.local-time[data-utc]').forEach(el => {
+    const d = new Date(el.dataset.utc);
+    if (!isNaN(d)) {
+        el.textContent = d.getFullYear() + '-' +
+            String(d.getMonth()+1).padStart(2,'0') + '-' +
+            String(d.getDate()).padStart(2,'0') + ' ' +
+            String(d.getHours()).padStart(2,'0') + ':' +
+            String(d.getMinutes()).padStart(2,'0');
+    }
+});
+
 // Delete document function
 async function deleteDocument(slug, title) {
     if (!confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {

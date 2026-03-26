@@ -402,8 +402,8 @@ class UnifiCloudProvider:
             host_name = (host_map.get(host_id) or {}).get('name') or host_id
             # When the site name is the generic "default" placeholder, use the host name instead
             # so MSP setups (one host per client, each with a "Default" site) show the client name.
-            if not site_name or site_name.strip().lower() in ('default', 'default site'):
-                site_name = host_name
+            if not site_name or site_name.strip().lower() in ('default', 'default site') or site_name == site_id:
+                site_name = host_name or site_id
 
             # Match devices by siteId first; require matching hostId too when available
             site_devices = [d for d in devices
