@@ -116,6 +116,23 @@ class M365Provider:
             logger.warning(f"M365 get_shared_mailboxes failed: {e}")
             return []
 
+    def get_mailbox_usage(self) -> list:
+        """Get mailbox usage stats — storage used, item count, type.
+        Uses /reports/getMailboxUsageDetail which requires Reports.Read.All."""
+        try:
+            resp = self._get('/reports/getMailboxUsageDetail(period=\'D7\')',
+                             params={'$format': 'application/json'})
+            return resp.get('value', [])
+        except requests.exceptions.HTTPError as e:
+            code = e.response.status_code if e.response is not None else 0
+            if code == 403:
+                return [{'_permission_error': True, 'required': 'Reports.Read.All'}]
+            logger.warning(f"M365 get_mailbox_usage failed (HTTP {code}): {e}")
+            return []
+        except Exception as e:
+            logger.warning(f"M365 get_mailbox_usage failed: {e}")
+            return []
+
     def get_teams(self) -> list:
         try:
             return self._get_all('/groups', params={
@@ -280,4 +297,5 @@ class M365Provider:
             'devices': self.get_devices(),
             'sharepoint_usage': self.get_sharepoint_usage(),
             'defender_alerts': self.get_defender_alerts(),
+            'mailbox_usage': self.get_mailbox_usage(),
         }

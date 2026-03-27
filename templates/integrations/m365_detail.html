@@ -91,4 +91,78 @@
     </div>
 </div>
 {% endif %}
+
+{% if mailbox_usage %}
+{% with perm_err=mailbox_usage|first %}
+{% if perm_err._permission_error %}
+<div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-1"></i>
+    Mailbox usage data requires the <strong>Reports.Read.All</strong> permission on your Azure app registration.
+</div>
+{% else %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="fas fa-envelope me-1"></i> Mailboxes ({{ mailbox_usage|length }})</strong>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Display Name</th>
+                        <th>Email</th>
+                        <th>Type</th>
+                        <th>Storage Used</th>
+                        <th>Item Count</th>
+                        <th>Last Activity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mb in mailbox_usage %}
+                    {% if not mb._permission_error %}
+                    <tr>
+                        <td>{{ mb.displayName|default:mb.userDisplayName|default:"—" }}</td>
+                        <td><small>{{ mb.userPrincipalName|default:"—" }}</small></td>
+                        <td>
+                            {% with t=mb.recipientType|default:mb.mailboxType|default:"" %}
+                            {% if "Shared" in t %}<span class="badge bg-secondary">Shared</span>
+                            {% elif "Room" in t %}<span class="badge bg-info text-dark">Room</span>
+                            {% elif "Equipment" in t %}<span class="badge bg-warning text-dark">Equipment</span>
+                            {% elif t %}<span class="badge bg-primary">{{ t }}</span>
+                            {% else %}<span class="badge bg-light text-muted">User</span>{% endif %}
+                            {% endwith %}
+                        </td>
+                        <td>
+                            {% if mb.storageUsedInBytes %}
+                            {{ mb.storageUsedInBytes|filesizeformat }}
+                            {% elif mb.storageUsedInMB %}
+                            {{ mb.storageUsedInMB|floatformat:0 }} MB
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>{{ mb.itemCount|default:"—" }}</td>
+                        <td><small>{{ mb.lastActivityDate|default:"—" }}</small></td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endwith %}
+{% elif shared_mailboxes %}
+<div class="card mb-4">
+    <div class="card-header"><strong><i class="fas fa-envelope me-1"></i> Shared Mailboxes ({{ shared_mailboxes|length }})</strong></div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead class="table-light"><tr><th>Name</th><th>Email</th></tr></thead>
+            <tbody>
+                {% for mb in shared_mailboxes %}
+                <tr><td>{{ mb.displayName }}</td><td><small>{{ mb.mail|default:mb.userPrincipalName }}</small></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

@@ -124,10 +124,10 @@ class TacticalRMMProvider(BaseRMMProvider):
 
             for agent_data in data:
                 try:
-                    # If hardware fields are absent/null in the list response, fetch full
+                    # If any hardware fields are absent/null in the list response, fetch full
                     # agent detail — some TRMM deployments only populate hardware on the
                     # per-agent endpoint, not the bulk list.
-                    if not agent_data.get('total_ram') and not agent_data.get('disks'):
+                    if not agent_data.get('total_ram') or not agent_data.get('disks'):
                         agent_id = agent_data.get('agent_id') or agent_data.get('id')
                         if agent_id:
                             try:
@@ -289,7 +289,20 @@ class TacticalRMMProvider(BaseRMMProvider):
             model = parts[1] if len(parts) > 1 else ''
 
         # Get IP address — prefer private/local IP; fall back to public IP
-        local_ips = raw_data.get('local_ips') or []
+        # Also scan nics (network interfaces) for IP and MAC data
+        nics = raw_data.get('nics') or []
+        mac_address = ''
+        nic_ips = []
+        for nic in nics:
+            if not mac_address:
+                mac_address = nic.get('mac_address') or nic.get('mac') or ''
+            nic_ip_list = nic.get('ip_addresses') or nic.get('ips') or []
+            if isinstance(nic_ip_list, list):
+                nic_ips.extend(nic_ip_list)
+            elif isinstance(nic_ip_list, str) and nic_ip_list:
+                nic_ips.append(nic_ip_list)
+
+        local_ips = raw_data.get('local_ips') or nic_ips or []
         if isinstance(local_ips, list) and local_ips:
             ip_address = local_ips[0]
         else:
@@ -386,7 +399,7 @@ class TacticalRMMProvider(BaseRMMProvider):
             'os_version': raw_data.get('operating_system', ''),
             'hostname': raw_data.get('hostname', ''),
             'ip_address': ip_address,
-            'mac_address': '',  # Tactical RMM doesn't expose MAC in main agent data
+            'mac_address': mac_address,
             'latitude': latitude,
             'longitude': longitude,
             'is_online': bool(raw_data.get('online')) or raw_data.get('status') == 'online',

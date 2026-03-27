@@ -32,6 +32,7 @@ class UnifiProvider:
         self.password = password
         self._session_cookie = None
         self._auth_token = ''
+        self._csrf_token = ''
 
         self.session = requests.Session()
         self.session.headers.update({
@@ -97,8 +98,8 @@ class UnifiProvider:
     # ------------------------------------------------------------------
 
     def _legacy_login(self) -> bool:
-        """Log in to the legacy API and store session cookie/token."""
-        for login_path in ('/api/auth/login', '/api/login'):
+        """Log in to the legacy API and store session cookie/token/csrf."""
+        for login_path in ('/api/auth/login', '/api/login', '/proxy/network/api/auth/login'):
             try:
                 resp = requests.post(
                     f"{self.host}{login_path}",
@@ -108,12 +109,15 @@ class UnifiProvider:
                 )
                 if resp.status_code == 200:
                     self._session_cookie = resp.cookies
-                    # UniFi OS 3.x also returns token in JSON body — store for header auth
+                    # UniFi OS 3.x/4.x returns token and csrf_token in JSON body
                     try:
                         body = resp.json()
                         self._auth_token = body.get('token') or body.get('access_token') or ''
+                        self._csrf_token = (body.get('csrf_token') or body.get('csrfToken') or
+                                            resp.cookies.get('TOKEN') or '')
                     except Exception:
                         self._auth_token = ''
+                        self._csrf_token = ''
                     logger.debug(f"UniFi legacy login OK via {login_path}")
                     return True
                 logger.debug(f"UniFi login {login_path} returned {resp.status_code}")
@@ -124,13 +128,15 @@ class UnifiProvider:
         return False
 
     def _legacy_get(self, path: str) -> dict:
-        """GET via legacy session-cookie API (with token header fallback for UniFi OS 3.x)."""
+        """GET via legacy session-cookie API (with token/CSRF header support for UniFi OS 3.x/4.x)."""
         if not self._session_cookie:
             if not self._legacy_login():
                 return {}
         headers = {}
         if getattr(self, '_auth_token', ''):
             headers['Authorization'] = f'Bearer {self._auth_token}'
+        if getattr(self, '_csrf_token', ''):
+            headers['X-Csrf-Token'] = self._csrf_token
         resp = requests.get(
             f"{self.host}{path}",
             cookies=self._session_cookie,

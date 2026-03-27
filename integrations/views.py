@@ -1497,6 +1497,8 @@ def m365_detail(request, pk):
         'teams': data.get('teams', []),
         'sharepoint_sites': data.get('sharepoint_sites', []),
         'roles': data.get('roles', []),
+        'mailbox_usage': data.get('mailbox_usage', []),
+        'shared_mailboxes': data.get('shared_mailboxes', []),
     })
 
 
