@@ -301,19 +301,30 @@ class TacticalRMMProvider(BaseRMMProvider):
         nic_ips = []
         for nic in nics:
             if not mac_address:
-                mac_address = nic.get('mac_address') or nic.get('mac') or ''
-            nic_ip_list = nic.get('ip_addresses') or nic.get('ips') or []
+                mac_address = (nic.get('mac_address') or nic.get('mac') or
+                               nic.get('macAddress') or nic.get('physicalAddress') or '')
+            nic_ip_list = nic.get('ip_addresses') or nic.get('ips') or nic.get('ipAddresses') or []
             if isinstance(nic_ip_list, list):
-                nic_ips.extend(nic_ip_list)
+                # Filter out link-local (169.254.x.x) and loopback addresses
+                for ip in nic_ip_list:
+                    s = str(ip).strip()
+                    if s and not s.startswith('169.254') and not s.startswith('127.'):
+                        nic_ips.append(s)
             elif isinstance(nic_ip_list, str) and nic_ip_list:
                 nic_ips.append(nic_ip_list)
 
         local_ips = raw_data.get('local_ips') or nic_ips or []
-        if isinstance(local_ips, list) and local_ips:
+        # Filter out link-local and loopback from local_ips list too
+        if isinstance(local_ips, list):
+            local_ips = [ip for ip in local_ips
+                         if str(ip) and not str(ip).startswith('169.254') and not str(ip).startswith('127.')]
+
+        if local_ips:
             ip_address = local_ips[0]
         else:
-            # Some TRMM versions return a single string in local_ip or lan_ip
+            # Try every plausible single-value field name before falling back to public IP
             ip_address = (raw_data.get('local_ip') or raw_data.get('lan_ip') or
+                          raw_data.get('agent_ip') or raw_data.get('private_ip') or
                           raw_data.get('ip') or raw_data.get('public_ip') or '')
 
         # Parse OS type

@@ -1160,11 +1160,36 @@ def unifi_detail(request, pk):
     org = get_request_organization(request)
     connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
     data = connection.cached_data or {}
-    sites = data.get('sites', [])
     is_cloud = data.get('mode') == 'cloud'
     has_legacy = data.get('has_legacy_data', False)
     legacy_ok = data.get('legacy_login_ok', False)
-    total_devices = sum(len(s.get('devices', [])) for s in sites)
+
+    def _norm_device(d):
+        """Flatten device dict to safe, consistent keys for template rendering."""
+        return {
+            'display_name': d.get('name') or d.get('hostname') or d.get('mac') or d.get('macAddress') or '—',
+            'product_type': d.get('productType') or d.get('type') or '—',
+            'model': d.get('model') or d.get('shortname') or '—',
+            'ip': d.get('ip') or d.get('ipAddress') or '—',
+            'mac': d.get('mac') or d.get('macAddress') or '—',
+            'serial': d.get('serial') or d.get('serialNumber') or d.get('serialno') or '—',
+            'firmware': d.get('version') or d.get('firmwareVersion') or '—',
+            'online': bool(d.get('online')) or d.get('state') == 1,
+        }
+
+    sites = []
+    for s in data.get('sites', []):
+        sites.append({
+            'name': s.get('name', ''),
+            'devices': [_norm_device(d) for d in s.get('devices', [])],
+            'wlans': s.get('wlans', []),
+            'vlans': s.get('vlans', []),
+            'firewall_policies': s.get('firewall_policies', []),
+            'traffic_rules': s.get('traffic_rules', []),
+            'client_count': s.get('client_count', 0),
+        })
+
+    total_devices = sum(len(s['devices']) for s in sites)
     return render(request, 'integrations/unifi_detail.html', {
         'connection': connection,
         'sites': sites,
@@ -1899,9 +1924,9 @@ def m365_sync(request, pk):
                 sev = (a.get('severity') or 'informational').lower()
                 status = html_lib.escape(a.get('status') or '—')
                 source = html_lib.escape(a.get('serviceSource') or a.get('category') or '—')
-                # Format timestamp: Graph API returns UTC ISO 8601; show as "YYYY-MM-DD HH:MM UTC"
+                # Format timestamp: Graph API returns UTC ISO 8601; render as local time via JS
                 raw_ts = a.get('createdDateTime') or ''
-                created = (raw_ts[:16].replace('T', ' ') + ' UTC') if raw_ts else '—'
+                created = f'<span class="local-time" data-utc="{html_lib.escape(raw_ts)}">{raw_ts[:16].replace("T", " ")} UTC</span>' if raw_ts else '—'
                 # Username: assignedTo or first entry in userStates
                 assigned = a.get('assignedTo') or ''
                 if not assigned:
@@ -1915,7 +1940,7 @@ def m365_sync(request, pk):
             return f'''<div class="card mb-3">
   <div class="card-header"><i class="fas fa-shield-virus me-2"></i>Microsoft Defender Alerts ({len(defender_alerts)})</div>
   <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
-    <thead><tr><th>Alert</th><th>Severity</th><th>Status</th><th>Source</th><th>User</th><th>Date (UTC)</th></tr></thead>
+    <thead><tr><th>Alert</th><th>Severity</th><th>Status</th><th>Source</th><th>User</th><th>Date</th></tr></thead>
     <tbody>{da_rows}</tbody>
   </table></div></div>'''
 

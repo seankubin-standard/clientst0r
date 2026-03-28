@@ -440,7 +440,10 @@
                                             {% elif raw.cpu %}<dt class="col-sm-5">CPU</dt><dd class="col-sm-7">{{ raw.cpu }}</dd>{% endif %}
                                             {% if raw.total_ram %}<dt class="col-sm-5">RAM</dt><dd class="col-sm-7">{{ raw.total_ram|floatformat:0 }} GB</dd>{% endif %}
                                             {% if raw.disks %}<dt class="col-sm-5">Disks</dt><dd class="col-sm-7">{% for d in raw.disks %}{{ d.device }}{% if d.total_gb %} {{ d.total_gb }}GB{% elif d.total %} {{ d.total }}{% endif %}{% if d.percent %} ({{ d.percent|floatformat:0 }}% used){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
-                                            {% if raw.local_ips %}<dt class="col-sm-5">Local IP</dt><dd class="col-sm-7"><code>{{ raw.local_ips|first }}</code></dd>{% endif %}
+                                            {% if raw.local_ips %}<dt class="col-sm-5">Local IP</dt><dd class="col-sm-7"><code>{{ raw.local_ips|first }}</code></dd>
+                                            {% elif raw.local_ip %}<dt class="col-sm-5">Local IP</dt><dd class="col-sm-7"><code>{{ raw.local_ip }}</code></dd>
+                                            {% elif raw.agent_ip %}<dt class="col-sm-5">Local IP</dt><dd class="col-sm-7"><code>{{ raw.agent_ip }}</code></dd>
+                                            {% elif raw.lan_ip %}<dt class="col-sm-5">Local IP</dt><dd class="col-sm-7"><code>{{ raw.lan_ip }}</code></dd>{% endif %}
                                             {% if raw.make_model %}<dt class="col-sm-5">Model</dt><dd class="col-sm-7">{{ raw.make_model }}</dd>{% endif %}
                                             {% if raw.serial_number %}<dt class="col-sm-5">Serial</dt><dd class="col-sm-7"><code>{{ raw.serial_number }}</code></dd>{% endif %}
                                             {% if raw.public_ip %}<dt class="col-sm-5">Public IP</dt><dd class="col-sm-7"><code>{{ raw.public_ip }}</code></dd>{% endif %}

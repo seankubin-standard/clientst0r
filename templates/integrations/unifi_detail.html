@@ -115,14 +115,14 @@
                 <tbody>
                     {% for d in site.devices %}
                     <tr>
-                        <td class="fw-semibold">{{ d.name|default:d.hostname|default:"—" }}</td>
-                        <td><span class="badge bg-secondary text-white">{{ d.productType|default:d.type|default:"—" }}</span></td>
-                        <td>{{ d.model|default:d.shortname|default:"—" }}</td>
-                        <td><code class="small">{{ d.ip|default:d.ipAddress|default:"—" }}</code></td>
-                        <td><code class="small">{{ d.mac|default:d.macAddress|default:"—" }}</code></td>
-                        <td class="small text-muted">{{ d.version|default:d.firmwareVersion|default:"—" }}</td>
+                        <td class="fw-semibold">{{ d.display_name }}</td>
+                        <td><span class="badge bg-secondary text-white">{{ d.product_type }}</span></td>
+                        <td>{{ d.model }}</td>
+                        <td><code class="small">{{ d.ip }}</code></td>
+                        <td><code class="small">{{ d.mac }}</code></td>
+                        <td class="small text-muted">{{ d.firmware }}</td>
                         <td>
-                            {% if d.online or d.state == 1 %}
+                            {% if d.online %}
                             <span class="badge bg-success text-white">Online</span>
                             {% else %}
                             <span class="badge bg-secondary text-white">Offline</span>
