@@ -1490,6 +1490,13 @@ def m365_detail(request, pk):
     org = get_request_organization(request)
     connection = get_object_or_404(M365Connection, pk=pk, organization=org)
     data = connection.cached_data or {}
+    raw_mailbox = data.get('mailbox_usage', [])
+    first_mb = raw_mailbox[0] if raw_mailbox else {}
+    mailbox_permission_error = bool(first_mb.get('permission_error') or first_mb.get('_permission_error'))
+    mailbox_rows = [] if mailbox_permission_error else [
+        r for r in raw_mailbox
+        if not r.get('permission_error') and not r.get('_permission_error')
+    ]
     return render(request, 'integrations/m365_detail.html', {
         'connection': connection,
         'users': data.get('users', []),
@@ -1497,7 +1504,8 @@ def m365_detail(request, pk):
         'teams': data.get('teams', []),
         'sharepoint_sites': data.get('sharepoint_sites', []),
         'roles': data.get('roles', []),
-        'mailbox_usage': data.get('mailbox_usage', []),
+        'mailbox_rows': mailbox_rows,
+        'mailbox_permission_error': mailbox_permission_error,
         'shared_mailboxes': data.get('shared_mailboxes', []),
     })
 
