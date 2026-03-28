@@ -94,7 +94,7 @@
 
 {% if mailbox_usage %}
 {% with perm_err=mailbox_usage|first %}
-{% if perm_err._permission_error %}
+{% if perm_err.permission_error %}
 <div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-1"></i>
     Mailbox usage data requires the <strong>Reports.Read.All</strong> permission on your Azure app registration.
 </div>
@@ -118,7 +118,7 @@
                 </thead>
                 <tbody>
                     {% for mb in mailbox_usage %}
-                    {% if not mb._permission_error %}
+                    {% if not mb.permission_error %}
                     <tr>
                         <td>{{ mb.displayName|default:mb.userDisplayName|default:"—" }}</td>
                         <td><small>{{ mb.userPrincipalName|default:"—" }}</small></td>

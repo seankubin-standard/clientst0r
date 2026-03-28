@@ -134,8 +134,14 @@ class TacticalRMMProvider(BaseRMMProvider):
                                 detail_resp = self._make_request('GET', f'/agents/{agent_id}/')
                                 detail = self._safe_json(detail_resp)
                                 if isinstance(detail, dict):
-                                    # Merge detail fields into list data (detail wins)
-                                    agent_data = {**agent_data, **detail}
+                                    # Merge: detail fills in missing fields but must not
+                                    # overwrite non-empty values from the list response
+                                    # (detail sometimes returns null for fields the list had)
+                                    merged = dict(agent_data)
+                                    for k, v in detail.items():
+                                        if v is not None and v != [] and v != '':
+                                            merged[k] = v
+                                    agent_data = merged
                             except Exception as detail_err:
                                 logger.debug(f"TRMM: could not fetch detail for agent {agent_id}: {detail_err}")
                     devices.append(self.normalize_device(agent_data))
