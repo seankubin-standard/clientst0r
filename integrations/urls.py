@@ -60,4 +60,22 @@ urlpatterns = [
     path('m365/<int:pk>/delete/', views.m365_delete, name='m365_delete'),
     path('m365/<int:pk>/test/', views.m365_test, name='m365_test'),
     path('m365/<int:pk>/sync/', views.m365_sync, name='m365_sync'),
+
+    # Omada
+    path('omada/create/', views.omada_create, name='omada_create'),
+    path('omada/<int:pk>/', views.omada_detail, name='omada_detail'),
+    path('omada/<int:pk>/edit/', views.omada_edit, name='omada_edit'),
+    path('omada/<int:pk>/delete/', views.omada_delete, name='omada_delete'),
+    path('omada/<int:pk>/test/', views.omada_test, name='omada_test'),
+    path('omada/<int:pk>/sync/', views.omada_sync, name='omada_sync'),
+    path('omada/<int:pk>/import-assets/', views.omada_import_assets, name='omada_import_assets'),
+
+    # Grandstream
+    path('grandstream/create/', views.grandstream_create, name='grandstream_create'),
+    path('grandstream/<int:pk>/', views.grandstream_detail, name='grandstream_detail'),
+    path('grandstream/<int:pk>/edit/', views.grandstream_edit, name='grandstream_edit'),
+    path('grandstream/<int:pk>/delete/', views.grandstream_delete, name='grandstream_delete'),
+    path('grandstream/<int:pk>/test/', views.grandstream_test, name='grandstream_test'),
+    path('grandstream/<int:pk>/sync/', views.grandstream_sync, name='grandstream_sync'),
+    path('grandstream/<int:pk>/import-assets/', views.grandstream_import_assets, name='grandstream_import_assets'),
 ]

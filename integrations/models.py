@@ -640,6 +640,11 @@ class UnifiConnection(BaseModel):
     last_error = models.TextField(blank=True)
     cached_data = models.JSONField(default=dict, blank=True)
 
+    # Auto-sync / asset import settings
+    auto_sync_assets = models.BooleanField(default=False, help_text='Automatically import devices to asset registry on each sync')
+    sync_interval_minutes = models.PositiveIntegerField(default=720, help_text='Auto-sync interval in minutes (0=disabled)')
+    last_asset_sync_at = models.DateTimeField(null=True, blank=True)
+
     # Link to generated doc
     doc = models.ForeignKey('docs.Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='unifi_connections')
 
@@ -647,6 +652,110 @@ class UnifiConnection(BaseModel):
 
     class Meta:
         db_table = 'unifi_connections'
+        unique_together = [['organization', 'name']]
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.organization.slug}:{self.name}"
+
+    def set_credentials(self, credentials_dict):
+        encrypted = encrypt_dict(credentials_dict)
+        self.encrypted_credentials = json.dumps(encrypted)
+
+    def get_credentials(self):
+        if not self.encrypted_credentials:
+            return {}
+        encrypted = json.loads(self.encrypted_credentials)
+        return decrypt_dict(encrypted)
+
+
+# ============================================================================
+# Omada Integration Models
+# ============================================================================
+
+class OmadaConnection(models.Model):
+    """
+    TP-Link Omada SDN Controller connection per organization.
+    Pulls network device data for documentation and asset import.
+    """
+    organization = models.ForeignKey('core.Organization', on_delete=models.CASCADE, related_name='omada_connections')
+    name = models.CharField(max_length=200)
+    host = models.URLField(help_text='Omada controller URL, e.g. https://192.168.1.1:8043')
+    verify_ssl = models.BooleanField(default=False)
+
+    # Encrypted credentials: {username, password}
+    encrypted_credentials = models.TextField(blank=True)
+
+    is_active = models.BooleanField(default=True)
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    last_sync_status = models.CharField(max_length=20, blank=True)
+    last_error = models.TextField(blank=True)
+    cached_data = models.JSONField(default=dict, blank=True)
+
+    # Auto-sync / asset import settings
+    auto_sync_assets = models.BooleanField(default=False, help_text='Automatically import devices to asset registry on each sync')
+    sync_interval_minutes = models.PositiveIntegerField(default=720, help_text='Auto-sync interval in minutes (0=disabled)')
+    last_asset_sync_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'omada_connections'
+        unique_together = [['organization', 'name']]
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.organization.slug}:{self.name}"
+
+    def set_credentials(self, credentials_dict):
+        encrypted = encrypt_dict(credentials_dict)
+        self.encrypted_credentials = json.dumps(encrypted)
+
+    def get_credentials(self):
+        if not self.encrypted_credentials:
+            return {}
+        encrypted = json.loads(self.encrypted_credentials)
+        return decrypt_dict(encrypted)
+
+
+# ============================================================================
+# Grandstream Integration Models
+# ============================================================================
+
+class GrandstreamConnection(models.Model):
+    """
+    Grandstream GWN Manager (WiFi controller) connection per organization.
+    Supports cloud (gwn.cloud) and self-hosted deployments.
+    """
+    organization = models.ForeignKey('core.Organization', on_delete=models.CASCADE, related_name='grandstream_connections')
+    name = models.CharField(max_length=200)
+    host = models.URLField(default='https://gwn.cloud', help_text='GWN Manager URL, e.g. https://gwn.cloud or self-hosted URL')
+    verify_ssl = models.BooleanField(default=False)
+
+    # Encrypted credentials: {api_key}
+    encrypted_credentials = models.TextField(blank=True)
+
+    is_active = models.BooleanField(default=True)
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    last_sync_status = models.CharField(max_length=20, blank=True)
+    last_error = models.TextField(blank=True)
+    cached_data = models.JSONField(default=dict, blank=True)
+
+    # Auto-sync / asset import settings
+    auto_sync_assets = models.BooleanField(default=False, help_text='Automatically import devices to asset registry on each sync')
+    sync_interval_minutes = models.PositiveIntegerField(default=720, help_text='Auto-sync interval in minutes (0=disabled)')
+    last_asset_sync_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'grandstream_connections'
         unique_together = [['organization', 'name']]
         ordering = ['name']
 

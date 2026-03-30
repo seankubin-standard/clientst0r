@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block title %}{{ connection.name }} - Grandstream - Client St0r{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-wifi"></i> {{ connection.name }}</h2>
+    <div class="btn-group">
+        <a href="{% url 'integrations:grandstream_sync' connection.pk %}" class="btn btn-success">
+            <i class="fas fa-sync"></i> Sync Now
+        </a>
+        {% if total_devices %}
+        <a href="{% url 'integrations:grandstream_import_assets' connection.pk %}" class="btn btn-outline-primary">
+            <i class="fas fa-download"></i> Import to Assets
+        </a>
+        {% endif %}
+        <a href="{% url 'integrations:grandstream_test' connection.pk %}" class="btn btn-outline-info">
+            <i class="fas fa-plug"></i> Test
+        </a>
+        <a href="{% url 'integrations:grandstream_edit' connection.pk %}" class="btn btn-outline-secondary">
+            <i class="fas fa-edit"></i> Edit
+        </a>
+        <a href="{% url 'integrations:grandstream_delete' connection.pk %}" class="btn btn-outline-danger">
+            <i class="fas fa-trash"></i> Delete
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Connection Details</div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr><th style="width:40%">Host</th><td>{{ connection.host }}</td></tr>
+                    <tr><th>SSL Verify</th><td>{{ connection.verify_ssl|yesno:"Yes,No" }}</td></tr>
+                    <tr><th>Active</th><td>{{ connection.is_active|yesno:"Yes,No" }}</td></tr>
+                    <tr><th>Auto-Sync Assets</th><td>{{ connection.auto_sync_assets|yesno:"Yes,No" }}</td></tr>
+                    <tr><th>Sync Interval</th><td>{{ connection.sync_interval_minutes }} min</td></tr>
+                    <tr><th>Status</th><td>
+                        {% if connection.last_sync_status == 'ok' %}<span class="badge bg-success text-white">OK</span>
+                        {% elif connection.last_sync_status == 'error' %}<span class="badge bg-danger text-white">Error</span>
+                        {% else %}<span class="badge bg-secondary text-white">Never synced</span>{% endif %}
+                    </td></tr>
+                    <tr><th>Last Sync</th><td>{% if connection.last_sync_at %}<span class="local-time" data-utc="{{ connection.last_sync_at|date:'c' }}">{{ connection.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td></tr>
+                    <tr><th>Last Asset Import</th><td>{% if connection.last_asset_sync_at %}<span class="local-time" data-utc="{{ connection.last_asset_sync_at|date:'c' }}">{{ connection.last_asset_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td></tr>
+                    {% if connection.last_error %}<tr><th>Last Error</th><td class="text-danger small">{{ connection.last_error }}</td></tr>{% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Summary</div>
+            <div class="card-body">
+                {% if total_devices %}
+                <p class="mb-1">{{ sites|length }} network(s) &middot; {{ total_devices }} AP(s) synced</p>
+                <a href="{% url 'integrations:grandstream_import_assets' connection.pk %}" class="btn btn-sm btn-outline-primary mt-2">
+                    <i class="fas fa-download me-1"></i>Import APs to Asset Registry
+                </a>
+                {% else %}
+                <p class="text-muted">No data synced yet. Click <strong>Sync Now</strong> to pull device data.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% for site in sites %}
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-wifi me-2"></i><strong>{{ site.name }}</strong></span>
+        <span class="badge bg-light text-dark">{{ site.devices|length }} AP(s)</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>Model</th>
+                        <th>IP</th>
+                        <th>MAC</th>
+                        <th>Firmware</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in site.devices %}
+                    <tr>
+                        <td class="fw-semibold">{{ d.name|default:"—" }}</td>
+                        <td>{{ d.model|default:"—" }}</td>
+                        <td><code class="small">{{ d.ip|default:"—" }}</code></td>
+                        <td><code class="small">{{ d.mac|default:"—" }}</code></td>
+                        <td class="small text-muted">{{ d.os_version|default:"—" }}</td>
+                        <td>
+                            {% if d.online %}<span class="badge bg-success">Online</span>
+                            {% else %}<span class="badge bg-secondary">Offline</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6" class="text-muted text-center py-3">No APs found in this network.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="alert alert-secondary">
+    <i class="fas fa-info-circle me-2"></i>No networks synced yet. Click <strong>Sync Now</strong> to pull data from GWN Manager.
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ action }} Grandstream Connection - Client St0r{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-wifi"></i> {{ action }} Grandstream GWN Connection</h2>
+    <a href="{% url 'integrations:integration_list' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Back
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">{{ form.name.label }}</label>
+                {{ form.name }}
+                {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">{{ form.host.label }}</label>
+                {{ form.host }}
+                {% if form.host.help_text %}<div class="form-text">{{ form.host.help_text }}</div>{% endif %}
+                {% if form.host.errors %}<div class="text-danger small">{{ form.host.errors }}</div>{% endif %}
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">{{ form.api_key.label }}</label>
+                {{ form.api_key }}
+                {% if form.api_key.help_text %}<div class="form-text">{{ form.api_key.help_text }}</div>{% endif %}
+                {% if form.api_key.errors %}<div class="text-danger small">{{ form.api_key.errors }}</div>{% endif %}
+            </div>
+
+            <div class="mb-3 form-check">
+                {{ form.verify_ssl }}
+                <label class="form-check-label">Verify SSL Certificate</label>
+                <div class="form-text">Disable for self-signed certificates.</div>
+            </div>
+
+            <div class="mb-3 form-check">
+                {{ form.is_active }}
+                <label class="form-check-label">Active</label>
+            </div>
+
+            <hr>
+            <h6>Auto-Sync Settings</h6>
+
+            <div class="mb-3 form-check">
+                {{ form.auto_sync_assets }}
+                <label class="form-check-label">Auto-import devices to Asset Registry on each sync</label>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">{{ form.sync_interval_minutes.label }}</label>
+                {{ form.sync_interval_minutes }}
+                {% if form.sync_interval_minutes.help_text %}<div class="form-text">{{ form.sync_interval_minutes.help_text }}</div>{% endif %}
+            </div>
+
+            <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-1"></i>{{ action }} Connection
+                </button>
+                <a href="{% url 'integrations:integration_list' %}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

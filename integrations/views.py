@@ -9,8 +9,8 @@ from django.http import JsonResponse
 from django.db import IntegrityError
 from core.middleware import get_request_organization
 from core.decorators import require_admin, require_write
-from .models import PSAConnection, PSACompany, PSAContact, PSATicket, RMMConnection, RMMDevice, RMMAlert, RMMSoftware, UnifiConnection, M365Connection
-from .forms import PSAConnectionForm, RMMConnectionForm, UnifiConnectionForm, M365ConnectionForm
+from .models import PSAConnection, PSACompany, PSAContact, PSATicket, RMMConnection, RMMDevice, RMMAlert, RMMSoftware, UnifiConnection, M365Connection, OmadaConnection, GrandstreamConnection
+from .forms import PSAConnectionForm, RMMConnectionForm, UnifiConnectionForm, M365ConnectionForm, OmadaConnectionForm, GrandstreamConnectionForm
 from .sync import PSASync
 from .providers import get_provider
 from .providers.rmm import get_rmm_provider
@@ -23,18 +23,22 @@ logger = logging.getLogger('integrations')
 
 @login_required
 def integration_list(request):
-    """List PSA, RMM, UniFi, and M365 connections."""
+    """List PSA, RMM, UniFi, M365, Omada, and Grandstream connections."""
     org = get_request_organization(request)
     psa_connections = PSAConnection.objects.for_organization(org)
     rmm_connections = RMMConnection.objects.for_organization(org)
     unifi_connections = UnifiConnection.objects.for_organization(org)
     m365_connections = M365Connection.objects.for_organization(org)
+    omada_connections = OmadaConnection.objects.for_organization(org)
+    grandstream_connections = GrandstreamConnection.objects.for_organization(org)
 
     return render(request, 'integrations/integration_list.html', {
         'psa_connections': psa_connections,
         'rmm_connections': rmm_connections,
         'unifi_connections': unifi_connections,
         'm365_connections': m365_connections,
+        'omada_connections': omada_connections,
+        'grandstream_connections': grandstream_connections,
     })
 
 
@@ -1580,46 +1584,459 @@ def unifi_import_assets(request, pk):
             })
 
     if request.method == 'POST':
-        created = updated = skipped = 0
+        # Build normalized device list from raw UniFi data
+        normalized = []
         for item in all_devices:
             d = item['_raw']
             mac = (d.get('mac') or d.get('macAddress') or '').lower().replace('-', ':')
-            name = d.get('name') or d.get('hostname') or mac or 'Unknown Device'
-            ip_raw = _clean_ip(d.get('ip') or d.get('ipAddress') or '')
-
-            fields = {
-                'name': name,
+            normalized.append({
+                'name': d.get('name') or d.get('hostname') or mac or 'Unknown Device',
+                'mac': mac,
+                'ip': _clean_ip(d.get('ip') or d.get('ipAddress') or ''),
+                'model': d.get('model') or d.get('shortname') or '',
                 'asset_type': _asset_type(d),
                 'manufacturer': 'Ubiquiti',
-                'model': d.get('model') or d.get('shortname') or '',
                 'serial_number': d.get('serial') or d.get('serialNumber') or d.get('serialno') or '',
-                'hostname': d.get('hostname') or '',
-                'mac_address': mac,
                 'os_version': d.get('version') or d.get('firmwareVersion') or '',
-            }
-            if ip_raw:
-                fields['ip_address'] = ip_raw
-
-            existing = Asset.objects.filter(organization=org, mac_address__iexact=mac).first() if mac else None
-            if existing:
-                changed = False
-                for k, v in fields.items():
-                    if v and getattr(existing, k, '') != v:
-                        setattr(existing, k, v)
-                        changed = True
-                if changed:
-                    existing.save()
-                    updated += 1
-                else:
-                    skipped += 1
-            else:
-                Asset.objects.create(organization=org, **{k: v for k, v in fields.items() if v})
-                created += 1
-
-        messages.success(request, f"Import complete: {created} created, {updated} updated, {skipped} unchanged.")
+                'hostname': d.get('hostname') or '',
+            })
+        result = _import_devices_to_assets(org, normalized, 'UniFi')
+        messages.success(request, f"Import complete: {result['created']} created, {result['updated']} updated, {result['skipped']} unchanged.")
         return redirect('integrations:unifi_detail', pk=pk)
 
     return render(request, 'integrations/unifi_import_assets.html', {
+        'connection': connection,
+        'all_devices': all_devices,
+    })
+
+
+# ============================================================================
+# Shared network asset import helper
+# ============================================================================
+
+def _import_devices_to_assets(org, devices, source_label='Network'):
+    """
+    Create or update Asset records from a list of normalized device dicts.
+
+    Each device dict must have:
+        name, mac, ip, model, asset_type, manufacturer, serial_number, os_version
+    Optional: hostname
+
+    Devices without a mac AND without a serial_number are skipped.
+    Returns {'created': N, 'updated': N, 'skipped': N}.
+    """
+    from assets.models import Asset
+    from django.core.validators import validate_ipv46_address
+
+    def _clean_ip(raw):
+        try:
+            validate_ipv46_address(str(raw))
+            return str(raw)
+        except Exception:
+            return ''
+
+    created = updated = skipped = 0
+    for d in devices:
+        mac = (d.get('mac') or '').lower().replace('-', ':').strip()
+        serial = (d.get('serial_number') or '').strip()
+
+        # Skip devices with no identifiable key
+        if not mac and not serial:
+            skipped += 1
+            continue
+
+        name = (d.get('name') or '').strip() or mac or serial or 'Unknown Device'
+        ip_raw = _clean_ip(d.get('ip') or '')
+        hostname = (d.get('hostname') or '').strip()
+
+        fields = {
+            'name': name,
+            'asset_type': d.get('asset_type') or 'other',
+            'manufacturer': d.get('manufacturer') or '',
+            'model': d.get('model') or '',
+            'serial_number': serial,
+            'mac_address': mac,
+            'os_version': d.get('os_version') or '',
+        }
+        if hostname:
+            fields['hostname'] = hostname
+        if ip_raw:
+            fields['ip_address'] = ip_raw
+
+        # Match by MAC first, then serial number
+        existing = None
+        if mac:
+            existing = Asset.objects.filter(organization=org, mac_address__iexact=mac).first()
+        if not existing and serial:
+            existing = Asset.objects.filter(organization=org, serial_number__iexact=serial).first()
+
+        if existing:
+            changed = False
+            for k, v in fields.items():
+                if v and getattr(existing, k, '') != v:
+                    setattr(existing, k, v)
+                    changed = True
+            if changed:
+                existing.save()
+                updated += 1
+            else:
+                skipped += 1
+        else:
+            Asset.objects.create(organization=org, **{k: v for k, v in fields.items() if v})
+            created += 1
+
+    return {'created': created, 'updated': updated, 'skipped': skipped}
+
+
+# ============================================================================
+# Omada Integration Views
+# ============================================================================
+
+@login_required
+@require_admin
+def omada_create(request):
+    """Create new Omada connection."""
+    org = get_request_organization(request)
+    if not org:
+        messages.error(request, "Please select an organization first.")
+        return redirect('integrations:integration_list')
+
+    if request.method == 'POST':
+        form = OmadaConnectionForm(request.POST, organization=org)
+        if form.is_valid():
+            connection = form.save()
+            messages.success(request, f"Omada connection '{connection.name}' created.")
+            return redirect('integrations:omada_detail', pk=connection.pk)
+    else:
+        form = OmadaConnectionForm(organization=org)
+
+    return render(request, 'integrations/omada_form.html', {'form': form, 'action': 'Create'})
+
+
+@login_required
+def omada_detail(request, pk):
+    """View Omada connection details and cached data."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(OmadaConnection, pk=pk, organization=org)
+    data = connection.cached_data or {}
+
+    sites = []
+    for s in data.get('sites', []):
+        devices = s.get('devices', [])
+        sites.append({
+            'name': s.get('name', ''),
+            'devices': devices,
+        })
+
+    total_devices = sum(len(s['devices']) for s in sites)
+    return render(request, 'integrations/omada_detail.html', {
+        'connection': connection,
+        'sites': sites,
+        'total_devices': total_devices,
+    })
+
+
+@login_required
+@require_admin
+def omada_edit(request, pk):
+    """Edit Omada connection."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(OmadaConnection, pk=pk, organization=org)
+
+    if request.method == 'POST':
+        form = OmadaConnectionForm(request.POST, instance=connection, organization=org)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Omada connection '{connection.name}' updated.")
+            return redirect('integrations:omada_detail', pk=connection.pk)
+    else:
+        form = OmadaConnectionForm(instance=connection, organization=org)
+
+    return render(request, 'integrations/omada_form.html', {'form': form, 'connection': connection, 'action': 'Edit'})
+
+
+@login_required
+@require_admin
+def omada_delete(request, pk):
+    """Delete Omada connection."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(OmadaConnection, pk=pk, organization=org)
+
+    if request.method == 'POST':
+        name = connection.name
+        connection.delete()
+        messages.success(request, f"Omada connection '{name}' deleted.")
+        return redirect('integrations:integration_list')
+
+    return render(request, 'integrations/omada_confirm_delete.html', {'connection': connection})
+
+
+@login_required
+@require_write
+def omada_test(request, pk):
+    """Test Omada connection."""
+    from integrations.providers.omada import OmadaProvider
+    org = get_request_organization(request)
+    connection = get_object_or_404(OmadaConnection, pk=pk, organization=org)
+    creds = connection.get_credentials()
+    provider = OmadaProvider(
+        host=connection.host,
+        username=creds.get('username', ''),
+        password=creds.get('password', ''),
+        verify_ssl=connection.verify_ssl,
+    )
+    result = provider.test_connection()
+    if result['success']:
+        messages.success(request, f"Connected: {result['message']}")
+    else:
+        messages.error(request, f"Connection failed: {result.get('error', 'Unknown error')}")
+    return redirect('integrations:omada_detail', pk=pk)
+
+
+@login_required
+@require_write
+def omada_sync(request, pk):
+    """Sync Omada data and optionally import assets."""
+    from django.utils import timezone
+    from integrations.providers.omada import OmadaProvider
+
+    org = get_request_organization(request)
+    connection = get_object_or_404(OmadaConnection, pk=pk, organization=org)
+    creds = connection.get_credentials()
+    provider = OmadaProvider(
+        host=connection.host,
+        username=creds.get('username', ''),
+        password=creds.get('password', ''),
+        verify_ssl=connection.verify_ssl,
+    )
+    try:
+        data = provider.sync()
+        connection.cached_data = data
+        connection.last_sync_at = timezone.now()
+        connection.last_sync_status = 'ok'
+        connection.last_error = ''
+
+        if connection.auto_sync_assets:
+            all_devices = []
+            for s in data.get('sites', []):
+                all_devices.extend(s.get('devices', []))
+            _import_devices_to_assets(org, all_devices, 'Omada')
+            connection.last_asset_sync_at = timezone.now()
+
+        connection.save()
+        site_count = len(data.get('sites', []))
+        messages.success(request, f"Synced {site_count} site(s).")
+    except Exception as e:
+        connection.last_sync_status = 'error'
+        connection.last_error = str(e)
+        connection.save(update_fields=['last_sync_status', 'last_error'])
+        messages.error(request, f"Sync failed: {e}")
+
+    return redirect('integrations:omada_detail', pk=pk)
+
+
+@login_required
+@require_admin
+def omada_import_assets(request, pk):
+    """Import Omada devices into the asset registry."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(OmadaConnection, pk=pk, organization=org)
+    data = connection.cached_data or {}
+
+    all_devices = []
+    for site in data.get('sites', []):
+        for d in site.get('devices', []):
+            all_devices.append({
+                'site_name': site.get('name', ''),
+                'device': d,
+            })
+
+    if request.method == 'POST':
+        from django.utils import timezone
+        normalized = [item['device'] for item in all_devices]
+        result = _import_devices_to_assets(org, normalized, 'Omada')
+        connection.last_asset_sync_at = timezone.now()
+        connection.save(update_fields=['last_asset_sync_at'])
+        messages.success(request, f"Import complete: {result['created']} created, {result['updated']} updated, {result['skipped']} unchanged.")
+        return redirect('integrations:omada_detail', pk=pk)
+
+    return render(request, 'integrations/omada_import_assets.html', {
+        'connection': connection,
+        'all_devices': all_devices,
+    })
+
+
+# ============================================================================
+# Grandstream Integration Views
+# ============================================================================
+
+@login_required
+@require_admin
+def grandstream_create(request):
+    """Create new Grandstream connection."""
+    org = get_request_organization(request)
+    if not org:
+        messages.error(request, "Please select an organization first.")
+        return redirect('integrations:integration_list')
+
+    if request.method == 'POST':
+        form = GrandstreamConnectionForm(request.POST, organization=org)
+        if form.is_valid():
+            connection = form.save()
+            messages.success(request, f"Grandstream connection '{connection.name}' created.")
+            return redirect('integrations:grandstream_detail', pk=connection.pk)
+    else:
+        form = GrandstreamConnectionForm(organization=org)
+
+    return render(request, 'integrations/grandstream_form.html', {'form': form, 'action': 'Create'})
+
+
+@login_required
+def grandstream_detail(request, pk):
+    """View Grandstream connection details and cached data."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(GrandstreamConnection, pk=pk, organization=org)
+    data = connection.cached_data or {}
+
+    sites = []
+    for s in data.get('sites', []):
+        devices = s.get('devices', [])
+        sites.append({
+            'name': s.get('name', ''),
+            'devices': devices,
+        })
+
+    total_devices = sum(len(s['devices']) for s in sites)
+    return render(request, 'integrations/grandstream_detail.html', {
+        'connection': connection,
+        'sites': sites,
+        'total_devices': total_devices,
+    })
+
+
+@login_required
+@require_admin
+def grandstream_edit(request, pk):
+    """Edit Grandstream connection."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(GrandstreamConnection, pk=pk, organization=org)
+
+    if request.method == 'POST':
+        form = GrandstreamConnectionForm(request.POST, instance=connection, organization=org)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Grandstream connection '{connection.name}' updated.")
+            return redirect('integrations:grandstream_detail', pk=connection.pk)
+    else:
+        form = GrandstreamConnectionForm(instance=connection, organization=org)
+
+    return render(request, 'integrations/grandstream_form.html', {'form': form, 'connection': connection, 'action': 'Edit'})
+
+
+@login_required
+@require_admin
+def grandstream_delete(request, pk):
+    """Delete Grandstream connection."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(GrandstreamConnection, pk=pk, organization=org)
+
+    if request.method == 'POST':
+        name = connection.name
+        connection.delete()
+        messages.success(request, f"Grandstream connection '{name}' deleted.")
+        return redirect('integrations:integration_list')
+
+    return render(request, 'integrations/grandstream_confirm_delete.html', {'connection': connection})
+
+
+@login_required
+@require_write
+def grandstream_test(request, pk):
+    """Test Grandstream connection."""
+    from integrations.providers.grandstream import GrandstreamProvider
+    org = get_request_organization(request)
+    connection = get_object_or_404(GrandstreamConnection, pk=pk, organization=org)
+    creds = connection.get_credentials()
+    provider = GrandstreamProvider(
+        host=connection.host,
+        api_key=creds.get('api_key', ''),
+        verify_ssl=connection.verify_ssl,
+    )
+    result = provider.test_connection()
+    if result['success']:
+        messages.success(request, f"Connected: {result['message']}")
+    else:
+        messages.error(request, f"Connection failed: {result.get('error', 'Unknown error')}")
+    return redirect('integrations:grandstream_detail', pk=pk)
+
+
+@login_required
+@require_write
+def grandstream_sync(request, pk):
+    """Sync Grandstream data and optionally import assets."""
+    from django.utils import timezone
+    from integrations.providers.grandstream import GrandstreamProvider
+
+    org = get_request_organization(request)
+    connection = get_object_or_404(GrandstreamConnection, pk=pk, organization=org)
+    creds = connection.get_credentials()
+    provider = GrandstreamProvider(
+        host=connection.host,
+        api_key=creds.get('api_key', ''),
+        verify_ssl=connection.verify_ssl,
+    )
+    try:
+        data = provider.sync()
+        connection.cached_data = data
+        connection.last_sync_at = timezone.now()
+        connection.last_sync_status = 'ok'
+        connection.last_error = ''
+
+        if connection.auto_sync_assets:
+            all_devices = []
+            for s in data.get('sites', []):
+                all_devices.extend(s.get('devices', []))
+            _import_devices_to_assets(org, all_devices, 'Grandstream')
+            connection.last_asset_sync_at = timezone.now()
+
+        connection.save()
+        site_count = len(data.get('sites', []))
+        messages.success(request, f"Synced {site_count} network(s).")
+    except Exception as e:
+        connection.last_sync_status = 'error'
+        connection.last_error = str(e)
+        connection.save(update_fields=['last_sync_status', 'last_error'])
+        messages.error(request, f"Sync failed: {e}")
+
+    return redirect('integrations:grandstream_detail', pk=pk)
+
+
+@login_required
+@require_admin
+def grandstream_import_assets(request, pk):
+    """Import Grandstream devices into the asset registry."""
+    org = get_request_organization(request)
+    connection = get_object_or_404(GrandstreamConnection, pk=pk, organization=org)
+    data = connection.cached_data or {}
+
+    all_devices = []
+    for site in data.get('sites', []):
+        for d in site.get('devices', []):
+            all_devices.append({
+                'site_name': site.get('name', ''),
+                'device': d,
+            })
+
+    if request.method == 'POST':
+        from django.utils import timezone
+        normalized = [item['device'] for item in all_devices]
+        result = _import_devices_to_assets(org, normalized, 'Grandstream')
+        connection.last_asset_sync_at = timezone.now()
+        connection.save(update_fields=['last_asset_sync_at'])
+        messages.success(request, f"Import complete: {result['created']} created, {result['updated']} updated, {result['skipped']} unchanged.")
+        return redirect('integrations:grandstream_detail', pk=pk)
+
+    return render(request, 'integrations/grandstream_import_assets.html', {
         'connection': connection,
         'all_devices': all_devices,
     })

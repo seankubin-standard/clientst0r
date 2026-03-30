@@ -2,7 +2,7 @@
 Integrations forms
 """
 from django import forms
-from .models import PSAConnection, RMMConnection, UnifiConnection, M365Connection
+from .models import PSAConnection, RMMConnection, UnifiConnection, M365Connection, OmadaConnection, GrandstreamConnection
 
 
 class PSAConnectionForm(forms.ModelForm):
@@ -682,6 +682,112 @@ class M365ConnectionForm(forms.ModelForm):
             if client_secret:
                 existing['client_secret'] = client_secret
             instance.set_credentials(existing)
+        if commit:
+            instance.save()
+        return instance
+
+
+class OmadaConnectionForm(forms.ModelForm):
+    """Form for creating/editing TP-Link Omada SDN Controller connections."""
+
+    username = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Omada admin username'}),
+        required=True,
+        label='Username',
+    )
+    password = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Omada admin password'}),
+        required=True,
+        label='Password',
+    )
+
+    class Meta:
+        model = OmadaConnection
+        fields = ['name', 'host', 'verify_ssl', 'is_active', 'auto_sync_assets', 'sync_interval_minutes']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Main Office Omada'}),
+            'host': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://192.168.1.1:8043'}),
+            'verify_ssl': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'auto_sync_assets': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'sync_interval_minutes': forms.NumberInput(attrs={'class': 'form-control', 'min': '0'}),
+        }
+        help_texts = {
+            'host': 'Omada controller URL including port, e.g. https://192.168.1.1:8043',
+            'sync_interval_minutes': 'Minutes between auto-syncs (0 = disabled)',
+        }
+
+    def __init__(self, *args, organization=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.organization = organization
+        if self.instance and self.instance.pk:
+            creds = self.instance.get_credentials()
+            self.fields['username'].initial = creds.get('username', '')
+            self.fields['password'].required = False
+            self.fields['password'].help_text = 'Leave blank to keep existing password.'
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.organization:
+            instance.organization = self.organization
+        username = self.cleaned_data.get('username', '').strip()
+        password = self.cleaned_data.get('password', '').strip()
+        existing = instance.get_credentials() if instance.pk else {}
+        creds = dict(existing)
+        if username:
+            creds['username'] = username
+        if password:
+            creds['password'] = password
+        if creds:
+            instance.set_credentials(creds)
+        if commit:
+            instance.save()
+        return instance
+
+
+class GrandstreamConnectionForm(forms.ModelForm):
+    """Form for creating/editing Grandstream GWN Manager connections."""
+
+    api_key = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'GWN Manager API key'}),
+        required=True,
+        label='API Key',
+    )
+
+    class Meta:
+        model = GrandstreamConnection
+        fields = ['name', 'host', 'verify_ssl', 'is_active', 'auto_sync_assets', 'sync_interval_minutes']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Main Office GWN'}),
+            'host': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://gwn.cloud'}),
+            'verify_ssl': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'auto_sync_assets': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'sync_interval_minutes': forms.NumberInput(attrs={'class': 'form-control', 'min': '0'}),
+        }
+        help_texts = {
+            'host': 'GWN Manager URL. Use https://gwn.cloud for cloud, or your self-hosted URL.',
+            'sync_interval_minutes': 'Minutes between auto-syncs (0 = disabled)',
+        }
+
+    def __init__(self, *args, organization=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.organization = organization
+        if self.instance and self.instance.pk:
+            self.fields['api_key'].required = False
+            self.fields['api_key'].help_text = 'Leave blank to keep existing API key.'
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.organization:
+            instance.organization = self.organization
+        api_key = self.cleaned_data.get('api_key', '').strip()
+        existing = instance.get_credentials() if instance.pk else {}
+        creds = dict(existing)
+        if api_key:
+            creds['api_key'] = api_key
+        if creds:
+            instance.set_credentials(creds)
         if commit:
             instance.save()
         return instance
