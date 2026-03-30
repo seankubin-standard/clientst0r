@@ -297,8 +297,10 @@ class TacticalRMMProvider(BaseRMMProvider):
         # Get IP address — prefer private/local IP; fall back to public IP
         # Also scan nics (network interfaces) for IP and MAC data
         nics = raw_data.get('nics') or []
-        # Top-level mac_address field takes precedence over nics[]
-        mac_address = raw_data.get('mac_address') or raw_data.get('mac') or ''
+        # Top-level MAC field — TRMM may use mac_address, mac, or mac_addresses (list)
+        _mac_list = raw_data.get('mac_addresses') or []
+        mac_address = (raw_data.get('mac_address') or raw_data.get('mac') or
+                       (_mac_list[0] if isinstance(_mac_list, list) and _mac_list else '') or '')
         nic_ips = []
         for nic in nics:
             if not mac_address:

@@ -1290,7 +1290,7 @@ def unifi_sync(request, pk):
         connection.last_error = ''
 
         # Build documentation HTML
-        now_utc = timezone.now().isoformat()
+        now_utc = timezone.now().strftime('%Y-%m-%dT%H:%M:%SZ')
         now_display = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
         has_legacy = data.get('has_legacy_data', False)
         legacy_login_ok = data.get('legacy_login_ok', False)
@@ -1543,16 +1543,33 @@ def unifi_import_assets(request, pk):
         except Exception:
             return ''
 
-    # Build flat device list with site context
+    def _norm_preview(d):
+        """Normalize raw UniFi device dict to safe keys for template preview."""
+        mac = (d.get('mac') or d.get('macAddress') or '').lower().replace('-', ':')
+        return {
+            'name': d.get('name') or d.get('hostname') or mac or '—',
+            'productType': d.get('productType') or d.get('type') or '—',
+            'model': d.get('model') or d.get('shortname') or '—',
+            'ip': d.get('ip') or d.get('ipAddress') or '—',
+            'mac': mac or '—',
+            'serial': d.get('serial') or d.get('serialNumber') or d.get('serialno') or '—',
+            'version': d.get('version') or d.get('firmwareVersion') or '—',
+        }
+
+    # Build flat device list with site context; keep raw dict for POST processing
     all_devices = []
     for site in sites:
         for d in site.get('devices', []):
-            all_devices.append({'site_name': site.get('name', ''), 'device': d})
+            all_devices.append({
+                'site_name': site.get('name', ''),
+                'device': _norm_preview(d),
+                '_raw': d,
+            })
 
     if request.method == 'POST':
         created = updated = skipped = 0
         for item in all_devices:
-            d = item['device']
+            d = item['_raw']
             mac = (d.get('mac') or d.get('macAddress') or '').lower().replace('-', ':')
             name = d.get('name') or d.get('hostname') or mac or 'Unknown Device'
             ip_raw = _clean_ip(d.get('ip') or d.get('ipAddress') or '')
@@ -1719,7 +1736,7 @@ def m365_sync(request, pk):
         connection.last_sync_status = 'ok'
         connection.last_error = ''
 
-        now_utc = timezone.now().isoformat()
+        now_utc = timezone.now().strftime('%Y-%m-%dT%H:%M:%SZ')
         now_display = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
         users = data.get('users', [])
         licenses = data.get('licenses', [])

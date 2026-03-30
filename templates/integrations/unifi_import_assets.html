@@ -44,13 +44,13 @@
                         {% with d=item.device %}
                         <tr>
                             <td class="text-muted small">{{ item.site_name }}</td>
-                            <td class="fw-semibold">{{ d.name|default:d.hostname|default:"—" }}</td>
-                            <td><span class="badge bg-secondary text-white">{{ d.productType|default:d.type|default:"—" }}</span></td>
-                            <td>{{ d.model|default:d.shortname|default:"—" }}</td>
-                            <td><code class="small">{{ d.ip|default:d.ipAddress|default:"—" }}</code></td>
-                            <td><code class="small">{{ d.mac|default:d.macAddress|default:"—" }}</code></td>
-                            <td class="small text-muted">{{ d.serial|default:d.serialNumber|default:"—" }}</td>
-                            <td class="small text-muted">{{ d.version|default:d.firmwareVersion|default:"—" }}</td>
+                            <td class="fw-semibold">{{ d.name }}</td>
+                            <td><span class="badge bg-secondary text-white">{{ d.productType }}</span></td>
+                            <td>{{ d.model }}</td>
+                            <td><code class="small">{{ d.ip }}</code></td>
+                            <td><code class="small">{{ d.mac }}</code></td>
+                            <td class="small text-muted">{{ d.serial }}</td>
+                            <td class="small text-muted">{{ d.version }}</td>
                         </tr>
                         {% endwith %}
                         {% empty %}

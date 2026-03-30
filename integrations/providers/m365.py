@@ -118,15 +118,50 @@ class M365Provider:
 
     def get_mailbox_usage(self) -> list:
         """Get mailbox usage stats — storage used, item count, type.
-        Uses /reports/getMailboxUsageDetail which requires Reports.Read.All."""
+        Uses /reports/getMailboxUsageDetail which requires Reports.Read.All.
+        Note: Graph reports endpoint follows 302 redirect to a temp download URL.
+        The download may be JSON (array or {value:[...]}) or CSV depending on tenant."""
+        import csv as _csv, io as _io
         try:
-            resp = self._get('/reports/getMailboxUsageDetail(period=\'D7\')',
-                             params={'$format': 'application/json'})
-            # Graph reports API may redirect and return a raw JSON array rather
-            # than the usual {"value": [...]} envelope.
-            if isinstance(resp, list):
-                return resp
-            return resp.get('value', [])
+            headers = {
+                'Authorization': f'Bearer {self._get_token()}',
+                'Accept': 'application/json',
+            }
+            url = f'{GRAPH_BASE}/reports/getMailboxUsageDetail(period=\'D7\')'
+            resp = requests.get(url, headers=headers,
+                                params={'$format': 'application/json'}, timeout=30)
+            if resp.status_code == 403:
+                return [{'permission_error': True, 'required': 'Reports.Read.All'}]
+            resp.raise_for_status()
+            ct = resp.headers.get('content-type', '').lower()
+            if 'json' in ct:
+                data = resp.json()
+                if isinstance(data, list):
+                    return data
+                return data.get('value', [])
+            # CSV fallback — Graph reports may return CSV despite $format=json
+            reader = _csv.DictReader(_io.StringIO(resp.text))
+            rows = []
+            for row in reader:
+                storage_raw = row.get('Storage Used (Byte)') or row.get('storageUsedInBytes') or '0'
+                item_raw = row.get('Item Count') or row.get('itemCount') or '0'
+                try:
+                    storage_bytes = int(str(storage_raw).replace(',', '') or '0')
+                except (ValueError, TypeError):
+                    storage_bytes = 0
+                try:
+                    item_count = int(str(item_raw).replace(',', '') or '0')
+                except (ValueError, TypeError):
+                    item_count = 0
+                rows.append({
+                    'displayName': row.get('Display Name') or row.get('displayName') or '',
+                    'userPrincipalName': row.get('User Principal Name') or row.get('userPrincipalName') or '',
+                    'recipientType': row.get('Recipient Type') or row.get('recipientType') or '',
+                    'storageUsedInBytes': storage_bytes,
+                    'itemCount': item_count,
+                    'lastActivityDate': row.get('Last Activity Date') or row.get('lastActivityDate') or '',
+                })
+            return rows
         except requests.exceptions.HTTPError as e:
             code = e.response.status_code if e.response is not None else 0
             if code == 403:
