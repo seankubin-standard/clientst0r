@@ -110,6 +110,10 @@ def system_updates(request):
             'current_version': get_version(),
         }
 
+    # Get last OS package scan
+    from core.models import SystemPackageScan
+    last_package_scan = SystemPackageScan.objects.order_by('-scan_date').first()
+
     return render(request, 'core/system_updates.html', {
         'version': get_version(),
         'update_info': update_info,
@@ -119,6 +123,7 @@ def system_updates(request):
         'current_changelog': current_changelog,
         'newer_changelogs': newer_changelogs,
         'debug_info': debug_info,
+        'last_package_scan': last_package_scan,
     })
 
 
