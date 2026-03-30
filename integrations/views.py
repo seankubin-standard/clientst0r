@@ -1518,8 +1518,10 @@ def unifi_import_assets(request, pk):
     data = connection.cached_data or {}
     sites = data.get('sites', [])
 
-    # Map UniFi productType prefixes to asset types
+    # Map UniFi productType to asset types — handles both prefix codes (local API)
+    # and full strings (cloud Site Manager API)
     _TYPE_MAP = [
+        # Local API prefix codes
         ('uap', 'wireless_ap'),
         ('usw', 'switch'),
         ('udm', 'router'),
@@ -1527,14 +1529,25 @@ def unifi_import_assets(request, pk):
         ('usg', 'firewall'),
         ('ups', 'ups'),
         ('ucg', 'router'),
+        # Cloud API full strings
+        ('access_point', 'wireless_ap'),
+        ('access-point', 'wireless_ap'),
+        ('wireless', 'wireless_ap'),
+        ('switch', 'switch'),
+        ('switching', 'switch'),
+        ('router', 'router'),
+        ('routing', 'router'),
+        ('gateway', 'router'),
+        ('firewall', 'firewall'),
     ]
 
     def _asset_type(device):
         pt = (device.get('productType') or device.get('type') or '').lower()
-        for prefix, atype in _TYPE_MAP:
-            if pt.startswith(prefix):
+        for keyword, atype in _TYPE_MAP:
+            if pt.startswith(keyword) or pt == keyword:
                 return atype
-        return 'network_device' if 'network_device' in dict(Asset.ASSET_TYPES) else 'other'
+        valid_types = {k for k, _ in Asset.ASSET_TYPES}
+        return 'network_device' if 'network_device' in valid_types else 'other'
 
     def _clean_ip(raw):
         try:
@@ -1577,6 +1590,7 @@ def unifi_import_assets(request, pk):
             fields = {
                 'name': name,
                 'asset_type': _asset_type(d),
+                'manufacturer': 'Ubiquiti',
                 'model': d.get('model') or d.get('shortname') or '',
                 'serial_number': d.get('serial') or d.get('serialNumber') or d.get('serialno') or '',
                 'hostname': d.get('hostname') or '',

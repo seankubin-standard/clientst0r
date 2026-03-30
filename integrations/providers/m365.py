@@ -133,13 +133,16 @@ class M365Provider:
             if resp.status_code == 403:
                 return [{'permission_error': True, 'required': 'Reports.Read.All'}]
             resp.raise_for_status()
-            ct = resp.headers.get('content-type', '').lower()
-            if 'json' in ct:
+            # Try JSON first regardless of content-type — Graph reports may use
+            # application/octet-stream or text/plain on redirect responses
+            try:
                 data = resp.json()
                 if isinstance(data, list):
                     return data
                 return data.get('value', [])
-            # CSV fallback — Graph reports may return CSV despite $format=json
+            except ValueError:
+                pass
+            # CSV fallback — Graph reports may serve CSV despite $format=json
             reader = _csv.DictReader(_io.StringIO(resp.text))
             rows = []
             for row in reader:

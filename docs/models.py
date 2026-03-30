@@ -134,7 +134,9 @@ class Document(BaseModel):
                 return any(value.startswith(p) for p in SAFE_HREF_PROTOCOLS)
             if name == 'style':
                 return False  # Remove style from all tags to prevent CSS injection
-            # Allow class, id, data-* on allowed tags
+            # Allow class, id, and data-* attributes on all tags
+            if name.startswith('data-'):
+                return True
             allowed = {
                 '*': ['class', 'id'],
                 'img': ['src', 'alt', 'width', 'height', 'loading'],
