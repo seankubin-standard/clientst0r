@@ -80,6 +80,8 @@ INSTALLED_APPS = [
     'imports.apps.ImportsConfig',
     'reports.apps.ReportsConfig',
     'vehicles.apps.VehiclesConfig',
+    'inventory.apps.InventoryConfig',
+    'scheduling.apps.SchedulingConfig',
 ]
 
 # Optional apps - only add if installed (allows updates without dependencies)

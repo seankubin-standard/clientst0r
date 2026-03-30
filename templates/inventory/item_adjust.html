@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Adjust Stock - {{ item.name }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'inventory:inventory_dashboard' %}">Inventory</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'inventory:item_list' %}">Items</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'inventory:item_detail' item.pk %}">{{ item.name }}</a></li>
+        <li class="breadcrumb-item active">Adjust Stock</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4"><i class="fas fa-plus-minus"></i> Adjust Stock: {{ item.name }}</h1>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Current Stock</h5></div>
+            <div class="card-body text-center">
+                <div class="display-4 {% if item.is_low_stock %}text-danger{% else %}text-success{% endif %}">
+                    {{ item.quantity }}
+                </div>
+                <div class="text-muted">{{ item.unit }}</div>
+                {% if item.is_low_stock %}
+                <div class="alert alert-warning mt-2 mb-0">
+                    <i class="fas fa-exclamation-triangle"></i> Low stock! Minimum: {{ item.min_quantity }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Record Transaction</h5></div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label for="{{ form.transaction_type.id_for_label }}" class="form-label">Transaction Type <span class="text-danger">*</span></label>
+                        {{ form.transaction_type }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.quantity_change.id_for_label }}" class="form-label">Quantity Change <span class="text-danger">*</span></label>
+                        {{ form.quantity_change }}
+                        <div class="form-text">{{ form.quantity_change.help_text }}</div>
+                        {% if form.quantity_change.errors %}<div class="text-danger small">{{ form.quantity_change.errors }}</div>{% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.reference.id_for_label }}" class="form-label">Reference</label>
+                        {{ form.reference }}
+                        <div class="form-text">{{ form.reference.help_text }}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.notes.id_for_label }}" class="form-label">Notes</label>
+                        {{ form.notes }}
+                    </div>
+                    <hr>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Save Transaction</button>
+                        <a href="{% url 'inventory:item_detail' item.pk %}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

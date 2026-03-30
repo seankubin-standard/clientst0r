@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}{{ task.title }} - Scheduling{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'scheduling:scheduling_dashboard' %}">Scheduling</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'scheduling:task_list' %}">Tasks</a></li>
+        <li class="breadcrumb-item active">{{ task.title }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="mb-1">{{ task.title }}</h1>
+        <div>
+            {% if task.priority == 'urgent' %}<span class="badge bg-danger me-1">Urgent</span>
+            {% elif task.priority == 'high' %}<span class="badge bg-warning text-dark me-1">High</span>
+            {% elif task.priority == 'normal' %}<span class="badge bg-primary me-1">Normal</span>
+            {% else %}<span class="badge bg-secondary me-1">Low</span>{% endif %}
+            {% if task.status == 'completed' %}<span class="badge bg-success">Completed</span>
+            {% elif task.status == 'cancelled' %}<span class="badge bg-secondary">Cancelled</span>
+            {% elif task.status == 'in_progress' %}<span class="badge bg-info">In Progress</span>
+            {% elif task.is_overdue %}<span class="badge bg-danger">Overdue</span>
+            {% else %}<span class="badge bg-warning text-dark">{{ task.get_status_display }}</span>{% endif %}
+            {% if task.recurrence != 'none' %}
+            <span class="badge bg-light text-dark border ms-1"><i class="fas fa-redo"></i> {{ task.get_recurrence_display }}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% if user.is_staff or user.is_superuser %}
+    <div>
+        <a href="{% url 'scheduling:task_edit' task.pk %}" class="btn btn-secondary"><i class="fas fa-edit"></i> Edit</a>
+        {% if task.status not in 'completed,cancelled' %}
+        <form method="post" action="{% url 'scheduling:task_complete' task.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success ms-1"><i class="fas fa-check"></i> Complete</button>
+        </form>
+        <form method="post" action="{% url 'scheduling:task_cancel' task.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary ms-1"><i class="fas fa-ban"></i> Cancel</button>
+        </form>
+        {% endif %}
+        {% if task.recurrence != 'none' %}
+        <form method="post" action="{% url 'scheduling:task_spawn_next' task.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary ms-1"><i class="fas fa-plus-circle"></i> Spawn Next</button>
+        </form>
+        {% endif %}
+        <a href="{% url 'scheduling:task_delete' task.pk %}" class="btn btn-danger ms-1"><i class="fas fa-trash"></i> Delete</a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-info-circle"></i> Details</h5></div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Due Date</dt>
+                    <dd class="col-sm-9">
+                        {% if task.due_date %}
+                        <span {% if task.is_overdue %}class="text-danger fw-bold"{% endif %}>
+                            {{ task.due_date|date:"M j, Y H:i" }}
+                            {% if task.is_overdue %}<i class="fas fa-exclamation-triangle text-danger ms-1"></i> Overdue{% endif %}
+                        </span>
+                        {% else %}—{% endif %}
+                    </dd>
+                    <dt class="col-sm-3">Recurrence</dt>
+                    <dd class="col-sm-9">{{ task.get_recurrence_display }}{% if task.recurrence == 'custom' and task.recurrence_interval_days %} (every {{ task.recurrence_interval_days }} days){% endif %}</dd>
+                    <dt class="col-sm-3">Sign-off Rule</dt>
+                    <dd class="col-sm-9">{% if task.require_all_signoffs %}All assignees must sign off{% else %}Any assignee sign-off completes task{% endif %}</dd>
+                    <dt class="col-sm-3">Created By</dt>
+                    <dd class="col-sm-9">{{ task.created_by.username|default:"—" }}</dd>
+                    {% if task.completed_at %}
+                    <dt class="col-sm-3">Completed</dt>
+                    <dd class="col-sm-9">{{ task.completed_at|date:"M j, Y H:i" }} by {{ task.completed_by.username|default:"—" }}</dd>
+                    {% endif %}
+                </dl>
+                {% if task.description %}
+                <hr>
+                <h6>Description</h6>
+                <p>{{ task.description|linebreaks }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Sign-off form for current user -->
+        {% if sign_off_form %}
+        <div class="card mb-4 border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-signature"></i> Sign Off on This Task</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="{{ sign_off_form.notes.id_for_label }}" class="form-label">{{ sign_off_form.notes.label }}</label>
+                        {{ sign_off_form.notes }}
+                    </div>
+                    <button type="submit" name="sign_off_submit" class="btn btn-primary">
+                        <i class="fas fa-check"></i> Sign Off
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% elif user_assignment and user_assignment.acknowledged %}
+        <div class="alert alert-success">
+            <i class="fas fa-check-circle"></i> You signed off on {{ user_assignment.acknowledged_at|date:"M j, Y H:i" }}.
+            {% if user_assignment.notes %}<br><small>Notes: {{ user_assignment.notes }}</small>{% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Comments -->
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-comments"></i> Comments</h5></div>
+            <div class="card-body">
+                {% for comment in comments %}
+                <div class="border rounded p-3 mb-3">
+                    <div class="d-flex justify-content-between">
+                        <strong>{{ comment.author.username|default:"System" }}</strong>
+                        <small class="text-muted">{{ comment.created_at|date:"M j, Y H:i" }}</small>
+                    </div>
+                    <p class="mb-0 mt-2">{{ comment.body|linebreaks }}</p>
+                </div>
+                {% empty %}
+                <p class="text-muted">No comments yet.</p>
+                {% endfor %}
+
+                <hr>
+                <h6>Add Comment</h6>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        {{ comment_form.body }}
+                    </div>
+                    <button type="submit" name="comment_submit" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-comment"></i> Add Comment
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-users"></i> Assigned Users</h5></div>
+            <div class="card-body p-0">
+                {% if assignments %}
+                <ul class="list-group list-group-flush">
+                    {% for assignment in assignments %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="fas fa-user me-2"></i>
+                            {{ assignment.user.username }}
+                            {% if assignment.user == request.user %}<small class="text-muted">(you)</small>{% endif %}
+                        </div>
+                        {% if assignment.acknowledged %}
+                        <span class="text-success" title="Signed off {{ assignment.acknowledged_at|date:'M j, Y' }}">
+                            <i class="fas fa-check-circle"></i> Signed off
+                        </span>
+                        {% else %}
+                        <span class="text-warning">
+                            <i class="fas fa-clock"></i> Pending
+                        </span>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="p-3 text-muted">No users assigned.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if task.tags.all %}
+        <div class="card mt-3">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-tags"></i> Tags</h5></div>
+            <div class="card-body">
+                {% for tag in task.tags.all %}
+                <span class="badge bg-info me-1">{{ tag.name }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if task.parent_task %}
+        <div class="card mt-3">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-link"></i> Parent Task</h5></div>
+            <div class="card-body">
+                <a href="{% url 'scheduling:task_detail' task.parent_task.pk %}">{{ task.parent_task.title }}</a>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if task.child_instances.exists %}
+        <div class="card mt-3">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-sitemap"></i> Child Instances</h5></div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    {% for child in task.child_instances.all|slice:":5" %}
+                    <li class="list-group-item">
+                        <a href="{% url 'scheduling:task_detail' child.pk %}">{{ child.title }}</a>
+                        <small class="text-muted ms-2">{{ child.due_date|date:"M j" }}</small>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

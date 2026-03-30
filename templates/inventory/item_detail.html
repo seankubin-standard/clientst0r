@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}{{ item.name }} - Inventory{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'inventory:inventory_dashboard' %}">Inventory</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'inventory:item_list' %}">Items</a></li>
+        <li class="breadcrumb-item active">{{ item.name }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-box-open"></i> {{ item.name }}</h1>
+    <div>
+        <a href="{% url 'inventory:item_adjust' item.pk %}" class="btn btn-success"><i class="fas fa-plus-minus"></i> Adjust Stock</a>
+        <a href="{% url 'inventory:item_edit' item.pk %}" class="btn btn-secondary ms-2"><i class="fas fa-edit"></i> Edit</a>
+        <a href="{% url 'inventory:item_delete' item.pk %}" class="btn btn-danger ms-2"><i class="fas fa-trash"></i> Delete</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Item Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <dl>
+                            <dt>Type</dt>
+                            <dd><span class="badge bg-secondary">{{ item.get_item_type_display }}</span></dd>
+                            <dt>SKU</dt>
+                            <dd>{{ item.sku|default:"—" }}</dd>
+                            <dt>Manufacturer Part #</dt>
+                            <dd>{{ item.manufacturer_part_number|default:"—" }}</dd>
+                            <dt>Category</dt>
+                            <dd>
+                                {% if item.category %}
+                                <span class="badge" style="background-color: {{ item.category.color }}">{{ item.category.name }}</span>
+                                {% else %}—{% endif %}
+                            </dd>
+                            <dt>Storage Location</dt>
+                            <dd>{{ item.storage_location.name|default:"—" }}</dd>
+                        </dl>
+                    </div>
+                    <div class="col-md-6">
+                        <dl>
+                            <dt>Quantity</dt>
+                            <dd>
+                                {% if item.is_low_stock %}
+                                <span class="badge bg-danger fs-6">{{ item.quantity }} {{ item.unit }}</span>
+                                <span class="text-danger ms-2"><i class="fas fa-exclamation-triangle"></i> Low Stock</span>
+                                {% else %}
+                                <span class="fs-5">{{ item.quantity }} {{ item.unit }}</span>
+                                {% endif %}
+                            </dd>
+                            <dt>Min Quantity</dt>
+                            <dd>{{ item.min_quantity }} {{ item.unit }}</dd>
+                            <dt>Reorder Quantity</dt>
+                            <dd>{{ item.reorder_quantity }} {{ item.unit }}</dd>
+                            <dt>Unit Cost</dt>
+                            <dd>{% if item.unit_cost %}${{ item.unit_cost }}{% else %}—{% endif %}</dd>
+                            <dt>Total Value</dt>
+                            <dd>{% if item.total_value %}${{ item.total_value }}{% else %}—{% endif %}</dd>
+                        </dl>
+                    </div>
+                </div>
+                {% if item.description %}
+                <hr>
+                <h6>Description</h6>
+                <p>{{ item.description }}</p>
+                {% endif %}
+                {% if item.notes %}
+                <h6>Notes</h6>
+                <p>{{ item.notes }}</p>
+                {% endif %}
+                {% if item.reorder_link %}
+                <a href="{{ item.reorder_link }}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-shopping-cart"></i> Reorder Link
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-qrcode"></i> QR Code</h5>
+            </div>
+            <div class="card-body text-center">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={{ request.scheme }}://{{ request.get_host }}{% url 'inventory:item_scan' item.qr_code %}" alt="QR Code" class="img-fluid mb-2">
+                <br>
+                <small class="text-muted font-monospace">{{ item.qr_code }}</small>
+            </div>
+        </div>
+        {% if item.tags.all %}
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-tags"></i> Tags</h5></div>
+            <div class="card-body">
+                {% for tag in item.tags.all %}
+                <span class="badge bg-info me-1">{{ tag.name }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-history"></i> Transaction History</h5>
+        <a href="{% url 'inventory:item_adjust' item.pk %}" class="btn btn-sm btn-success"><i class="fas fa-plus"></i> Add Transaction</a>
+    </div>
+    <div class="card-body p-0">
+        {% if transactions %}
+        <table class="table table-striped table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Change</th>
+                    <th>Qty After</th>
+                    <th>Notes</th>
+                    <th>Reference</th>
+                    <th>By</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tx in transactions %}
+                <tr>
+                    <td><span class="badge bg-secondary">{{ tx.get_transaction_type_display }}</span></td>
+                    <td>
+                        {% if tx.quantity_change > 0 %}
+                        <span class="text-success">+{{ tx.quantity_change }}</span>
+                        {% else %}
+                        <span class="text-danger">{{ tx.quantity_change }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ tx.quantity_after }}</td>
+                    <td>{{ tx.notes|truncatechars:50|default:"-" }}</td>
+                    <td><small class="text-muted">{{ tx.reference|default:"-" }}</small></td>
+                    <td>{{ tx.performed_by.username|default:"-" }}</td>
+                    <td><small class="text-muted">{{ tx.created_at|date:"M j, Y H:i" }}</small></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="p-4 text-center text-muted">No transactions recorded yet.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

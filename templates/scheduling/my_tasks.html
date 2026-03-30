@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}My Tasks - Scheduling{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-user-check"></i> My Tasks</h1>
+    <a href="{% url 'scheduling:scheduling_dashboard' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left"></i> Dashboard</a>
+</div>
+
+{% if assignments %}
+<div class="row">
+    {% for assignment in assignments %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card {% if assignment.task.is_overdue %}border-danger{% elif assignment.task.priority == 'urgent' %}border-danger{% elif assignment.task.priority == 'high' %}border-warning{% endif %}">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>
+                    {% if assignment.task.priority == 'urgent' %}<span class="badge bg-danger">Urgent</span>
+                    {% elif assignment.task.priority == 'high' %}<span class="badge bg-warning text-dark">High</span>
+                    {% elif assignment.task.priority == 'normal' %}<span class="badge bg-primary">Normal</span>
+                    {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
+                </span>
+                {% if assignment.task.is_overdue %}
+                <span class="badge bg-danger"><i class="fas fa-exclamation-triangle"></i> Overdue</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">
+                    <a href="{% url 'scheduling:task_detail' assignment.task.pk %}">{{ assignment.task.title }}</a>
+                </h5>
+                {% if assignment.task.description %}
+                <p class="card-text text-muted small">{{ assignment.task.description|truncatechars:100 }}</p>
+                {% endif %}
+                {% if assignment.task.due_date %}
+                <p class="card-text">
+                    <i class="fas fa-calendar-alt {% if assignment.task.is_overdue %}text-danger{% else %}text-muted{% endif %}"></i>
+                    <span {% if assignment.task.is_overdue %}class="text-danger fw-bold"{% endif %}>
+                        {{ assignment.task.due_date|date:"M j, Y H:i" }}
+                    </span>
+                </p>
+                {% endif %}
+            </div>
+            <div class="card-footer">
+                <a href="{% url 'scheduling:task_detail' assignment.task.pk %}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-signature"></i> View & Sign Off
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body text-center p-5 text-success">
+        <i class="fas fa-check-circle fa-3x mb-3"></i>
+        <h4>All caught up!</h4>
+        <p class="text-muted">You have no pending tasks requiring sign-off.</p>
+        <a href="{% url 'scheduling:task_list' %}" class="btn btn-primary">View All Tasks</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Task Calendar - Scheduling{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-calendar-alt"></i> Task Calendar</h1>
+    <div>
+        <a href="{% url 'scheduling:task_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> New Task</a>
+        <a href="{% url 'scheduling:task_list' %}" class="btn btn-outline-secondary ms-2"><i class="fas fa-list"></i> List View</a>
+    </div>
+</div>
+
+<div class="alert alert-info">
+    <i class="fas fa-info-circle"></i> Showing upcoming tasks for the next 60 days, grouped by due date.
+</div>
+
+{% if calendar_data %}
+{% for date, tasks in calendar_data %}
+<div class="card mb-3">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-calendar-day"></i>
+            {{ date|date:"l, F j, Y" }}
+            <span class="badge bg-primary ms-2">{{ tasks|length }} task{{ tasks|length|pluralize }}</span>
+        </h5>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <tbody>
+                {% for task in tasks %}
+                <tr {% if task.is_overdue %}class="table-danger"{% endif %}>
+                    <td width="30%">
+                        <a href="{% url 'scheduling:task_detail' task.pk %}">{{ task.title }}</a>
+                    </td>
+                    <td width="15%">
+                        {% if task.priority == 'urgent' %}<span class="badge bg-danger">Urgent</span>
+                        {% elif task.priority == 'high' %}<span class="badge bg-warning text-dark">High</span>
+                        {% elif task.priority == 'normal' %}<span class="badge bg-primary">Normal</span>
+                        {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
+                    </td>
+                    <td width="15%">
+                        {% if task.status == 'completed' %}<span class="badge bg-success">Completed</span>
+                        {% elif task.status == 'cancelled' %}<span class="badge bg-secondary">Cancelled</span>
+                        {% elif task.status == 'in_progress' %}<span class="badge bg-info">In Progress</span>
+                        {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+                    </td>
+                    <td>
+                        {% for a in task.task_assignments.all|slice:":3" %}
+                        <small class="text-muted">{{ a.user.username }}{% if a.acknowledged %}<i class="fas fa-check text-success ms-1"></i>{% endif %}</small>{% if not forloop.last %}, {% endif %}
+                        {% endfor %}
+                    </td>
+                    <td width="10%">
+                        {% if task.recurrence != 'none' %}
+                        <span title="{{ task.get_recurrence_display }}"><i class="fas fa-redo text-muted"></i></span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card">
+    <div class="card-body text-center p-5 text-muted">
+        <i class="fas fa-calendar-check fa-3x mb-3"></i>
+        <h4>No upcoming tasks</h4>
+        <p>No tasks scheduled for the next 60 days.</p>
+        <a href="{% url 'scheduling:task_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> Create Task</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

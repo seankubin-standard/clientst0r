@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - Inventory{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'inventory:inventory_dashboard' %}">Inventory</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'inventory:item_list' %}">Items</a></li>
+        <li class="breadcrumb-item active">{{ title }}</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4"><i class="fas fa-box"></i> {{ title }}</h1>
+
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="{{ form.name.id_for_label }}" class="form-label">Name <span class="text-danger">*</span></label>
+                        {{ form.name }}
+                        {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.sku.id_for_label }}" class="form-label">SKU</label>
+                        {{ form.sku }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.manufacturer_part_number.id_for_label }}" class="form-label">Manufacturer Part #</label>
+                        {{ form.manufacturer_part_number }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.item_type.id_for_label }}" class="form-label">Type</label>
+                        {{ form.item_type }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.category.id_for_label }}" class="form-label">Category</label>
+                        {{ form.category }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.storage_location.id_for_label }}" class="form-label">Storage Location</label>
+                        {{ form.storage_location }}
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="{{ form.quantity.id_for_label }}" class="form-label">Quantity</label>
+                                {{ form.quantity }}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="{{ form.unit.id_for_label }}" class="form-label">Unit</label>
+                                {{ form.unit }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="{{ form.min_quantity.id_for_label }}" class="form-label">Min Quantity</label>
+                                {{ form.min_quantity }}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="{{ form.reorder_quantity.id_for_label }}" class="form-label">Reorder Quantity</label>
+                                {{ form.reorder_quantity }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.unit_cost.id_for_label }}" class="form-label">Unit Cost ($)</label>
+                        {{ form.unit_cost }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.reorder_link.id_for_label }}" class="form-label">Reorder Link</label>
+                        {{ form.reorder_link }}
+                    </div>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="{{ form.description.id_for_label }}" class="form-label">Description</label>
+                {{ form.description }}
+            </div>
+            <div class="mb-3">
+                <label for="{{ form.notes.id_for_label }}" class="form-label">Notes</label>
+                {{ form.notes }}
+            </div>
+            <hr>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save</button>
+                {% if item %}
+                <a href="{% url 'inventory:item_detail' item.pk %}" class="btn btn-secondary">Cancel</a>
+                {% else %}
+                <a href="{% url 'inventory:item_list' %}" class="btn btn-secondary">Cancel</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory Items{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-boxes"></i> Inventory Items</h1>
+    <a href="{% url 'inventory:item_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> Add Item</a>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-filter"></i> Filter Items</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <input type="text" name="q" class="form-control" placeholder="Search by name, SKU, or description..." value="{{ q }}">
+                </div>
+                <div class="col-md-3">
+                    <select name="type" class="form-select">
+                        <option value="">All Types</option>
+                        {% for value, label in item_types %}
+                        <option value="{{ value }}" {% if filter_type == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="category" class="form-select">
+                        <option value="">All Categories</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.pk }}" {% if filter_category == cat.pk|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i> Filter</button>
+                </div>
+            </div>
+            <div class="mt-2">
+                <a href="{% url 'inventory:item_list' %}" class="btn btn-sm btn-secondary"><i class="fas fa-undo"></i> Clear</a>
+                <a href="{% url 'inventory:item_list' %}?low_stock=1" class="btn btn-sm btn-warning {% if show_low_stock %}active{% endif %}"><i class="fas fa-exclamation-triangle"></i> Low Stock Only</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if items %}
+        <table class="table table-striped table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>SKU</th>
+                    <th>Type</th>
+                    <th>Category</th>
+                    <th>Location</th>
+                    <th>Qty</th>
+                    <th>Unit Cost</th>
+                    <th width="150">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td><a href="{% url 'inventory:item_detail' item.pk %}">{{ item.name }}</a></td>
+                    <td><small class="text-muted">{{ item.sku|default:"-" }}</small></td>
+                    <td><span class="badge bg-secondary">{{ item.get_item_type_display }}</span></td>
+                    <td>{{ item.category.name|default:"-" }}</td>
+                    <td>{{ item.storage_location.name|default:"-" }}</td>
+                    <td>
+                        {% if item.is_low_stock %}
+                        <span class="badge bg-danger">{{ item.quantity }} {{ item.unit }}</span>
+                        {% else %}
+                        {{ item.quantity }} {{ item.unit }}
+                        {% endif %}
+                    </td>
+                    <td>{% if item.unit_cost %}${{ item.unit_cost }}{% else %}-{% endif %}</td>
+                    <td>
+                        <a href="{% url 'inventory:item_detail' item.pk %}" class="btn btn-sm btn-outline-primary" title="View"><i class="fas fa-eye"></i></a>
+                        <a href="{% url 'inventory:item_adjust' item.pk %}" class="btn btn-sm btn-outline-success" title="Adjust Stock"><i class="fas fa-plus-minus"></i></a>
+                        <a href="{% url 'inventory:item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary" title="Edit"><i class="fas fa-edit"></i></a>
+                        <a href="{% url 'inventory:item_delete' item.pk %}" class="btn btn-sm btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="p-4 text-center text-muted">
+            <i class="fas fa-boxes fa-3x mb-3"></i>
+            <p>No inventory items found.</p>
+            <a href="{% url 'inventory:item_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> Add First Item</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -472,6 +472,8 @@ class SystemSetting(models.Model):
     reports_enabled = models.BooleanField(default=True, help_text='Enable Reports & Analytics feature')
     webhooks_enabled = models.BooleanField(default=True, help_text='Enable Webhooks for event notifications')
     vehicles_enabled = models.BooleanField(default=True, help_text='Enable service vehicle fleet management features')
+    inventory_enabled = models.BooleanField(default=True, help_text='Enable Inventory management')
+    scheduling_enabled = models.BooleanField(default=True, help_text='Enable Scheduling and Task Management')
 
     # UI/UX Settings (Issue #59)
     stay_on_page_after_org_switch = models.BooleanField(default=True, help_text='Stay on current page when switching organizations instead of redirecting to dashboard')

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Scheduling Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-calendar-check"></i> Scheduling</h1>
+    <a href="{% url 'scheduling:task_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> New Task</a>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-tasks fa-2x text-primary mb-2"></i>
+                <h3 class="mb-0">{{ my_pending_count }}</h3>
+                <div class="text-muted">My Pending Sign-offs</div>
+                <a href="{% url 'scheduling:my_tasks' %}" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center {% if overdue_count > 0 %}border-danger{% endif %}">
+            <div class="card-body">
+                <i class="fas fa-clock fa-2x {% if overdue_count > 0 %}text-danger{% else %}text-muted{% endif %} mb-2"></i>
+                <h3 class="mb-0">
+                    {{ overdue_count }}
+                    {% if overdue_count > 0 %}<span class="badge bg-danger ms-1">!</span>{% endif %}
+                </h3>
+                <div class="text-muted">Overdue</div>
+                <a href="{% url 'scheduling:overdue_tasks' %}" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-calendar-week fa-2x text-info mb-2"></i>
+                <h3 class="mb-0">{{ upcoming_count }}</h3>
+                <div class="text-muted">Due in 7 Days</div>
+                <a href="{% url 'scheduling:task_calendar' %}" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-list-check fa-2x text-success mb-2"></i>
+                <h3 class="mb-0">{{ total_pending }}</h3>
+                <div class="text-muted">Total Active</div>
+                <a href="{% url 'scheduling:task_list' %}" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if my_assignments %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-user-check"></i> My Tasks Needing Sign-off</h5>
+        <a href="{% url 'scheduling:my_tasks' %}" class="btn btn-sm btn-outline-secondary">View All</a>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Task</th>
+                    <th>Priority</th>
+                    <th>Due Date</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for assignment in my_assignments %}
+                <tr {% if assignment.task.is_overdue %}class="table-danger"{% endif %}>
+                    <td><a href="{% url 'scheduling:task_detail' assignment.task.pk %}">{{ assignment.task.title }}</a></td>
+                    <td>
+                        {% if assignment.task.priority == 'urgent' %}<span class="badge bg-danger">Urgent</span>
+                        {% elif assignment.task.priority == 'high' %}<span class="badge bg-warning text-dark">High</span>
+                        {% elif assignment.task.priority == 'normal' %}<span class="badge bg-primary">Normal</span>
+                        {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if assignment.task.due_date %}
+                        <span {% if assignment.task.is_overdue %}class="text-danger fw-bold"{% endif %}>
+                            {{ assignment.task.due_date|date:"M j, Y H:i" }}
+                        </span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'scheduling:task_detail' assignment.task.pk %}" class="btn btn-sm btn-primary">
+                            <i class="fas fa-signature"></i> Sign Off
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-calendar-alt"></i> Upcoming Tasks (Next 7 Days)</h5>
+        <a href="{% url 'scheduling:task_list' %}" class="btn btn-sm btn-outline-secondary">All Tasks</a>
+    </div>
+    <div class="card-body p-0">
+        {% if upcoming_tasks %}
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Due Date</th>
+                    <th>Assigned To</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for task in upcoming_tasks %}
+                <tr>
+                    <td><a href="{% url 'scheduling:task_detail' task.pk %}">{{ task.title }}</a></td>
+                    <td>
+                        {% if task.priority == 'urgent' %}<span class="badge bg-danger">Urgent</span>
+                        {% elif task.priority == 'high' %}<span class="badge bg-warning text-dark">High</span>
+                        {% elif task.priority == 'normal' %}<span class="badge bg-primary">Normal</span>
+                        {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
+                    </td>
+                    <td><span class="badge bg-info">{{ task.get_status_display }}</span></td>
+                    <td>{{ task.due_date|date:"M j, Y H:i"|default:"—" }}</td>
+                    <td>
+                        {% for a in task.task_assignments.all|slice:":3" %}
+                        {{ a.user.username }}{% if not forloop.last %}, {% endif %}
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="p-4 text-center text-muted">
+            <i class="fas fa-calendar-check fa-2x mb-2"></i>
+            <p>No upcoming tasks in the next 7 days.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -204,6 +204,8 @@ def settings_features(request):
         settings.reports_enabled = request.POST.get('reports_enabled') == 'on'
         settings.webhooks_enabled = request.POST.get('webhooks_enabled') == 'on'
         settings.vehicles_enabled = request.POST.get('vehicles_enabled') == 'on'
+        settings.inventory_enabled = request.POST.get('inventory_enabled') == 'on'
+        settings.scheduling_enabled = request.POST.get('scheduling_enabled') == 'on'
 
         settings.updated_by = request.user
         settings.save()

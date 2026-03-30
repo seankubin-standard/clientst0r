@@ -102,6 +102,40 @@
                     {% if workflows_enabled %}
                     <li class="nav-item"><a class="nav-link" href="{% url 'processes:process_list' %}" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{% trans 'Process automation and workflow templates' %}"><i class="fas fa-tasks"></i> {% trans "Workflows" %}</a></li>
                     {% endif %}
+                    {% if inventory_enabled %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="inventoryDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-warehouse"></i> {% trans "Inventory" %}
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{% url 'inventory:inventory_dashboard' %}"><i class="fas fa-tachometer-alt"></i> {% trans "Dashboard" %}</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'inventory:item_list' %}"><i class="fas fa-boxes"></i> {% trans "All Items" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'inventory:item_create' %}"><i class="fas fa-plus"></i> {% trans "Add Item" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'inventory:low_stock_report' %}"><i class="fas fa-exclamation-triangle"></i> {% trans "Low Stock" %}</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'inventory:category_list' %}"><i class="fas fa-tags"></i> {% trans "Categories" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'inventory:location_list' %}"><i class="fas fa-map-marker-alt"></i> {% trans "Locations" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'inventory:transaction_list' %}"><i class="fas fa-history"></i> {% trans "Transactions" %}</a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
+                    {% if scheduling_enabled %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="schedulingDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-calendar-check"></i> {% trans "Scheduling" %}
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{% url 'scheduling:scheduling_dashboard' %}"><i class="fas fa-tachometer-alt"></i> {% trans "Dashboard" %}</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'scheduling:task_list' %}"><i class="fas fa-tasks"></i> {% trans "All Tasks" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'scheduling:task_create' %}"><i class="fas fa-plus"></i> {% trans "New Task" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'scheduling:my_tasks' %}"><i class="fas fa-user-check"></i> {% trans "My Tasks" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'scheduling:overdue_tasks' %}"><i class="fas fa-clock"></i> {% trans "Overdue" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'scheduling:task_calendar' %}"><i class="fas fa-calendar-alt"></i> {% trans "Calendar" %}</a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
                     {% if monitoring_enabled %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="monitoringDropdown" role="button" data-bs-toggle="dropdown">

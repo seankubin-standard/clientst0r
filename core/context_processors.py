@@ -19,6 +19,8 @@ def organization_context(request):
             'global_kb_enabled': settings.global_kb_enabled,
             'workflows_enabled': settings.workflows_enabled,
             'vehicles_enabled': settings.vehicles_enabled,
+            'inventory_enabled': settings.inventory_enabled,
+            'scheduling_enabled': settings.scheduling_enabled,
         }
         system_settings = settings
     except Exception:
@@ -28,6 +30,8 @@ def organization_context(request):
             'global_kb_enabled': True,
             'workflows_enabled': True,
             'vehicles_enabled': True,
+            'inventory_enabled': True,
+            'scheduling_enabled': True,
         }
         system_settings = None
 
