@@ -2169,44 +2169,39 @@ def cleanup_old_snyk_scans(request):
         # First, clean up stuck scans (mark as timeout)
         stuck_count = SnykScan.cleanup_stuck_scans(timeout_hours=2)
 
-        # Get all scans ordered by completion time (newest first)
+        # Delete scans older than 30 days
+        cutoff = timezone.now() - timedelta(days=30)
+        old_deleted = SnykScan.objects.filter(started_at__lt=cutoff).delete()
+        old_deleted_count = old_deleted[0]
+
+        # Also enforce a max of 30 scans by count (keep the newest)
         all_scans = SnykScan.objects.all().order_by('-completed_at', '-started_at')
         total_count = all_scans.count()
+        count_deleted_count = 0
+        if total_count > 30:
+            scans_to_keep = list(all_scans[:30].values_list('id', flat=True))
+            count_deleted = SnykScan.objects.exclude(id__in=scans_to_keep).delete()
+            count_deleted_count = count_deleted[0]
 
-        if total_count <= 30:
+        deleted_count = old_deleted_count + count_deleted_count
+        remaining_count = SnykScan.objects.count()
+
+        if deleted_count == 0 and stuck_count == 0:
+            message = f'No cleanup needed. All {remaining_count} scan(s) are within the last 30 days.'
+        else:
+            parts = []
+            if deleted_count > 0:
+                parts.append(f'deleted {deleted_count} old scan(s)')
             if stuck_count > 0:
-                return JsonResponse({
-                    'success': True,
-                    'message': f'Marked {stuck_count} stuck scan(s) as timed out. No old scans to delete (only {total_count} exist).',
-                    'deleted_count': 0,
-                    'stuck_count': stuck_count,
-                    'remaining_count': total_count
-                })
-            return JsonResponse({
-                'success': True,
-                'message': f'No cleanup needed. Only {total_count} scans exist.',
-                'deleted_count': 0,
-                'stuck_count': 0,
-                'remaining_count': total_count
-            })
-
-        # Get scans to keep (last 30)
-        scans_to_keep = list(all_scans[:30].values_list('id', flat=True))
-
-        # Delete old scans
-        deleted = SnykScan.objects.exclude(id__in=scans_to_keep).delete()
-        deleted_count = deleted[0]  # First element is count of deleted objects
-
-        message = f'Cleanup complete. Deleted {deleted_count} old scan(s).'
-        if stuck_count > 0:
-            message += f' Marked {stuck_count} stuck scan(s) as timed out.'
+                parts.append(f'marked {stuck_count} stuck scan(s) as timed out')
+            message = f'Cleanup complete: {", ".join(parts)}.'
 
         return JsonResponse({
             'success': True,
             'message': message,
             'deleted_count': deleted_count,
             'stuck_count': stuck_count,
-            'remaining_count': 30
+            'remaining_count': remaining_count
         })
 
     except Exception as e:
