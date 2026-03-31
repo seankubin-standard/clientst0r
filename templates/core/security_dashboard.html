@@ -333,13 +333,13 @@
                 {% for scan in scan_history %}
                 <tr>
                     <td class="small">{{ scan.started_at|date:"M j, H:i" }}</td>
-                    <td><span class="badge bg-light text-dark border" style="font-size:.7rem;">{{ scan.get_scan_type_display }}</span></td>
+                    <td><span class="badge bg-secondary" style="font-size:.7rem;">{{ scan.get_scan_type_display }}</span></td>
                     <td><span class="badge {{ scan.get_status_badge_class }}" style="font-size:.7rem;">{{ scan.get_status_display }}</span></td>
                     <td class="text-end fw-semibold">{{ scan.total_vulnerabilities }}</td>
-                    <td class="text-end"><span class="text-danger small">{{ scan.critical_count }}</span></td>
-                    <td class="text-end"><span class="small" style="color:#fd7e14">{{ scan.high_count }}</span></td>
-                    <td class="text-end"><span class="text-warning small">{{ scan.medium_count }}</span></td>
-                    <td class="text-end"><span class="text-muted small">{{ scan.low_count }}</span></td>
+                    <td class="text-end"><span class="text-danger fw-semibold small">{{ scan.critical_count }}</span></td>
+                    <td class="text-end"><span class="fw-semibold small" style="color:#d96b00">{{ scan.high_count }}</span></td>
+                    <td class="text-end"><span class="fw-semibold small" style="color:#b38600">{{ scan.medium_count }}</span></td>
+                    <td class="text-end"><span class="small" style="color:#0077a8">{{ scan.low_count }}</span></td>
                     <td class="text-end text-muted small">{{ scan.duration_seconds }}s</td>
                     <td class="text-end">
                         <a href="{% url 'core:snyk_scan_detail' scan.id %}" class="btn btn-sm btn-outline-primary py-0 px-2">
@@ -477,7 +477,7 @@ function startFullScan() {
 
     fetch('{% url "core:run_full_scan" %}', {
         method:'POST',
-        headers:{'X-CSRFToken': getCookie('csrftoken')},
+        headers:{'X-CSRFToken': getCsrfToken()},
     })
     .then(r => r.json())
     .then(d => {
@@ -578,8 +578,11 @@ function scanFail(msg) {
     log('ERROR: ' + msg, 'log-error');
 }
 
-function getCookie(n) {
-    const v = document.cookie.match('(^|;)\\s*' + n + '\\s*=\\s*([^;]+)');
+function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta) return meta.getAttribute('content');
+    // fallback: read from cookie
+    const v = document.cookie.match('(^|;)\\s*csrftoken\\s*=\\s*([^;]+)');
     return v ? v.pop() : '';
 }
 </script>
