@@ -15,10 +15,10 @@
         <div class="d-flex justify-content-between align-items-center">
             <h2><i class="fas fa-shield-alt text-danger"></i> Security Dashboard</h2>
             <div>
-                <a href="{% url 'core:settings_snyk' %}" class="btn btn-primary">
-                    <i class="fas fa-sync"></i> Run New Scan
-                </a>
-                <a href="{% url 'core:snyk_scans' %}" class="btn btn-outline-secondary">
+                <button class="btn btn-danger" id="runFullScanBtn" onclick="startFullScan()">
+                    <i class="fas fa-search-plus"></i> Run Full Scan
+                </button>
+                <a href="{% url 'core:snyk_scans' %}" class="btn btn-outline-secondary ms-1">
                     <i class="fas fa-history"></i> Scan History
                 </a>
             </div>
@@ -39,6 +39,72 @@
 </div>
 {% endif %}
 
+<!-- Full Scan Progress Panel (hidden until scan starts) -->
+<div id="fullScanPanel" class="card mb-4 border-primary" style="display:none;">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-spinner fa-spin me-2" id="scanSpinner"></i> Full Security Scan Running</h5>
+        <small id="scanElapsed">0s</small>
+    </div>
+    <div class="card-body">
+        <div class="row g-3" id="scanModules">
+            <!-- Snyk: Dependencies -->
+            <div class="col-md-3">
+                <div class="card border h-100" id="module-open_source">
+                    <div class="card-body text-center py-3">
+                        <div class="mb-2"><i class="fas fa-cube fa-2x text-muted"></i></div>
+                        <h6 class="mb-1">Dependencies</h6>
+                        <div class="scan-status-badge"><span class="badge bg-secondary">Queued</span></div>
+                        <div class="scan-result mt-2" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Snyk: Code (SAST) -->
+            <div class="col-md-3">
+                <div class="card border h-100" id="module-code">
+                    <div class="card-body text-center py-3">
+                        <div class="mb-2"><i class="fas fa-code fa-2x text-muted"></i></div>
+                        <h6 class="mb-1">Code (SAST)</h6>
+                        <div class="scan-status-badge"><span class="badge bg-secondary">Queued</span></div>
+                        <div class="scan-result mt-2" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Snyk: IaC -->
+            <div class="col-md-3">
+                <div class="card border h-100" id="module-iac">
+                    <div class="card-body text-center py-3">
+                        <div class="mb-2"><i class="fas fa-server fa-2x text-muted"></i></div>
+                        <h6 class="mb-1">Infrastructure (IaC)</h6>
+                        <div class="scan-status-badge"><span class="badge bg-secondary">Queued</span></div>
+                        <div class="scan-result mt-2" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- OS Packages -->
+            <div class="col-md-3">
+                <div class="card border h-100" id="module-os">
+                    <div class="card-body text-center py-3">
+                        <div class="mb-2"><i class="fas fa-hdd fa-2x text-muted"></i></div>
+                        <h6 class="mb-1">OS Packages</h6>
+                        <div class="scan-status-badge"><span class="badge bg-secondary">Queued</span></div>
+                        <div class="scan-result mt-2" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary (shown when done) -->
+        <div id="scanSummary" class="mt-4" style="display:none;">
+            <hr>
+            <div class="alert alert-success mb-0" id="scanDoneAlert">
+                <i class="fas fa-check-circle me-2"></i>
+                <strong>Full scan complete.</strong>
+                <a href="" class="ms-2 alert-link" onclick="location.reload(); return false;">Refresh page</a> to update all counters.
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Vulnerability Overview -->
 <div class="row mb-4">
     <div class="col-md-8">
@@ -53,7 +119,7 @@
                         <div class="card bg-light border-0">
                             <div class="card-body">
                                 <h1 class="display-4 mb-0">{{ total_vulnerabilities }}</h1>
-                                <small class="text-muted">Total Vulnerabilities</small>
+                                <small class="text-muted">Total</small>
                             </div>
                         </div>
                     </div>
@@ -90,9 +156,7 @@
                         </div>
                     </div>
                 </div>
-
                 <hr>
-
                 <div class="row">
                     <div class="col-md-6">
                         <p class="mb-1"><strong>Last Scan:</strong> {{ latest_scan.started_at|date:"Y-m-d H:i" }}</p>
@@ -120,10 +184,10 @@
                 <div class="text-center py-5">
                     <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
                     <h4>No Scans Yet</h4>
-                    <p class="text-muted">Run your first security scan to see vulnerability status</p>
-                    <a href="{% url 'core:settings_snyk' %}" class="btn btn-primary">
-                        <i class="fas fa-sync"></i> Run First Scan
-                    </a>
+                    <p class="text-muted">Run a full scan to see vulnerability status.</p>
+                    <button class="btn btn-danger" onclick="startFullScan()">
+                        <i class="fas fa-search-plus"></i> Run Full Scan
+                    </button>
                 </div>
                 {% endif %}
             </div>
@@ -159,18 +223,14 @@
             </div>
             <div class="card-body">
                 <div id="package-scanner-loading" class="text-center py-3">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="text-muted mb-0 mt-2"><small>Loading scanner data...</small></p>
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <p class="text-muted mb-0 mt-2"><small>Loading...</small></p>
                 </div>
                 <div id="package-scanner-content" style="display: none;">
                     <div class="text-center mb-3">
-                        <div class="d-inline-block">
-                            <div id="security-status-badge" class="badge fs-6 px-3 py-2">
-                                <i class="fas fa-shield-alt me-1"></i>
-                                <span id="security-status-text">Loading...</span>
-                            </div>
+                        <div id="security-status-badge" class="badge fs-6 px-3 py-2">
+                            <i class="fas fa-shield-alt me-1"></i>
+                            <span id="security-status-text">Loading...</span>
                         </div>
                     </div>
                     <div class="row text-center mb-3">
@@ -187,27 +247,22 @@
                             </div>
                         </div>
                     </div>
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <small class="text-muted">
-                            <i class="fas fa-clock me-1"></i>
-                            Last scan: <span id="last-scan-time">Never</span>
-                        </small>
-                    </div>
-                    <div class="d-grid gap-2">
+                    <small class="text-muted">
+                        <i class="fas fa-clock me-1"></i> Last scan: <span id="last-scan-time">Never</span>
+                    </small>
+                    <div class="d-grid mt-2">
                         <a href="{% url 'core:package_scanner_dashboard' %}" class="btn btn-sm btn-outline-primary">
                             <i class="fas fa-eye"></i> View Details
                         </a>
                     </div>
                 </div>
                 <div id="package-scanner-error" style="display: none;">
-                    <div class="alert alert-warning mb-0">
+                    <div class="alert alert-warning mb-2">
                         <small><i class="fas fa-exclamation-triangle"></i> No scan data available</small>
                     </div>
-                    <div class="d-grid mt-2">
-                        <a href="{% url 'core:package_scanner_dashboard' %}" class="btn btn-sm btn-outline-primary">
-                            <i class="fas fa-play"></i> Run First Scan
-                        </a>
-                    </div>
+                    <a href="{% url 'core:package_scanner_dashboard' %}" class="btn btn-sm btn-outline-primary w-100">
+                        <i class="fas fa-play"></i> Run First Scan
+                    </a>
                 </div>
             </div>
         </div>
@@ -219,9 +274,9 @@
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
-                    <a href="{% url 'core:settings_snyk' %}" class="btn btn-success">
-                        <i class="fas fa-sync"></i> Run Security Scan
-                    </a>
+                    <button class="btn btn-danger" onclick="startFullScan()">
+                        <i class="fas fa-search-plus"></i> Run Full Scan
+                    </button>
                     <a href="{% url 'core:snyk_scans' %}" class="btn btn-outline-secondary">
                         <i class="fas fa-bug"></i> View Vulnerabilities
                     </a>
@@ -231,8 +286,8 @@
                     <a href="{% url 'core:package_scanner_dashboard' %}" class="btn btn-outline-secondary">
                         <i class="fas fa-shield-alt"></i> Package Scanner
                     </a>
-                    <a href="{% url 'core:restart_application' %}" class="btn btn-outline-warning" onclick="return confirm('Restart application? This will briefly disconnect all users.');">
-                        <i class="fas fa-sync-alt"></i> Restart Application
+                    <a href="{% url 'core:system_updates' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-download"></i> OS Updates
                     </a>
                 </div>
             </div>
@@ -254,6 +309,7 @@
                         <thead>
                             <tr>
                                 <th>Date</th>
+                                <th>Type</th>
                                 <th>Status</th>
                                 <th>Duration</th>
                                 <th>Total</th>
@@ -261,13 +317,14 @@
                                 <th>High</th>
                                 <th>Medium</th>
                                 <th>Low</th>
-                                <th>Actions</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for scan in scan_history %}
                             <tr>
                                 <td>{{ scan.started_at|date:"Y-m-d H:i" }}</td>
+                                <td><span class="badge bg-light text-dark border">{{ scan.get_scan_type_display }}</span></td>
                                 <td><span class="badge {{ scan.get_status_badge_class }}">{{ scan.get_status_display }}</span></td>
                                 <td>{{ scan.duration_seconds }}s</td>
                                 <td><strong>{{ scan.total_vulnerabilities }}</strong></td>
@@ -277,7 +334,7 @@
                                 <td><span class="badge bg-secondary">{{ scan.low_count }}</span></td>
                                 <td>
                                     <a href="{% url 'core:snyk_scan_detail' scan.id %}" class="btn btn-sm btn-outline-primary">
-                                        <i class="fas fa-eye"></i> View
+                                        <i class="fas fa-eye"></i>
                                     </a>
                                 </td>
                             </tr>
@@ -286,9 +343,7 @@
                     </table>
                 </div>
                 <div class="text-center mt-3">
-                    <a href="{% url 'core:snyk_scans' %}" class="btn btn-outline-secondary">
-                        View All Scans <i class="fas fa-arrow-right"></i>
-                    </a>
+                    <a href="{% url 'core:snyk_scans' %}" class="btn btn-outline-secondary">View All Scans <i class="fas fa-arrow-right"></i></a>
                 </div>
             </div>
         </div>
@@ -300,80 +355,189 @@
 
 {% block extra_js %}
 <script>
-// Load package scanner widget data
+// ── OS package scanner widget ───────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
     loadPackageScannerWidget();
 });
 
 function loadPackageScannerWidget() {
     fetch('{% url "core:package_scanner_widget_data" %}')
-        .then(response => response.json())
+        .then(r => r.json())
         .then(data => {
-            const loading = document.getElementById('package-scanner-loading');
-            const content = document.getElementById('package-scanner-content');
-            const error = document.getElementById('package-scanner-error');
-
-            loading.style.display = 'none';
-
+            document.getElementById('package-scanner-loading').style.display = 'none';
             if (data.status === 'no_data' || data.security_updates === undefined) {
-                error.style.display = 'block';
+                document.getElementById('package-scanner-error').style.display = 'block';
                 return;
             }
-
-            // Update security status badge
-            const statusBadge = document.getElementById('security-status-badge');
-            const statusText = document.getElementById('security-status-text');
-            statusBadge.className = 'badge fs-6 px-3 py-2 bg-' + data.status;
-            statusText.textContent = data.status_label;
-
-            // Update counts
+            const badge = document.getElementById('security-status-badge');
+            badge.className = 'badge fs-6 px-3 py-2 bg-' + data.status;
+            document.getElementById('security-status-text').textContent = data.status_label;
             document.getElementById('security-updates-count').textContent = data.security_updates;
             document.getElementById('total-updates-count').textContent = data.total_updates;
-
-            // Update last scan time
             if (data.scan_date) {
-                const scanDate = new Date(data.scan_date);
-                const now = new Date();
-                const diffMs = now - scanDate;
-                const diffMins = Math.floor(diffMs / 60000);
-                const diffHours = Math.floor(diffMs / 3600000);
-                const diffDays = Math.floor(diffMs / 86400000);
-
-                let timeAgo;
-                if (diffMins < 1) {
-                    timeAgo = 'Just now';
-                } else if (diffMins < 60) {
-                    timeAgo = diffMins + ' minute' + (diffMins > 1 ? 's' : '') + ' ago';
-                } else if (diffHours < 24) {
-                    timeAgo = diffHours + ' hour' + (diffHours > 1 ? 's' : '') + ' ago';
-                } else if (diffDays < 7) {
-                    timeAgo = diffDays + ' day' + (diffDays > 1 ? 's' : '') + ' ago';
-                } else {
-                    timeAgo = scanDate.toLocaleDateString();
-                }
-
-                document.getElementById('last-scan-time').textContent = timeAgo;
+                const d = new Date(data.scan_date), now = new Date();
+                const m = Math.floor((now - d) / 60000);
+                const h = Math.floor(m / 60), dy = Math.floor(m / 1440);
+                const ago = m < 1 ? 'Just now' : m < 60 ? m + 'm ago' : h < 24 ? h + 'h ago' : dy < 7 ? dy + 'd ago' : d.toLocaleDateString();
+                document.getElementById('last-scan-time').textContent = ago;
             }
-
-            // Apply color to security updates count based on severity
-            const securityCount = data.security_updates;
-            const securityElement = document.getElementById('security-updates-count');
-            if (securityCount === 0) {
-                securityElement.className = 'mb-0 text-success';
-            } else if (securityCount < 5) {
-                securityElement.className = 'mb-0 text-warning';
-            } else {
-                securityElement.className = 'mb-0 text-danger';
-            }
-
-            content.style.display = 'block';
+            const sc = data.security_updates;
+            document.getElementById('security-updates-count').className = 'mb-0 ' + (sc === 0 ? 'text-success' : sc < 5 ? 'text-warning' : 'text-danger');
+            document.getElementById('package-scanner-content').style.display = 'block';
         })
-        .catch(err => {
-            console.error('Failed to load package scanner widget:', err);
+        .catch(() => {
             document.getElementById('package-scanner-loading').style.display = 'none';
             document.getElementById('package-scanner-error').style.display = 'block';
         });
 }
+
+// ── Full scan ────────────────────────────────────────────────────────────────
+let _pollTimer = null;
+let _startTime = null;
+let _snykIds = {};
+let _pkgDone = false;
+
+function startFullScan() {
+    const btn = document.getElementById('runFullScanBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning…';
+
+    // Reset panel
+    const panel = document.getElementById('fullScanPanel');
+    panel.style.display = 'block';
+    panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+    document.getElementById('scanSummary').style.display = 'none';
+    document.getElementById('scanSpinner').className = 'fas fa-spinner fa-spin me-2';
+    _pkgDone = false;
+
+    ['open_source','code','iac'].forEach(t => setModuleState(t, 'running'));
+    setModuleState('os', 'running');
+
+    _startTime = Date.now();
+    document.getElementById('scanElapsed').textContent = '0s';
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]') ||
+                      {value: getCookie('csrftoken')};
+
+    fetch('{% url "core:run_full_scan" %}', {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            showScanError('Failed to start scan: ' + (data.message || 'unknown error'));
+            return;
+        }
+        _snykIds = data.snyk_scan_ids || {};
+
+        if (!data.snyk_enabled) {
+            ['open_source','code','iac'].forEach(t => setModuleState(t, 'skipped', 'Snyk not configured'));
+        }
+
+        // OS scan runs in background — poll the latest DB record
+        _pkgDone = false;
+
+        _pollTimer = setInterval(pollFullScan, 3000);
+        // Also tick the elapsed timer every second
+        setInterval(() => {
+            document.getElementById('scanElapsed').textContent =
+                Math.floor((Date.now() - _startTime) / 1000) + 's';
+        }, 1000);
+    })
+    .catch(err => showScanError('Request failed: ' + err.message));
+}
+
+function pollFullScan() {
+    const ids = Object.values(_snykIds).filter(Boolean).join(',');
+    fetch('{% url "core:full_scan_status" %}' + (ids ? '?snyk_ids=' + encodeURIComponent(ids) : ''))
+        .then(r => r.json())
+        .then(data => {
+            // Update Snyk modules
+            (data.snyk_results || []).forEach(s => {
+                if (s.done) {
+                    if (s.status === 'completed') {
+                        const total = s.total_vulnerabilities || 0;
+                        const label = total === 0 ? 'Clean' :
+                            `${total} vulns (C:${s.critical_count} H:${s.high_count} M:${s.medium_count} L:${s.low_count})`;
+                        setModuleState(s.scan_type, 'done', label, s.detail_url);
+                    } else {
+                        setModuleState(s.scan_type, 'error', s.error_message || s.status);
+                    }
+                } else {
+                    setModuleState(s.scan_type, 'running');
+                }
+            });
+
+            // Update OS module from latest pkg scan
+            if (!_pkgDone && data.pkg_data) {
+                const pkg = data.pkg_data;
+                const sec = pkg.security_updates || 0;
+                const upg = pkg.upgradeable_packages || 0;
+                const label = sec > 0 ? `${sec} security, ${upg} total updates` :
+                              upg > 0 ? `${upg} updates available` : 'Up to date';
+                setModuleState('os', 'done', label, '{% url "core:package_scanner_dashboard" %}');
+                _pkgDone = true;
+            }
+
+            if (data.all_done && _pkgDone) {
+                clearInterval(_pollTimer);
+                finishScan();
+            }
+        })
+        .catch(err => console.warn('Poll error:', err));
+}
+
+function setModuleState(type, state, label, url) {
+    const el = document.getElementById('module-' + type);
+    if (!el) return;
+    const badgeEl = el.querySelector('.scan-status-badge');
+    const resultEl = el.querySelector('.scan-result');
+    const iconEl = el.querySelector('i.fa-2x');
+
+    const states = {
+        running: {badge: 'bg-primary', text: 'Scanning…', iconCls: 'fas fa-spinner fa-spin fa-2x text-primary', border: 'border-primary'},
+        done:    {badge: 'bg-success', text: 'Done',      iconCls: 'fas fa-check-circle fa-2x text-success',    border: 'border-success'},
+        error:   {badge: 'bg-danger',  text: 'Error',     iconCls: 'fas fa-exclamation-circle fa-2x text-danger', border: 'border-danger'},
+        skipped: {badge: 'bg-secondary', text: 'Skipped', iconCls: 'fas fa-minus-circle fa-2x text-muted',      border: 'border-secondary'},
+    };
+    const s = states[state] || states.skipped;
+
+    el.querySelector('.card').className = 'card h-100 ' + s.border;
+    badgeEl.innerHTML = `<span class="badge ${s.badge}">${s.text}</span>`;
+    if (iconEl) iconEl.className = s.iconCls;
+
+    if (label) {
+        resultEl.style.display = 'block';
+        if (url && state === 'done') {
+            resultEl.innerHTML = `<a href="${url}" class="small text-decoration-none">${label}</a>`;
+        } else {
+            resultEl.innerHTML = `<small class="${state === 'error' ? 'text-danger' : 'text-muted'}">${label}</small>`;
+        }
+    }
+}
+
+function finishScan() {
+    document.getElementById('scanSpinner').className = 'fas fa-check-circle me-2';
+    document.querySelector('#fullScanPanel .card-header').classList.replace('bg-primary', 'bg-success');
+    document.querySelector('#fullScanPanel .card-header h5').textContent = ' Full Security Scan Complete';
+    document.getElementById('runFullScanBtn').disabled = false;
+    document.getElementById('runFullScanBtn').innerHTML = '<i class="fas fa-search-plus"></i> Run Full Scan';
+    document.getElementById('scanSummary').style.display = 'block';
+    loadPackageScannerWidget();
+}
+
+function showScanError(msg) {
+    document.getElementById('runFullScanBtn').disabled = false;
+    document.getElementById('runFullScanBtn').innerHTML = '<i class="fas fa-search-plus"></i> Run Full Scan';
+    const summary = document.getElementById('scanSummary');
+    summary.style.display = 'block';
+    summary.innerHTML = `<hr><div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i>${msg}</div>`;
+}
+
+function getCookie(name) {
+    const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return v ? v.pop() : '';
+}
 </script>
 {% endblock %}
-

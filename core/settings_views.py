@@ -1843,6 +1843,126 @@ def snyk_scan_status(request, scan_id):
 
 @login_required
 @user_passes_test(is_superuser)
+def run_full_scan(request):
+    """
+    Trigger a full security scan: Snyk open_source + code + iac, plus OS package scan.
+    All four run concurrently in background threads.
+    Returns a JSON envelope with IDs to poll via full_scan_status.
+    """
+    from django.http import JsonResponse
+    from django.core.management import call_command
+    import threading
+    import uuid
+    import io
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'POST required'}, status=405)
+
+    settings = SystemSetting.get_settings()
+
+    # Build list of Snyk scan types to run (only if Snyk is enabled + configured)
+    snyk_scan_types = []
+    if settings.snyk_enabled and settings.snyk_api_token:
+        snyk_scan_types = ['open_source', 'code', 'iac']
+
+    # Generate IDs
+    scan_ids = {st: f'full-{st}-{uuid.uuid4().hex[:8]}' for st in snyk_scan_types}
+    pkg_scan_id = f'pkg-{uuid.uuid4().hex[:8]}'
+
+    # ── Snyk scans ────────────────────────────────────────────────────────────
+    def run_snyk(scan_type, sid):
+        try:
+            call_command('run_snyk_scan', scan_id=sid,
+                         user_id=request.user.id, scan_type=scan_type)
+        except Exception as e:
+            logger.error(f'[full_scan] Snyk {scan_type} failed: {e}')
+
+    for st, sid in scan_ids.items():
+        t = threading.Thread(target=run_snyk, args=(st, sid), daemon=True)
+        t.start()
+
+    # ── OS package scan ────────────────────────────────────────────────────────
+    def run_pkg():
+        try:
+            out = io.StringIO()
+            call_command('scan_system_packages', save=True, stdout=out)
+        except Exception as e:
+            logger.error(f'[full_scan] OS package scan failed: {e}')
+
+    threading.Thread(target=run_pkg, daemon=True).start()
+
+    return JsonResponse({
+        'success': True,
+        'snyk_scan_ids': scan_ids,      # {scan_type: scan_id}
+        'pkg_scan_id': pkg_scan_id,
+        'snyk_enabled': bool(snyk_scan_types),
+    })
+
+
+@login_required
+@user_passes_test(is_superuser)
+def full_scan_status(request):
+    """
+    Poll status of a full scan in progress.
+    Accepts: snyk_ids=<comma-separated scan_ids>
+    Returns per-scan status + latest OS package scan result.
+    """
+    from django.http import JsonResponse
+    from core.models import SnykScan, SystemPackageScan
+
+    scan_id_param = request.GET.get('snyk_ids', '')
+    scan_ids = [s.strip() for s in scan_id_param.split(',') if s.strip()]
+
+    snyk_results = []
+    all_done = True
+
+    for sid in scan_ids:
+        try:
+            scan = SnykScan.objects.get(scan_id=sid)
+            done = scan.status in ('completed', 'failed', 'cancelled', 'timeout')
+            if not done:
+                all_done = False
+            snyk_results.append({
+                'scan_id': sid,
+                'scan_type': scan.scan_type,
+                'status': scan.status,
+                'done': done,
+                'total_vulnerabilities': scan.total_vulnerabilities,
+                'critical_count': scan.critical_count,
+                'high_count': scan.high_count,
+                'medium_count': scan.medium_count,
+                'low_count': scan.low_count,
+                'error_message': scan.error_message if scan.status in ('failed', 'timeout') else None,
+                'detail_url': f'/core/settings/snyk/scans/{scan.id}/' if done and scan.status == 'completed' else None,
+            })
+        except SnykScan.DoesNotExist:
+            all_done = False
+            snyk_results.append({
+                'scan_id': sid,
+                'status': 'pending',
+                'done': False,
+            })
+
+    # Latest OS package scan
+    latest_pkg = SystemPackageScan.objects.order_by('-scan_date').first()
+    pkg_data = None
+    if latest_pkg:
+        pkg_data = {
+            'scan_date': latest_pkg.scan_date.isoformat() if latest_pkg.scan_date else None,
+            'security_updates': latest_pkg.security_updates,
+            'upgradeable_packages': latest_pkg.upgradeable_packages,
+            'total_packages': latest_pkg.total_packages,
+        }
+
+    return JsonResponse({
+        'snyk_results': snyk_results,
+        'pkg_data': pkg_data,
+        'all_done': all_done,
+    })
+
+
+@login_required
+@user_passes_test(is_superuser)
 def apply_snyk_remediation(request):
     """Apply Snyk vulnerability remediation by upgrading a package."""
     from django.http import JsonResponse
