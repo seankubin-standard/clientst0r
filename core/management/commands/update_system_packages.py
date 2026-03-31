@@ -114,6 +114,8 @@ class Command(BaseCommand):
         import os
         apt_env = os.environ.copy()
         apt_env['DEBIAN_FRONTEND'] = 'noninteractive'
+        apt_env['DEBCONF_NONINTERACTIVE_SEEN'] = 'true'
+        apt_env['DEBCONF_FRONTEND'] = 'noninteractive'
 
         try:
             # Update package cache
@@ -124,6 +126,7 @@ class Command(BaseCommand):
                 text=True,
                 timeout=120,
                 env=apt_env,
+                stdin=subprocess.DEVNULL,
             )
 
             if result.returncode != 0:
@@ -179,6 +182,7 @@ class Command(BaseCommand):
                 text=True,
                 timeout=600,
                 env=apt_env,
+                stdin=subprocess.DEVNULL,
             )
 
             if self.dry_run:
