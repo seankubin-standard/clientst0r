@@ -129,6 +129,7 @@ urlpatterns = [
     path('settings/snyk/scan/cancel/<str:scan_id>/', settings_views.cancel_snyk_scan, name='cancel_snyk_scan'),
     path('security/scan/full/', settings_views.run_full_scan, name='run_full_scan'),
     path('security/scan/full/status/', settings_views.full_scan_status, name='full_scan_status'),
+    path('security/scan/toggle-auto/', settings_views.toggle_security_scan, name='toggle_security_scan'),
     path('settings/snyk/remediate/', settings_views.apply_snyk_remediation, name='apply_snyk_remediation'),
     path('settings/snyk/fix-all/', settings_views.fix_all_snyk_vulnerabilities, name='fix_all_snyk_vulnerabilities'),
     path('settings/snyk/scans/cleanup/', settings_views.cleanup_old_snyk_scans, name='cleanup_old_snyk_scans'),

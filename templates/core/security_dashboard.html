@@ -306,6 +306,89 @@
     </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════
+     AUTOMATED SCAN SCHEDULING
+════════════════════════════════════════════════════════════ -->
+{% if auto_scan_task %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="fas fa-robot me-2"></i>Automated Security Scans</h6>
+        <div class="d-flex align-items-center gap-2">
+            {% if auto_scan_task.last_run_at %}
+            <small class="text-muted">Last run: {{ auto_scan_task.last_run_at|date:"M j, H:i" }}</small>
+            {% endif %}
+            <a href="{% url 'core:settings_scheduler' %}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-cog me-1"></i>Configure
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row align-items-center g-3">
+            <div class="col-md-6">
+                <div class="d-flex align-items-center gap-3">
+                    <!-- Toggle switch -->
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               id="autoScanToggle" {% if auto_scan_task.enabled %}checked{% endif %}
+                               style="width:3rem; height:1.5rem; cursor:pointer;">
+                        <label class="form-check-label fw-semibold ms-2" for="autoScanToggle">
+                            <span id="autoScanStatus">{% if auto_scan_task.enabled %}Enabled{% else %}Disabled{% endif %}</span>
+                        </label>
+                    </div>
+                    <span id="autoScanBadge" class="badge {% if auto_scan_task.enabled %}bg-success{% else %}bg-secondary{% endif %}">
+                        {% if auto_scan_task.enabled %}Active{% else %}Off{% endif %}
+                    </span>
+                </div>
+                <small class="text-muted mt-2 d-block">
+                    Runs every {{ auto_scan_task.interval_minutes }} minutes
+                    ({{ auto_scan_task.interval_minutes|floatformat:0 }} min = every
+                    {% if auto_scan_task.interval_minutes >= 1440 %}{{ auto_scan_task.interval_minutes|add:0|floatformat:0|slice:":99" }}{% with h=auto_scan_task.interval_minutes|add:0 %}{% if h >= 1440 %}day{% elif h >= 60 %}{{ h }}h{% else %}{{ h }}m{% endif %}{% endwith %}{% else %}{{ auto_scan_task.interval_minutes }}m{% endif %}).
+                    Emails all superusers when findings are detected.
+                </small>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small mb-1">Next scheduled run</div>
+                <div class="fw-semibold" id="autoScanNextRun">
+                    {% if auto_scan_task.enabled and auto_scan_task.next_run_at %}
+                        {{ auto_scan_task.next_run_at|date:"M j, H:i" }}
+                    {% elif auto_scan_task.enabled %}
+                        On next scheduler tick
+                    {% else %}
+                        — (disabled)
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small mb-1">Last scan status</div>
+                <div>
+                    {% if auto_scan_task.last_status == 'success' %}
+                        <span class="badge bg-success">Success</span>
+                    {% elif auto_scan_task.last_status == 'failed' %}
+                        <span class="badge bg-danger" title="{{ auto_scan_task.last_error }}">Failed</span>
+                    {% elif auto_scan_task.last_status == 'running' %}
+                        <span class="badge bg-primary">Running</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Never run</span>
+                    {% endif %}
+                    {% if auto_scan_task.run_count %}
+                    <small class="text-muted ms-1">{{ auto_scan_task.run_count }} total runs</small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if not auto_scan_task.enabled %}
+        <div class="alert alert-light border mt-3 mb-0 small">
+            <i class="fas fa-info-circle me-2 text-primary"></i>
+            Enable to automatically scan for OS vulnerabilities and Snyk findings daily.
+            Superusers will receive an email alert whenever security issues are detected.
+            Adjust the frequency in <a href="{% url 'core:settings_scheduler' %}">Scheduler Settings</a>.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <!-- Recent scan history -->
 {% if scan_history %}
 <div class="card">
@@ -577,6 +660,35 @@ function scanFail(msg) {
     document.getElementById('runFullScanBtn').innerHTML = '<i class="fas fa-search-plus me-1"></i>Run Full Scan';
     log('ERROR: ' + msg, 'log-error');
 }
+
+// ── Automated scan toggle ─────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+    const toggle = document.getElementById('autoScanToggle');
+    if (!toggle) return;
+    toggle.addEventListener('change', function() {
+        const wasChecked = !this.checked; // optimistic already flipped
+        fetch('{% url "core:toggle_security_scan" %}', {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrfToken()},
+        })
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) { this.checked = wasChecked; return; }
+            const enabled = d.enabled;
+            document.getElementById('autoScanStatus').textContent = enabled ? 'Enabled' : 'Disabled';
+            const badge = document.getElementById('autoScanBadge');
+            badge.textContent = enabled ? 'Active' : 'Off';
+            badge.className = 'badge ' + (enabled ? 'bg-success' : 'bg-secondary');
+            const nextEl = document.getElementById('autoScanNextRun');
+            if (nextEl) {
+                nextEl.textContent = enabled
+                    ? (d.next_run_at ? new Date(d.next_run_at).toLocaleString() : 'On next scheduler tick')
+                    : '— (disabled)';
+            }
+        })
+        .catch(() => { this.checked = wasChecked; });
+    });
+});
 
 function getCsrfToken() {
     const meta = document.querySelector('meta[name="csrf-token"]');

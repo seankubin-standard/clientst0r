@@ -108,6 +108,15 @@ def security_dashboard(request):
         'snyk_configured': bool(settings.snyk_api_token),
     }
 
+    # Get automated security scan task
+    from core.models import ScheduledTask as CoreScheduledTask
+    CoreScheduledTask.get_or_create_defaults()
+    try:
+        auto_scan_task = CoreScheduledTask.objects.get(task_type='security_scan')
+    except CoreScheduledTask.DoesNotExist:
+        auto_scan_task = None
+    context['auto_scan_task'] = auto_scan_task
+
     return render(request, 'core/security_dashboard.html', context)
 
 
@@ -385,6 +394,28 @@ def settings_scheduler(request):
     return render(request, 'core/settings_scheduler.html', {
         'tasks': tasks,
         'current_tab': 'scheduler',
+    })
+
+
+@login_required
+@user_passes_test(is_superuser)
+@require_POST
+def toggle_security_scan(request):
+    """Enable or disable the automated security scan scheduler task."""
+    from core.models import ScheduledTask as CoreScheduledTask
+    from django.http import JsonResponse
+
+    CoreScheduledTask.get_or_create_defaults()
+    try:
+        task = CoreScheduledTask.objects.get(task_type='security_scan')
+    except CoreScheduledTask.DoesNotExist:
+        return JsonResponse({'error': 'Task not found'}, status=404)
+
+    task.enabled = not task.enabled
+    task.save()
+    return JsonResponse({
+        'enabled': task.enabled,
+        'next_run_at': task.next_run_at.isoformat() if task.next_run_at else None,
     })
 
 

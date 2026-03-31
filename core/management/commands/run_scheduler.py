@@ -69,6 +69,8 @@ class Command(BaseCommand):
             self.run_cleanup_stuck_scans()
         elif task.task_type == 'scheduling_alerts':
             self.run_scheduling_alerts()
+        elif task.task_type == 'security_scan':
+            self.run_security_scan()
         else:
             raise ValueError(f"Unknown task type: {task.task_type}")
 
@@ -179,3 +181,11 @@ class Command(BaseCommand):
             call_command('check_scheduled_task_alerts', verbosity=1)
         except Exception as e:
             self.stdout.write(f"    Scheduling alerts failed: {e}")
+
+    def run_security_scan(self):
+        """Run automated security scan and alert superusers on findings."""
+        from django.core.management import call_command
+        try:
+            call_command('run_security_scan', verbosity=1)
+        except Exception as e:
+            self.stdout.write(f"    Security scan failed: {e}")

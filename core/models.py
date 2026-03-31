@@ -557,6 +557,7 @@ class ScheduledTask(models.Model):
         ('psa_sync', 'PSA Synchronization'),
         ('rmm_sync', 'RMM Synchronization'),
         ('scheduling_alerts', 'Scheduled Task Alerts'),
+        ('security_scan', 'Automated Security Scan'),
         ('ssl_expiry_check', 'SSL Certificate Expiry Check'),
         ('update_check', 'System Update Check'),
         ('website_monitoring', 'Website Monitoring Checks'),
@@ -699,6 +700,12 @@ class ScheduledTask(models.Model):
                 'description': 'Send email/SMS alerts for upcoming and overdue scheduled tasks',
                 'interval_minutes': 60,  # Every hour
                 'enabled': True,
+            },
+            {
+                'task_type': 'security_scan',
+                'description': 'Run automated security scan (OS packages + Snyk) and alert superusers if vulnerabilities are found',
+                'interval_minutes': 1440,  # Once per day
+                'enabled': False,  # Opt-in
             },
         ]
 
