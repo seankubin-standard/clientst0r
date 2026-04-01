@@ -1525,12 +1525,13 @@ def unifi_import_assets(request, pk):
     # Map UniFi productType to asset types — handles both prefix codes (local API)
     # and full strings (cloud Site Manager API)
     _TYPE_MAP = [
-        # Local API prefix codes
+        # Local API prefix codes (also match model field prefixes e.g. UAP-AC-Pro)
         ('uap', 'wireless_ap'),
         ('usw', 'switch'),
         ('udm', 'router'),
         ('uxg', 'router'),
-        ('usg', 'firewall'),
+        ('ugw', 'router'),   # UniFi Security Gateway
+        ('usg', 'router'),
         ('ups', 'ups'),
         ('ucg', 'router'),
         # Cloud API full strings
@@ -1546,12 +1547,13 @@ def unifi_import_assets(request, pk):
     ]
 
     def _asset_type(device):
-        pt = (device.get('productType') or device.get('type') or '').lower()
+        # Try productType, then type, then model (model prefix encodes type, e.g. UAP-AC-Pro)
+        pt = (device.get('productType') or device.get('type') or
+              device.get('model') or device.get('shortname') or '').lower()
         for keyword, atype in _TYPE_MAP:
             if pt.startswith(keyword) or pt == keyword:
                 return atype
-        valid_types = {k for k, _ in Asset.ASSET_TYPES}
-        return 'network_device' if 'network_device' in valid_types else 'other'
+        return 'other'
 
     def _clean_ip(raw):
         try:
@@ -2216,6 +2218,35 @@ def m365_sync(request, pk):
     <tbody>{lic_rows or "<tr><td colspan='3' class='text-muted'>No licenses found.</td></tr>"}</tbody>
   </table></div></div>'''
 
+        def _build_mailbox_usage():
+            raw_mb = data.get('mailbox_usage', [])
+            mb_rows = [r for r in raw_mb if not r.get('permission_error')]
+            if not mb_rows:
+                return ''
+            def _fmt_bytes(b):
+                try:
+                    b = int(b)
+                    if b >= 1_073_741_824:
+                        return f'{b/1_073_741_824:.1f} GB'
+                    return f'{b/1_048_576:.1f} MB'
+                except Exception:
+                    return '\u2014'
+            rows_html = ''
+            for r in mb_rows[:500]:
+                name = html_lib.escape(r.get('displayName') or '\u2014')
+                upn = html_lib.escape(r.get('userPrincipalName') or '\u2014')
+                rtype = html_lib.escape(r.get('recipientType') or '\u2014')
+                storage = _fmt_bytes(r.get('storageUsedInBytes') or 0)
+                items = r.get('itemCount') or 0
+                last_active = html_lib.escape(r.get('lastActivityDate') or '\u2014')
+                rows_html += f'<tr><td>{name}</td><td>{upn}</td><td>{rtype}</td><td>{storage}</td><td>{items}</td><td>{last_active}</td></tr>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-envelope me-2"></i>Mailbox Usage ({len(mb_rows)})</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Name</th><th>UPN</th><th>Type</th><th>Storage Used</th><th>Items</th><th>Last Active</th></tr></thead>
+    <tbody>{rows_html or "<tr><td colspan='6' class='text-muted'>No mailbox data.</td></tr>"}</tbody>
+  </table></div></div>'''
+
         def _build_shared_mailboxes():
             shared_mbs = data.get('shared_mailboxes', [])
             if not shared_mbs:
@@ -2404,6 +2435,7 @@ def m365_sync(request, pk):
         score_section    = _safe_section(_build_secure_score,     'Secure Score')
         users_section    = _safe_section(_build_users,            'Users')
         licenses_section = _safe_section(_build_licenses,         'Licenses')
+        mailbox_section  = _safe_section(_build_mailbox_usage,    'Mailbox Usage')
         smb_section      = _safe_section(_build_shared_mailboxes, 'Shared Mailboxes')
         teams_section    = _safe_section(_build_teams,            'Teams')
         sp_section       = _safe_section(_build_sharepoint,       'SharePoint')
@@ -2424,6 +2456,7 @@ def m365_sync(request, pk):
 {defender_section}
 {users_section}
 {licenses_section}
+{mailbox_section}
 {smb_section}
 {teams_section}
 {sp_section}

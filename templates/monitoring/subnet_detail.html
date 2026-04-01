@@ -121,6 +121,7 @@
                         <th>Hostname</th>
                         <th>MAC Address</th>
                         <th>Status</th>
+                        <th>Asset</th>
                         <th>Description</th>
                         <th class="text-end">Actions</th>
                     </tr>
@@ -141,6 +142,13 @@
                             {% elif ip.status == 'dhcp' %}
                             <span class="badge bg-secondary">DHCP</span>
                             {% endif %}
+                        </td>
+                        <td>
+                            {% if ip.asset %}
+                            <a href="{% url 'assets:asset_detail' ip.asset.pk %}" class="text-decoration-none small">
+                                <i class="fas fa-server me-1 text-muted"></i>{{ ip.asset.name|truncatechars:20 }}
+                            </a>
+                            {% else %}—{% endif %}
                         </td>
                         <td class="small text-muted">{{ ip.description|truncatewords:8|default:"—" }}</td>
                         <td class="text-end">

@@ -124,10 +124,12 @@ class TacticalRMMProvider(BaseRMMProvider):
 
             for agent_data in data:
                 try:
-                    # If any hardware fields are absent/null in the list response, fetch full
-                    # agent detail — some TRMM deployments only populate hardware on the
-                    # per-agent endpoint, not the bulk list.
-                    if not agent_data.get('total_ram') or not agent_data.get('disks'):
+                    # If any hardware or network fields are absent/null in the list response,
+                    # fetch full agent detail — some TRMM deployments only populate hardware
+                    # and MAC address on the per-agent endpoint, not the bulk list.
+                    _has_mac = (agent_data.get('MACAddress') or agent_data.get('mac_address') or
+                                agent_data.get('mac') or agent_data.get('mac_addresses'))
+                    if not agent_data.get('total_ram') or not agent_data.get('disks') or not _has_mac:
                         agent_id = agent_data.get('agent_id') or agent_data.get('id')
                         if agent_id:
                             try:

@@ -67,10 +67,10 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="{{ form.asset_id.id_for_label }}" class="form-label">Asset ID</label>
-                        {{ form.asset_id }}
-                        {% if form.asset_id.errors %}<div class="invalid-feedback d-block">{{ form.asset_id.errors }}</div>{% endif %}
-                        <small class="form-text text-muted">Link to asset record</small>
+                        <label for="{{ form.asset.id_for_label }}" class="form-label">Linked Asset</label>
+                        {{ form.asset }}
+                        {% if form.asset.errors %}<div class="invalid-feedback d-block">{{ form.asset.errors }}</div>{% endif %}
+                        <small class="form-text text-muted">Optionally link this IP to an asset in your inventory</small>
                     </div>
 
                     <div class="d-flex justify-content-end gap-2">
