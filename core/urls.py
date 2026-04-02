@@ -22,6 +22,7 @@ urlpatterns = [
     path('global-dashboard/', dashboard_views.global_dashboard, name='global_dashboard'),
     path('documentation/', views.documentation, name='documentation'),
     path('about/', views.about, name='about'),
+    path('install/', views.install_app, name='install_app'),
 
     # Help & Documentation
     path('help/', help_views.help_index, name='help_index'),

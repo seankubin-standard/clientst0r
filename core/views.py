@@ -1339,3 +1339,30 @@ def download_browser_extension(request):
         'ext_exists': ext_exists,
         'version': get_version(),
     })
+
+
+def install_app(request):
+    """
+    Public install/add-to-home-screen page. No login required so it can be
+    shared with staff via a link or QR code.
+    """
+    import qrcode, io
+    from django.http import HttpResponse
+
+    # Serve the QR code as PNG when ?qr=1
+    if request.GET.get('qr') == '1':
+        base = f"{request.scheme}://{request.get_host()}"
+        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=4)
+        qr.add_data(base)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color='black', back_color='white')
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+        return HttpResponse(buf.getvalue(), content_type='image/png')
+
+    site_url = f"{request.scheme}://{request.get_host()}"
+    return render(request, 'core/install_app.html', {
+        'site_url': site_url,
+        'version': get_version(),
+    })

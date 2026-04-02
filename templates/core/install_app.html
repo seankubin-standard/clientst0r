@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Install App - Client St0r{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-12 col-md-8 col-lg-6">
+
+<div class="text-center mb-4">
+    <i class="fas fa-mobile-alt fa-3x text-primary mb-3"></i>
+    <h2 class="mb-1">Install Client St0r</h2>
+    <p class="text-muted">Add it to your phone or desktop home screen for instant access — no app store needed.</p>
+</div>
+
+<!-- PWA Install button (shown only when browser supports it) -->
+<div id="pwaInstallCard" class="card border-primary mb-4" style="display:none!important;">
+    <div class="card-body text-center py-4">
+        <p class="mb-3 fw-semibold">Your browser supports one-tap install:</p>
+        <button id="pwaInstallBtn" class="btn btn-primary btn-lg px-5">
+            <i class="fas fa-download me-2"></i> Install App
+        </button>
+        <div class="form-text mt-2">Tap Install, then confirm — an icon appears on your home screen.</div>
+    </div>
+</div>
+
+<!-- QR code for sharing -->
+<div class="card mb-4">
+    <div class="card-header"><h6 class="mb-0"><i class="fas fa-qrcode"></i> Scan to Open on Your Phone</h6></div>
+    <div class="card-body text-center">
+        <img src="{% url 'core:install_app' %}?qr=1" alt="QR code for {{ site_url }}"
+             class="img-fluid mb-3" style="max-width:200px; border:1px solid #dee2e6; border-radius:8px; padding:8px; background:#fff;">
+        <div class="input-group input-group-sm mx-auto" style="max-width:360px;">
+            <input type="text" id="siteUrl" class="form-control font-monospace" value="{{ site_url }}" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="copyUrl">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>
+        <div class="form-text">Or paste this address into your phone's browser.</div>
+    </div>
+</div>
+
+<!-- Step-by-step instructions -->
+<div class="accordion mb-4" id="installAccordion">
+
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#androidChrome">
+                <i class="fab fa-android text-success me-2 fa-lg"></i> Android — Chrome
+            </button>
+        </h2>
+        <div id="androidChrome" class="accordion-collapse collapse show">
+            <div class="accordion-body">
+                <ol class="mb-0">
+                    <li>Open <strong>{{ site_url }}</strong> in Chrome</li>
+                    <li>Tap the <strong>⋮</strong> (three-dot) menu in the top-right corner</li>
+                    <li>Tap <strong>Add to Home screen</strong> <em>(or "Install app")</em></li>
+                    <li>Tap <strong>Add</strong> — the Client St0r icon appears on your home screen</li>
+                </ol>
+                <div class="alert alert-info py-2 mt-3 mb-0 small">
+                    <i class="fas fa-lightbulb"></i> Chrome may also show an <strong>Install</strong> banner automatically at the bottom of the screen when you first visit.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#iosStep">
+                <i class="fab fa-apple me-2 fa-lg"></i> iPhone / iPad — Safari
+            </button>
+        </h2>
+        <div id="iosStep" class="accordion-collapse collapse">
+            <div class="accordion-body">
+                <ol class="mb-0">
+                    <li>Open <strong>{{ site_url }}</strong> in <strong>Safari</strong> <em>(must be Safari, not Chrome)</em></li>
+                    <li>Tap the <strong>Share</strong> button <i class="fas fa-share-square"></i> at the bottom of the screen</li>
+                    <li>Scroll down and tap <strong>Add to Home Screen</strong></li>
+                    <li>Optionally rename it, then tap <strong>Add</strong></li>
+                    <li>The Client St0r icon appears on your home screen</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#desktopStep">
+                <i class="fas fa-desktop me-2 fa-lg text-secondary"></i> Desktop — Chrome / Edge
+            </button>
+        </h2>
+        <div id="desktopStep" class="accordion-collapse collapse">
+            <div class="accordion-body">
+                <ol class="mb-0">
+                    <li>Open <strong>{{ site_url }}</strong> in Chrome or Edge</li>
+                    <li>Look for the <i class="fas fa-download"></i> install icon in the address bar (right side)</li>
+                    <li>Click it and select <strong>Install</strong></li>
+                    <li>Client St0r opens as a standalone window and is added to your taskbar / Start menu</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Link back to the app -->
+<div class="text-center">
+    <a href="{% url 'home' %}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Back to App
+    </a>
+    <a href="{% url 'core:install_app' %}?qr=1" download="clientst0r-qr.png" class="btn btn-outline-secondary ms-2">
+        <i class="fas fa-download"></i> Download QR Code
+    </a>
+</div>
+
+</div>
+</div>
+
+<script>
+(function () {
+    let deferred = null;
+
+    window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        deferred = e;
+        const card = document.getElementById('pwaInstallCard');
+        if (card) card.style.removeProperty('display');
+    });
+
+    document.getElementById('pwaInstallBtn')?.addEventListener('click', async function () {
+        if (!deferred) return;
+        deferred.prompt();
+        const { outcome } = await deferred.userChoice;
+        deferred = null;
+        if (outcome === 'accepted') {
+            document.getElementById('pwaInstallCard').style.display = 'none';
+        }
+    });
+
+    document.getElementById('copyUrl')?.addEventListener('click', function () {
+        const inp = document.getElementById('siteUrl');
+        inp.select();
+        navigator.clipboard?.writeText(inp.value).then(() => {
+            this.innerHTML = '<i class="fas fa-check text-success"></i>';
+            setTimeout(() => { this.innerHTML = '<i class="fas fa-copy"></i>'; }, 2000);
+        });
+    });
+})();
+</script>
+{% endblock %}
