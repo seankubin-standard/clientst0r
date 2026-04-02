@@ -5,6 +5,33 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.11] - 2026-04-02
+
+### New Features
+- **Vehicle Receipt Scanning with AI OCR** - Upload or photograph receipts directly from your phone; Claude vision API extracts vendor, date, amount, tax, category, and odometer reading automatically; AI confidence indicator prompts review of uncertain fields; receipt image stored alongside record
+- **Receipt Expense Tracking** - New Receipts tab on vehicle detail page with per-category cost summary cards (Fuel, Maintenance, Repair, Total); full receipt table with category badges and AI indicator; supports all expense categories: fuel, maintenance, repair, insurance, registration, tolls, cleaning, inspection
+
+### Migrations
+- `vehicles/migrations/0006_add_vehicle_receipts.py` — Creates `vehicle_receipts` table
+
+## [3.17.10] - 2026-04-02
+
+### Bug Fixes
+- **Client org dropdown cut off on smaller screens** — Simplified to single-line pill with smaller font (`.78rem`), tighter padding, `overflow:hidden`, `max-width:180px`, ellipsis truncation on org name
+
+## [3.17.9] - 2026-04-02
+
+### New Features
+- **Automated Security Scan Scheduling** — New scheduled task (`security_scan`) runs OS package + Snyk vulnerability scans daily (disabled by default); emails all superusers when findings are detected using configured SMTP; toggle on/off from Security Dashboard with next run time and last status display
+- **Client/Org Indicator Redesign** — Active organization shown as a distinct amber gradient pill in the navbar with a pulsing dot indicator to draw attention to the active client context
+
+### Bug Fixes
+- **Security dashboard scan history contrast** — Improved badge and severity label colors (medium/low/high) for readability in both light and dark themes
+- **TRMM MAC address missing after sync** — Per-agent detail fetch was only triggered when RAM/disk data absent; now also triggered when MAC address is missing from list response (fixes #108)
+- **M365 mailbox usage data not in generated document** — `_build_mailbox_usage()` function and document section were missing from M365 document generator (fixes #106)
+- **UniFi Security Gateway always categorized as "other"** — Added `ugw` to `_TYPE_MAP`; device `model` field now checked as fallback for type detection (fixes #105)
+- **IPAM asset link field not functional** — IP address form used `{{ form.asset_id }}` (non-existent); corrected to `{{ form.asset }}`; asset link in subnet detail table now renders as clickable link (fixes #111)
+
 ## [3.16.5] - 2026-03-30
 
 ### Bug Fixes

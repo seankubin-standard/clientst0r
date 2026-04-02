@@ -40,6 +40,7 @@ Complete feature documentation for Client St0r - Self-hosted IT documentation pl
   - Manual scan triggers via web interface
   - Webhook notifications for critical updates
 - **Scheduled Scanning** - Configurable automatic scans (daily, weekly, monthly)
+- **Automated Scan with Email Alerts** - Opt-in scheduled security scanning (daily by default) that emails all superusers when vulnerabilities are found; toggle on/off from Security Dashboard; shows next scheduled run and last scan status
 - **Remediation Guidance** - Detailed upgrade paths and security advisories
 - **Trend Analysis** - Track vulnerabilities over time
 
@@ -325,6 +326,15 @@ Complete feature documentation for Client St0r - Self-hosted IT documentation pl
 - **Expiration Tracking** - Insurance and registration expiration dates
 - **Expiration Warnings** - 30-day advance warnings for expiring insurance/registration
 - **Automatic Alerts** - Dashboard and webhook notifications for expiring documents
+
+### Receipt Scanning & Expense Tracking
+- **AI-Powered OCR** - Photograph or upload a receipt on any device; Claude vision API automatically extracts vendor, date, total amount, tax, expense category, and odometer reading
+- **Mobile Camera Capture** - Receipt upload form opens rear camera directly on Android and iOS (no app required)
+- **AI Confidence Indicator** - High / Medium / Low confidence banner prompts users to review uncertain extractions before saving
+- **Expense Categories** - Fuel, Maintenance, Repair, Insurance, Registration, Tolls/Parking, Cleaning/Detailing, Inspection, Other
+- **Cost Summary Dashboard** - Per-category totals (Fuel, Maintenance, Repair) plus grand total shown as summary cards on the vehicle detail Receipts tab
+- **Receipt Image Storage** - Original receipt image saved alongside the structured data record
+- **Odometer Integration** - If receipt shows a mileage reading, it is extracted and stored for service history correlation
 
 ### Dashboard & Analytics
 - **Fleet Statistics** - Total vehicles, active count, in maintenance, total mileage
