@@ -1,6 +1,6 @@
 # Client St0r
 
-[![Version 3.16.5](https://img.shields.io/badge/version-3.16.5-brightgreen)](https://github.com/agit8or1/clientst0r)
+[![Version 3.17.14](https://img.shields.io/badge/version-3.17.14-brightgreen)](https://github.com/agit8or1/clientst0r)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green)](https://github.com/agit8or1/clientst0r)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-blue)](https://www.djangoproject.com/)
@@ -103,10 +103,26 @@ Client St0r is commonly evaluated as an **open-source IT Glue alternative** and 
 
 </td>
 </tr>
+<tr>
+<td width="50%">
+
+### 🧾 Vehicle Receipt Scanning (AI OCR)
+![Receipt List & Cost Summary](docs/screenshots/vehicle-receipts.png)
+![Add Receipt — AI Extract](docs/screenshots/vehicle-receipt-form.png)
+
+</td>
+<td width="50%">
+
+### 📱 Install App / Phone Shortcut
+![Install App Page](docs/screenshots/install-app.png)
+![PWA Phone Shortcut](docs/screenshots/pwa-shortcut.png)
+
+</td>
+</tr>
 </table>
 
 <details>
-<summary><strong>📋 View All Screenshots (42 total)</strong></summary>
+<summary><strong>📋 View All Screenshots (46 total)</strong></summary>
 
 ### Core Features
 - [Dashboard](docs/screenshots/dashboard.png) - Main dashboard with random backgrounds
@@ -168,6 +184,12 @@ Client St0r is commonly evaluated as an **open-source IT Glue alternative** and 
 - [Vehicle Item Edit](docs/screenshots/vehicles-inventory-item-edit.png) - Vehicle inventory item with QR code display
 - [QR Code Print Sheet](docs/screenshots/vehicles-inventory-qr-codes.png) - Printable QR grid for all inventory items (vehicle + shop)
 
+### Receipt Scanning & Mobile
+- [Vehicle Receipts](docs/screenshots/vehicle-receipts.png) - Receipt list with per-category cost summary (Fuel, Maintenance, Repair, Total)
+- [Add Receipt — AI Extract](docs/screenshots/vehicle-receipt-form.png) - Camera capture form with AI auto-fill and duplicate detection
+- [Install App Page](docs/screenshots/install-app.png) - Add to Home Screen page with QR code and step-by-step instructions
+- [Phone Shortcut](docs/screenshots/pwa-shortcut.png) - Per-vehicle QR code modal for adding receipt scanning shortcut to phone
+
 </details>
 
 ## 🐕 About Luna
@@ -212,7 +234,7 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 - **Documentation** - Per-org docs with version control, templates, and global MSP knowledge base
 - **Diagrams & Floor Plans** - Draw.io integration, MagicPlan import, auto-generated flowcharts
 - **Infrastructure** - IPAM with subnet management, VLAN tracking, network closets, cable documentation
-- **Service Vehicles** - Fleet management with mileage tracking, maintenance schedules, fuel logs, damage reports with interactive diagrams, vehicle inventory, GPS location, insurance tracking
+- **Service Vehicles** - Fleet management with mileage tracking, maintenance schedules, fuel logs, damage reports with interactive diagrams, vehicle inventory, GPS location, insurance tracking, AI-powered receipt scanning with expense category totals
 - **OS Package Scanner** - System package vulnerability scanning (apt/yum/dnf), automated security update detection, scheduled scans
 - **Monitoring** - Website uptime, SSL certificates, domain expiration, custom alerts, WAN monitoring
 - **Workflows** - Process automation with audit logging, PSA integration, execution tracking
@@ -223,7 +245,7 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 - **Intrusion Prevention** - Fail2ban integration with ban management and IP checking
 - **Reporting & Analytics** - Advanced reports, custom dashboards, scheduled reports, data visualization
 - **Backup/Restore** - Encrypted backups, automated scheduling, retention policies, one-click restore
-- **Progressive Web App** - Install on mobile devices, offline support, push notifications
+- **Progressive Web App** - Install on any device via `/core/install/` — QR code, one-tap install prompt, Add to Home Screen guide for Android and iOS; PWA shortcuts for Scan Receipt and Vehicles on Android long-press
 - **Native Mobile App** - React Native app for iOS and Android with full feature access
 
 ### 🔌 Integrations & APIs
@@ -241,21 +263,28 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 
 ## 🆕 What's New
 
-### Latest Release - v3.16.5 (March 2026)
+### Latest Release - v3.17.x (April 2026)
 
-**🎉 Major Features in v3.16:**
+**🎉 New in v3.17:**
+
+- **🧾 Vehicle Receipt Scanning with AI OCR** - Photograph receipts directly from your phone; Claude vision API automatically extracts vendor, date, amount, tax, expense category, and odometer reading; receipts tab on vehicle detail shows per-category cost summary cards (Fuel, Maintenance, Repair, Total); duplicate prevention via SHA-256 image hashing
+- **📱 Install App / Add to Home Screen** - Dedicated install page (`/core/install/`) with QR code of your server URL, downloadable QR PNG, one-tap PWA install button (Android/desktop), and step-by-step instructions for Android Chrome, iPhone/iPad Safari, and desktop; per-vehicle receipt shortcuts also available
+- **🔒 Automated Security Scan Alerts** - Opt-in daily scheduled security scan emails all superusers when vulnerabilities are found; toggle on/off from Security Dashboard
+- **🎨 Active Client Indicator** - Organization shown as an amber pill with pulsing dot in the navbar so users always know which client they're working under
+
+**Bug Fixes in v3.17:**
+- **TRMM MAC address sync** — per-agent detail fetch now triggered when MAC is missing, not just when RAM/disks are absent (#108)
+- **M365 mailbox usage in documents** — mailbox usage data now included in generated M365 documents (#106)
+- **UniFi asset categorization** — Security Gateway (`ugw`) added to type map; model field used as fallback (#105)
+- **IPAM asset link field** — IP address form and subnet detail table asset link corrected (#111)
+
+**Previous Release - v3.16.x (March 2026):**
 - **🌐 Omada & Grandstream Network Integrations** - Auto-discover and sync network devices from TP-Link Omada and Grandstream controllers as assets, with configurable scheduled sync
 - **📥 Data Import with CSV Field Mapper** - Import any data (assets, passwords, contacts, documents) from CSV/spreadsheets with a visual field mapper; also import directly from Hudu or IT Glue
-- **🏢 Locations Integrated into Organizations** - Manage multiple physical locations per organization directly from the org detail page; locations include status, type, floor plan, and edit/delete controls
-- **🧭 Streamlined Navigation** - Consolidated top navigation: Inventory, Scheduling, Monitoring, Vehicles, and Workflows combined into a single Operations dropdown; main nav items centered in navbar
-- **🌙 Dark Mode Compatibility** - Vehicle Inventory summary page now fully compatible with dark mode using Bootstrap CSS variables throughout
+- **🏢 Locations Integrated into Organizations** - Manage multiple physical locations per organization directly from the org detail page
+- **🧭 Streamlined Navigation** - Consolidated top navigation into a single Operations dropdown
 
-**Previous Release - v3.13.x:**
-- **📄 Device Profile Document Generator** - Auto-generate structured documentation for devices from asset data
-- **🔒 Fail2ban Binary Detection** - Path-agnostic lookup using shutil.which for reliable detection across distributions
-- **🔐 Security Hardening Release (v3.13.0)** - GraphQL field whitelists, subprocess input validation, XSS fixes, path traversal protection, CSRF enforcement, performance optimizations
-
-#### Service Vehicles Fleet Management (v3.9.0+)
+#### Service Vehicles Fleet Management (v3.9.0+, receipts v3.17.11+)
 Complete fleet management system for tracking service vehicles with comprehensive features:
 - **Vehicle Tracking**: Make, model, year, VIN, license plate, mileage, condition status
 - **Maintenance Management**: Service history, recurring schedules, costs, repair tracking, overdue detection
@@ -265,7 +294,9 @@ Complete fleet management system for tracking service vehicles with comprehensiv
 - **User Assignments**: Assignment history with mileage tracking, active assignment management
 - **Insurance Tracking**: Policy details, expiration warnings, premium tracking
 - **GPS Location**: Store current vehicle coordinates (6 decimal precision), last update timestamp
-- **Dashboard & Analytics**: Fleet statistics, maintenance alerts, fuel costs, vehicle cards with status
+- **Receipt Scanning**: Photograph receipts with your phone; AI (Claude vision) extracts vendor, date, amount, tax, category; per-category totals (fuel, maintenance, repair); duplicate prevention via image hashing
+- **Phone Shortcut**: QR code per vehicle links directly to Add Receipt on your phone; Add to Home Screen supported on Android and iOS
+- **Dashboard & Analytics**: Fleet statistics, maintenance alerts, fuel costs, receipt expense totals, vehicle cards with status
 - **Feature Toggle**: Enable/disable vehicles module via system settings
 
 #### OS Package Security Scanner (v3.9.0+)

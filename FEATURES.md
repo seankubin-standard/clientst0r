@@ -478,6 +478,23 @@ Complete feature documentation for Client St0r - Self-hosted IT documentation pl
 - **Endpoints** - Organizations, users, assets, passwords, documents, contacts, PSA integrations, monitors, audit logs
 - **Features** - Pagination, filtering, sorting, field selection, bulk operations, rate limiting
 
+## 📱 Mobile & Install
+
+### Add to Home Screen / PWA Install
+- **Install Page** (`/core/install/`) - Dedicated, shareable page with everything needed to install Client St0r on any device; no login required so you can send the link to staff
+- **QR Code** - Automatically generated QR code of your server URL; scan with any phone camera to open the site instantly
+- **Downloadable QR PNG** - Download the QR code image to print and stick on a desk, wall, or whiteboard for staff to scan
+- **One-tap Install (Android / Desktop)** - Install button appears automatically on Android Chrome and desktop Chrome/Edge when the browser supports PWA install; one tap adds the app icon
+- **iPhone / iPad (Safari)** - Step-by-step instructions: Share button → Add to Home Screen; works without any browser prompt since iOS requires manual flow
+- **PWA Shortcuts** - On Android, long-pressing the installed Client St0r icon shows shortcuts: **Scan Receipt** and **Vehicles**
+- **How to find it** - Profile dropdown (top-right avatar) → *Install App / Add to Home Screen*
+
+### Mobile-Optimised Pages
+- **Receipt scanning form** - Camera capture (`capture="environment"`) opens rear camera on mobile; AI Extract button fills fields automatically
+- **Vehicle picker** (`/vehicles/receipts/quick/`) - Fast mobile landing page for choosing a vehicle before scanning a receipt; auto-redirects when only one vehicle exists
+- **QR scan interfaces** - Inventory scan, shop scan, and receipt capture pages all designed for one-handed mobile use
+- **Responsive layout** - Bootstrap 5 grid; all tables, forms, and dashboards adapt to phone screen widths
+
 ## 📱 User Interface
 - **Design** - Bootstrap 5, dark mode, mobile responsive, DataTables, tooltips, progress indicators
 - **Navigation** - Breadcrumbs, global search, recent items, favorites
