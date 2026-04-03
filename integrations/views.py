@@ -1525,25 +1525,31 @@ def unifi_import_assets(request, pk):
     # Map UniFi productType to asset types — handles both prefix codes (local API)
     # and full strings (cloud Site Manager API)
     _TYPE_MAP = [
-        # Local API prefix codes (also match model field prefixes e.g. UAP-AC-Pro)
-        ('uap', 'wireless_ap'),
+        # Local API prefix codes (model field prefixes e.g. UAP-AC-Pro, USW-48, U6-Pro)
+        ('uap', 'wireless_ap'),   # classic APs
+        ('u6', 'wireless_ap'),    # U6-Pro, U6-Enterprise, U6-LR, U6-Mesh, U6-IW
+        ('u7', 'wireless_ap'),    # U7-Pro, U7-Enterprise (newer gen)
+        ('u2', 'wireless_ap'),    # U2-Nano, U2-Mini
+        ('uaf', 'wireless_ap'),   # UAP-FlexHD
+        ('ubb', 'wireless_ap'),   # UniFi Building Bridge
         ('usw', 'switch'),
         ('udm', 'router'),
         ('uxg', 'router'),
-        ('ugw', 'router'),   # UniFi Security Gateway
+        ('ugw', 'router'),        # UniFi Security Gateway
         ('usg', 'router'),
         ('ups', 'ups'),
         ('ucg', 'router'),
-        # Cloud Site Manager API — camelCase productType values
+        # Cloud Site Manager API — camelCase productType (lowercased for matching)
         ('accesspoint', 'wireless_ap'),    # 'accessPoint'
         ('networkswitch', 'switch'),       # 'networkSwitch'
+        ('network_switch', 'switch'),      # 'NETWORK_SWITCH' (uppercased variant)
         ('securitygateway', 'router'),     # 'securityGateway'
         ('dreamrouter', 'router'),         # 'dreamRouter'
         ('dreamwall', 'router'),           # 'dreamWall'
         ('dreammachine', 'router'),        # 'dreamMachine'
         ('cloudgateway', 'router'),        # 'cloudGateway'
-        ('powerunit', 'ups'),              # 'powerUnit' (USP-RPS etc.)
-        # Cloud API full strings (snake_case / hyphenated)
+        ('powerunit', 'ups'),              # 'powerUnit'
+        # Cloud API full strings (snake_case / hyphenated / plain)
         ('access_point', 'wireless_ap'),
         ('access-point', 'wireless_ap'),
         ('wireless', 'wireless_ap'),

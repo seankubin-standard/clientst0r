@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.18] - 2026-04-03
+
+### Bug Fixes
+- **TRMM MAC address still missing (#108)** — TRMM API returns network interfaces under `interfaces` key, not `nics`; normalize_device was scanning an empty list; added `interfaces` as fallback so MAC is now extracted correctly
+- **UniFi local APs still "other" (#105)** — newer U6/U7 series APs have model prefix `u6`/`u7`, not `uap`; added U6, U7, U2, UAF, UBB model prefixes to type map
+- **UniFi cloud no devices (#105)** — cloud sync only matched devices to sites by `siteId`; if `siteId` is missing or mismatched, all devices were silently dropped; added fallback that groups unmatched devices directly under their host
+
 ## [3.17.17] - 2026-04-02
 
 ### Bug Fixes

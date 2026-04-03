@@ -414,14 +414,13 @@ class UnifiCloudProvider:
         sites = self.get_sites()
         devices = self.get_devices()
 
-        # Group devices and sites by hostId for per-host breakdown
         host_map = {h.get('id') or h.get('hostId', ''): h for h in hosts}
+        assigned_device_ids = set()
         site_list = []
 
         for site in sites:
             site_id = site.get('siteId') or site.get('id') or ''
             host_id = site.get('hostId') or ''
-            # Site Manager API stores the display name in meta.desc or displayName
             meta = site.get('meta') or {}
             site_name = (meta.get('desc') or meta.get('name') or meta.get('displayName') or
                          site.get('displayName') or site.get('name') or
@@ -430,18 +429,19 @@ class UnifiCloudProvider:
             host_name = (host.get('reportedState', {}).get('hostname') or
                          host.get('name') or host.get('displayName') or
                          host.get('hostname') or host_id)
-            # When the site name is a generic placeholder or fell through to the raw UUID,
-            # use the host name — one host per client setups will show the client's device name.
             if not site_name or site_name.strip().lower() in ('default', 'default site') or site_name == site_id:
                 site_name = host_name or site_id
 
-            # Match devices by siteId first; require matching hostId too when available
+            # Match devices: exact siteId match, then fallback to hostId when device has no siteId
             site_devices = [d for d in devices
                             if d.get('siteId') == site_id
-                            or (not d.get('siteId') and d.get('hostId') == host_id)]
+                            or (not d.get('siteId') and host_id and d.get('hostId') == host_id)]
+            for d in site_devices:
+                assigned_device_ids.add(d.get('deviceId') or d.get('id') or id(d))
+
             type_counts = {}
             for d in site_devices:
-                dtype = d.get('type', 'unknown')
+                dtype = d.get('productType') or d.get('type', 'unknown')
                 type_counts[dtype] = type_counts.get(dtype, 0) + 1
 
             site_list.append({
@@ -451,7 +451,6 @@ class UnifiCloudProvider:
                 'host_name': host_name,
                 'devices': site_devices,
                 'device_type_counts': type_counts,
-                # Cloud API doesn't expose WLANs/VLANs/firewall rules via Site Manager
                 'wlans': [],
                 'vlans': [],
                 'firewall_rules': [],
@@ -459,6 +458,46 @@ class UnifiCloudProvider:
                 'traffic_rules': [],
                 'client_count': 0,
             })
+
+        # Fallback: if sites returned no devices (siteId mismatch or empty sites list),
+        # group all devices directly under their host so nothing is silently dropped.
+        unassigned = [d for d in devices
+                      if (d.get('deviceId') or d.get('id') or id(d)) not in assigned_device_ids]
+        if unassigned:
+            by_host = {}
+            for d in unassigned:
+                hid = d.get('hostId') or 'unknown'
+                by_host.setdefault(hid, []).append(d)
+            for hid, hdevices in by_host.items():
+                host = host_map.get(hid) or {}
+                host_name = (host.get('reportedState', {}).get('hostname') or
+                             host.get('name') or host.get('displayName') or hid)
+                # Find an existing site_list entry for this host to merge into, or create one
+                existing = next((s for s in site_list if s.get('host_id') == hid), None)
+                if existing:
+                    existing['devices'].extend(hdevices)
+                    for d in hdevices:
+                        dtype = d.get('productType') or d.get('type', 'unknown')
+                        existing['device_type_counts'][dtype] = existing['device_type_counts'].get(dtype, 0) + 1
+                else:
+                    type_counts = {}
+                    for d in hdevices:
+                        dtype = d.get('productType') or d.get('type', 'unknown')
+                        type_counts[dtype] = type_counts.get(dtype, 0) + 1
+                    site_list.append({
+                        'id': hid,
+                        'name': host_name,
+                        'host_id': hid,
+                        'host_name': host_name,
+                        'devices': hdevices,
+                        'device_type_counts': type_counts,
+                        'wlans': [],
+                        'vlans': [],
+                        'firewall_rules': [],
+                        'firewall_policies': [],
+                        'traffic_rules': [],
+                        'client_count': 0,
+                    })
 
         return {
             'mode': 'cloud',
