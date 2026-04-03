@@ -317,12 +317,12 @@ class M365Provider:
         return results
 
     def get_defender_alerts(self) -> list:
-        """Get recent Defender/security alerts. Requires SecurityAlert.Read.All."""
+        """Get recent Defender/security alerts. Requires SecurityAlert.Read.All.
+        Note: alerts_v2 does not support $orderby — omit it to avoid 400 errors."""
         try:
             return self._get_all('/security/alerts_v2', params={
-                '$select': 'id,title,severity,status,createdDateTime,serviceSource,category,description,assignedTo,userStates',
+                '$select': 'id,title,severity,status,createdDateTime,serviceSource,category,description,assignedTo',
                 '$top': '100',
-                '$orderby': 'createdDateTime desc',
             })
         except requests.exceptions.HTTPError as e:
             code = e.response.status_code if e.response is not None else 0

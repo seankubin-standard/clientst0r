@@ -5,6 +5,12 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.20] - 2026-04-03
+
+### Bug Fixes
+- **M365 Defender alerts not showing (#106)** — `alerts_v2` endpoint does not support `$orderby`; the 400 error was silently swallowed returning an empty list; removed `$orderby` and dropped unsupported `userStates` from `$select`
+- **UniFi cloud mode note** — updated to mention zone policies / traffic rules and explain how to get them via a self-hosted connection
+
 ## [3.17.19] - 2026-04-03
 
 ### Bug Fixes

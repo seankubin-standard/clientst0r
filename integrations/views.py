@@ -1463,7 +1463,7 @@ def unifi_sync(request, pk):
 
         cloud_note = ''
         if data.get('mode') == 'cloud':
-            cloud_note = '<div class="alert alert-info mb-3"><i class="fas fa-cloud me-2"></i><strong>Cloud mode (UniFi Site Manager):</strong> WLANs, VLANs, firewall rules and traffic rules are not available via the Site Manager API.</div>'
+            cloud_note = '<div class="alert alert-info mb-3"><i class="fas fa-cloud me-2"></i><strong>Cloud mode (UniFi Site Manager):</strong> WLANs, VLANs, firewall rules, zone policies and traffic rules are not available via the Site Manager API. To see these, add a second <strong>Self-Hosted</strong> UniFi connection pointing at the same controller with username + password credentials.</div>'
 
         synced_by = request.user.get_full_name() or request.user.username if request.user.is_authenticated else ''
         synced_by_html = f' by <strong>{html_lib.escape(synced_by)}</strong>' if synced_by else ''
