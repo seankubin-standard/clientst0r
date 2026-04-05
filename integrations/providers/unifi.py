@@ -185,11 +185,11 @@ class UnifiProvider:
 
     def get_traffic_rules(self, site_ref: str, site_id: str = '') -> list:
         """Get Traffic Rules (UniFi OS 3.x+). Tries v2 API first, falls back to legacy REST."""
-        # Build path list — try UUID first, then short name, then legacy REST
-        paths_v2 = []
-        if site_id:
+        # Try short name (internalReference) first — v2 API works with this on most versions.
+        # UUID (siteId from official API) is a fallback since v2 may not accept it.
+        paths_v2 = [f'/proxy/network/v2/api/site/{site_ref}/trafficrules']
+        if site_id and site_id != site_ref:
             paths_v2.append(f'/proxy/network/v2/api/site/{site_id}/trafficrules')
-        paths_v2.append(f'/proxy/network/v2/api/site/{site_ref}/trafficrules')
         paths_legacy = [f'/proxy/network/api/s/{site_ref}/rest/trafficrule']
 
         # Try v2 paths with API key first (no username/password required)
@@ -223,14 +223,16 @@ class UnifiProvider:
     def get_firewall_policies(self, site_ref: str, site_id: str = '') -> list:
         """Get zone-based Firewall Policies (UniFi OS 3.x+).
         UniFi 8.x renamed the endpoint from /firewall/policies to /firewall/zone-policies."""
-        paths_v2 = []
-        if site_id:
-            paths_v2.append(f'/proxy/network/v2/api/site/{site_id}/firewall/zone-policies')
-            paths_v2.append(f'/proxy/network/v2/api/site/{site_id}/firewall/policies')
-        paths_v2 += [
+        # Try short name first — v2 API works with internalReference on most versions
+        paths_v2 = [
             f'/proxy/network/v2/api/site/{site_ref}/firewall/zone-policies',
             f'/proxy/network/v2/api/site/{site_ref}/firewall/policies',
         ]
+        if site_id and site_id != site_ref:
+            paths_v2 += [
+                f'/proxy/network/v2/api/site/{site_id}/firewall/zone-policies',
+                f'/proxy/network/v2/api/site/{site_id}/firewall/policies',
+            ]
         paths_legacy = [f'/proxy/network/api/s/{site_ref}/rest/firewallpolicy']
 
         def _parse(raw):
@@ -410,10 +412,21 @@ class UnifiCloudProvider:
             return []
 
     def get_devices(self, host_id: str = '') -> list:
-        """List all devices; optionally filter by hostId."""
+        """List devices. When host_id given, tries the per-host endpoint first,
+        then falls back to the flat /v1/devices endpoint with hostId filter."""
+        if host_id:
+            # Per-host path is most reliable; flat endpoint may ignore hostId param
+            for path in (f'/v1/hosts/{host_id}/devices', '/v1/devices'):
+                try:
+                    params = None if 'hosts' in path else {'hostId': host_id}
+                    results = self._get_all(path, params=params)
+                    if results:
+                        return results
+                except Exception as e:
+                    logger.debug(f"UniFi Cloud get_devices path {path} failed: {e}")
+            return []
         try:
-            params = {'hostId': host_id} if host_id else None
-            return self._get_all('/v1/devices', params=params)
+            return self._get_all('/v1/devices')
         except Exception as e:
             logger.warning(f"UniFi Cloud get_devices failed: {e}")
             return []

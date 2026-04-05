@@ -117,7 +117,7 @@
                 <tbody>
                     {% for mb in mailbox_rows %}
                     <tr>
-                        <td>{{ mb.displayName|default:mb.userDisplayName|default:"—" }}</td>
+                        <td>{{ mb.displayName|default:"—" }}</td>
                         <td><small>{{ mb.userPrincipalName|default:"—" }}</small></td>
                         <td>
                             {% with t=mb.recipientType|default:mb.mailboxType|default:"" %}

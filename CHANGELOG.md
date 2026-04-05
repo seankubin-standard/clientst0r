@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.22] - 2026-04-05
+
+### Bug Fixes
+- **M365 detail page crash (#106)** — template referenced `mb.userDisplayName` which doesn't exist in the mailbox row dict, causing `VariableDoesNotExist`; removed the invalid fallback
+- **UniFi local zone policies/traffic rules blank (#105)** — v2 API paths were tried with the UUID (`siteId`) first, but the v2 API typically requires the short internal reference name (e.g. `default`); swapped order so `internalReference` is tried first
+- **UniFi cloud no devices (#105)** — added `/v1/hosts/{hostId}/devices` per-host endpoint as primary path before the flat `/v1/devices?hostId=` query param approach
+
 ## [3.17.21] - 2026-04-05
 
 ### Bug Fixes
