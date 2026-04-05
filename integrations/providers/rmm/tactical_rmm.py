@@ -300,20 +300,51 @@ class TacticalRMMProvider(BaseRMMProvider):
             model = parts[1] if len(parts) > 1 else ''
 
         # Get IP address — prefer private/local IP; fall back to public IP
-        # Also scan nics (network interfaces) for IP and MAC data
-        # TRMM returns network interfaces under several possible keys depending on version:
-        # 'nics', 'interfaces', or nested in 'wmi_detail.network_config' / 'wmi_detail.network_adapters'
+        # Also scan all known NIC/adapter structures for IP and MAC data.
+        #
+        # TRMM wmi_detail.network_adapter is a LIST OF LISTS:
+        #   [[{MACAddress, PhysicalAdapter, ...}], [{...}], ...]
+        # Each outer element is a single-item list wrapping one adapter dict.
+        # network_config has the same structure with IPEnabled instead of PhysicalAdapter.
         wmi = raw_data.get('wmi_detail') or {}
-        nics = (raw_data.get('nics') or raw_data.get('interfaces') or
-                wmi.get('network_adapters') or wmi.get('network_config') or [])
-        # Top-level MAC field — TRMM uses MACAddress, mac_address, mac, or mac_addresses (list)
-        # mac_addresses may contain empty strings [""] — skip them.
+
+        def _flatten_wmi_list(key):
+            """Flatten TRMM's list-of-lists wmi_detail structure into a flat list of dicts."""
+            raw = wmi.get(key) or []
+            flat = []
+            for item in raw:
+                if isinstance(item, list):
+                    flat.extend(d for d in item if isinstance(d, dict))
+                elif isinstance(item, dict):
+                    flat.append(item)
+            return flat
+
+        wmi_adapters = _flatten_wmi_list('network_adapter')
+        wmi_configs  = _flatten_wmi_list('network_config')
+        nics = raw_data.get('nics') or raw_data.get('interfaces') or []
+
+        # MAC extraction — priority order:
+        # 1. Top-level MACAddress (primary physical adapter, set by TRMM agent)
+        # 2. mac_addresses list (skip empty strings)
+        # 3. wmi_detail physical adapters (PhysicalAdapter == True)
+        # 4. wmi_detail active network configs (IPEnabled == True)
+        # 5. Any wmi adapter with a MAC
+        # 6. nics/interfaces loop
         _mac_list = [m for m in (raw_data.get('mac_addresses') or []) if m]
-        mac_address = (raw_data.get('MACAddress') or raw_data.get('mac_address') or
-                       raw_data.get('mac') or
-                       (_mac_list[0] if _mac_list else '') or '')
+        mac_address = (
+            raw_data.get('MACAddress') or raw_data.get('mac_address') or raw_data.get('mac') or
+            (_mac_list[0] if _mac_list else '') or
+            next((a['MACAddress'] for a in wmi_adapters
+                  if a.get('PhysicalAdapter') and a.get('MACAddress')), '') or
+            next((a['MACAddress'] for a in wmi_configs
+                  if a.get('IPEnabled') and a.get('MACAddress')), '') or
+            next((a['MACAddress'] for a in wmi_adapters if a.get('MACAddress')), '') or
+            next((a['MACAddress'] for a in wmi_configs  if a.get('MACAddress')), '') or
+            ''
+        )
+
         nic_ips = []
-        for nic in nics:
+        for nic in nics + wmi_adapters + wmi_configs:
             if not mac_address:
                 mac_address = (nic.get('mac_address') or nic.get('mac') or
                                nic.get('macAddress') or nic.get('physicalAddress') or

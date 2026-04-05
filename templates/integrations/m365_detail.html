@@ -120,7 +120,7 @@
                         <td>{{ mb.displayName|default:"—" }}</td>
                         <td><small>{{ mb.userPrincipalName|default:"—" }}</small></td>
                         <td>
-                            {% with t=mb.recipientType|default:mb.mailboxType|default:"" %}
+                            {% with t=mb.recipientType|default:"" %}
                             {% if "Shared" in t %}<span class="badge bg-secondary">Shared</span>
                             {% elif "Room" in t %}<span class="badge bg-info text-dark">Room</span>
                             {% elif "Equipment" in t %}<span class="badge bg-warning text-dark">Equipment</span>
