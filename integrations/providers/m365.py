@@ -244,8 +244,12 @@ class M365Provider:
                 except (ValueError, TypeError):
                     alloc_bytes = 0
                 rows.append({
-                    'displayName': row.get('Display Name') or row.get('displayName') or '',
-                    'userPrincipalName': row.get('User Principal Name') or row.get('userPrincipalName') or '',
+                    # OneDrive report uses "Owner Display Name" / "Owner Principal Name"
+                    'displayName': (row.get('Owner Display Name') or row.get('Display Name') or
+                                    row.get('displayName') or row.get('ownerDisplayName') or ''),
+                    'userPrincipalName': (row.get('Owner Principal Name') or
+                                          row.get('User Principal Name') or
+                                          row.get('userPrincipalName') or row.get('ownerPrincipalName') or ''),
                     'siteUrl': row.get('Site URL') or row.get('siteUrl') or '',
                     'storageUsedInBytes': used_bytes,
                     'storageAllocatedInBytes': alloc_bytes,

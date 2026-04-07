@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.25] - 2026-04-07
+
+### Bug Fixes
+- **M365 OneDrive display name blank (#106)** — Microsoft's OneDrive usage CSV uses `Owner Display Name` and `Owner Principal Name` as column headers, not `Display Name` / `User Principal Name` as the mailbox report does; fixed column name mapping so names and emails appear correctly
+- **UniFi cloud devices (#105)** — added a third fallback: extract device inventory embedded in `host.reportedState.devices` (the Site Manager API embeds device lists in the host object on some API key scopes where `/v1/devices` is restricted)
+- **UniFi local rules (#105)** — added integration v1 API paths (`/proxy/network/integration/v1/sites/{id}/trafficRules` and `.../firewallPolicies`) as additional attempts; these accept the X-API-Key and may work on newer UniFi OS firmware without requiring username/password
+
 ## [3.17.24] - 2026-04-07
 
 ### New Features

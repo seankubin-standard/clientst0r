@@ -191,41 +191,36 @@ class UnifiProvider:
         if site_id and site_id != site_ref:
             paths_v2.append(f'/proxy/network/v2/api/site/{site_id}/trafficrules')
         paths_legacy = [f'/proxy/network/api/s/{site_ref}/rest/trafficrule']
+        # Integration v1 API paths — these work with X-API-Key on newer firmware
+        paths_integration = []
+        if site_id:
+            paths_integration.append(f'/proxy/network/integration/v1/sites/{site_id}/trafficRules')
+        if site_ref and site_ref != site_id:
+            paths_integration.append(f'/proxy/network/integration/v1/sites/{site_ref}/trafficRules')
 
-        # Try v2 paths with API key first (no username/password required)
-        for path in paths_v2:
+        def _parse_rules(raw):
+            if isinstance(raw, list):
+                return raw
+            for k in ('data', 'trafficRules', 'traffic_rules', 'rules', 'items'):
+                if k in raw and isinstance(raw[k], list):
+                    return raw[k]
+            return []
+
+        # Try all API key paths (v2, integration v1, legacy REST)
+        for path in paths_v2 + paths_integration + paths_legacy:
             try:
-                raw = self._get(path)
-                items = (raw if isinstance(raw, list) else
-                         next((raw[k] for k in ('data', 'trafficRules', 'traffic_rules', 'rules')
-                               if k in raw and isinstance(raw[k], list)), []))
+                items = _parse_rules(self._get(path))
                 if items:
                     logger.debug(f"UniFi traffic rules (API key) found via {path}: {len(items)} items")
                     return items
             except Exception as e:
                 logger.debug(f"UniFi traffic rules (API key) path {path} failed: {e}")
 
-        # Try legacy REST path with API key (works on some firmware versions)
-        for path in paths_legacy:
-            try:
-                raw = self._get(path)
-                items = (raw if isinstance(raw, list) else
-                         next((raw[k] for k in ('data', 'trafficRules', 'traffic_rules', 'rules')
-                               if k in raw and isinstance(raw[k], list)), []))
-                if items:
-                    logger.debug(f"UniFi traffic rules (API key, legacy path) found via {path}: {len(items)} items")
-                    return items
-            except Exception as e:
-                logger.debug(f"UniFi traffic rules (API key, legacy path) {path} failed: {e}")
-
         # Fallback: legacy session cookie auth
         if self.username and self.password:
             for path in paths_v2 + paths_legacy:
                 try:
-                    raw = self._legacy_get(path)
-                    items = (raw if isinstance(raw, list) else
-                             next((raw[k] for k in ('data', 'trafficRules', 'traffic_rules', 'rules')
-                                   if k in raw and isinstance(raw[k], list)), []))
+                    items = _parse_rules(self._legacy_get(path))
                     if items:
                         logger.debug(f"UniFi traffic rules (legacy) found via {path}: {len(items)} items")
                         return items
@@ -247,19 +242,31 @@ class UnifiProvider:
                 f'/proxy/network/v2/api/site/{site_id}/firewall/policies',
             ]
         paths_legacy = [f'/proxy/network/api/s/{site_ref}/rest/firewallpolicy']
+        # Integration v1 API paths — work with X-API-Key on newer firmware
+        paths_integration = []
+        if site_id:
+            paths_integration += [
+                f'/proxy/network/integration/v1/sites/{site_id}/firewallPolicies',
+                f'/proxy/network/integration/v1/sites/{site_id}/firewall/zone-policies',
+            ]
+        if site_ref and site_ref != site_id:
+            paths_integration += [
+                f'/proxy/network/integration/v1/sites/{site_ref}/firewallPolicies',
+                f'/proxy/network/integration/v1/sites/{site_ref}/firewall/zone-policies',
+            ]
 
         def _parse(raw):
             if isinstance(raw, list):
                 return raw
             # UniFi returns different wrapper keys across versions
             for key in ('data', 'policies', 'zonePolicies', 'zone_policies',
-                        'firewallPolicies', 'firewall_policies', 'rules'):
+                        'firewallPolicies', 'firewall_policies', 'rules', 'items'):
                 if key in raw and isinstance(raw[key], list):
                     return raw[key]
             return []
 
-        # Try v2 paths with API key first
-        for path in paths_v2:
+        # Try all API key paths (v2, integration v1, legacy REST)
+        for path in paths_v2 + paths_integration + paths_legacy:
             try:
                 items = _parse(self._get(path))
                 if items:
@@ -267,16 +274,6 @@ class UnifiProvider:
                     return items
             except Exception as e:
                 logger.debug(f"UniFi firewall policies (API key) path {path} failed: {e}")
-
-        # Try legacy REST path with API key
-        for path in paths_legacy:
-            try:
-                items = _parse(self._get(path))
-                if items:
-                    logger.debug(f"UniFi firewall policies (API key, legacy path) found via {path}: {len(items)} items")
-                    return items
-            except Exception as e:
-                logger.debug(f"UniFi firewall policies (API key, legacy path) {path} failed: {e}")
 
         # Fallback: legacy session cookie auth
         if self.username and self.password:
@@ -481,9 +478,26 @@ class UnifiCloudProvider:
                     if not d.get('hostId'):
                         d['hostId'] = hid
                 devices.extend(host_devices)
-        # Fallback to flat endpoint if per-host yielded nothing
+        # Fallback 1: flat /v1/devices endpoint
         if not devices:
             devices = self.get_devices()
+
+        # Fallback 2: extract device inventory embedded in host.reportedState
+        # (Site Manager API embeds device lists in the host object on some API scopes)
+        if not devices:
+            for host in hosts:
+                hid = host.get('id') or ''
+                state = host.get('reportedState') or {}
+                for key in ('devices', 'networkDevices', 'network_devices'):
+                    embedded = state.get(key) or []
+                    if embedded:
+                        for d in embedded:
+                            if not d.get('hostId'):
+                                d['hostId'] = hid
+                        devices.extend(embedded)
+                        break
+            if devices:
+                logger.debug(f"UniFi Cloud: found {len(devices)} devices via host.reportedState")
 
         host_map = {h.get('id') or h.get('hostId', ''): h for h in hosts}
         assigned_device_ids = set()
