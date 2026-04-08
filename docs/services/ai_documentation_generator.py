@@ -52,6 +52,12 @@ class AIDocumentationGenerator:
             if not api_key:
                 raise ValueError("OPENAI_API_KEY not configured. Please configure in Settings → AI.")
             provider_kwargs = {'api_key': api_key, 'model': model}
+
+        elif provider_name == 'ollama':
+            base_url = getattr(settings, 'OLLAMA_BASE_URL', 'http://localhost:11434')
+            model = getattr(settings, 'OLLAMA_MODEL', 'llama3.2')
+            provider_kwargs = {'base_url': base_url, 'model': model}
+
         else:
             raise ValueError(f"Unknown LLM provider: {provider_name}")
 

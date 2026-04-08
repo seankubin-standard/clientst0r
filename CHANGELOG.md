@@ -5,6 +5,12 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.26] - 2026-04-08
+
+### Bug Fixes
+- **Ollama "Unknown LLM provider" error (#112)** — `AIDocumentationGenerator` had a hardcoded `elif` chain for known providers and raised `ValueError` for `ollama`; added the `ollama` case to read `OLLAMA_BASE_URL` and `OLLAMA_MODEL` from settings
+- **UniFi zone policies / traffic rules blank on Network 10.x (#105)** — UniFi Network 9.x/10.x moved firewall and traffic rule endpoints under a `security/` path prefix; added `security/zone-policies`, `security/policies`, `security/firewall-policies`, `security/traffic-rules`, and `security/trafficrules` paths to the attempt list for both v2 API key and legacy session cookie auth
+
 ## [3.17.25] - 2026-04-07
 
 ### Bug Fixes

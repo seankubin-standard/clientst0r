@@ -187,9 +187,19 @@ class UnifiProvider:
         """Get Traffic Rules (UniFi OS 3.x+). Tries v2 API first, falls back to legacy REST."""
         # Try short name (internalReference) first — v2 API works with this on most versions.
         # UUID (siteId from official API) is a fallback since v2 may not accept it.
-        paths_v2 = [f'/proxy/network/v2/api/site/{site_ref}/trafficrules']
+        paths_v2 = [
+            # Network 9.x/10.x security prefix
+            f'/proxy/network/v2/api/site/{site_ref}/security/traffic-rules',
+            f'/proxy/network/v2/api/site/{site_ref}/security/trafficrules',
+            # Legacy 7.x/8.x paths
+            f'/proxy/network/v2/api/site/{site_ref}/trafficrules',
+        ]
         if site_id and site_id != site_ref:
-            paths_v2.append(f'/proxy/network/v2/api/site/{site_id}/trafficrules')
+            paths_v2 += [
+                f'/proxy/network/v2/api/site/{site_id}/security/traffic-rules',
+                f'/proxy/network/v2/api/site/{site_id}/security/trafficrules',
+                f'/proxy/network/v2/api/site/{site_id}/trafficrules',
+            ]
         paths_legacy = [f'/proxy/network/api/s/{site_ref}/rest/trafficrule']
         # Integration v1 API paths — these work with X-API-Key on newer firmware
         paths_integration = []
@@ -230,14 +240,23 @@ class UnifiProvider:
 
     def get_firewall_policies(self, site_ref: str, site_id: str = '') -> list:
         """Get zone-based Firewall Policies (UniFi OS 3.x+).
-        UniFi 8.x renamed the endpoint from /firewall/policies to /firewall/zone-policies."""
+        UniFi 8.x renamed firewall/policies → firewall/zone-policies.
+        UniFi Network 9.x/10.x moved to security/ prefix."""
         # Try short name first — v2 API works with internalReference on most versions
         paths_v2 = [
+            # Network 9.x/10.x security prefix
+            f'/proxy/network/v2/api/site/{site_ref}/security/zone-policies',
+            f'/proxy/network/v2/api/site/{site_ref}/security/policies',
+            f'/proxy/network/v2/api/site/{site_ref}/security/firewall-policies',
+            # Legacy 7.x/8.x paths
             f'/proxy/network/v2/api/site/{site_ref}/firewall/zone-policies',
             f'/proxy/network/v2/api/site/{site_ref}/firewall/policies',
         ]
         if site_id and site_id != site_ref:
             paths_v2 += [
+                f'/proxy/network/v2/api/site/{site_id}/security/zone-policies',
+                f'/proxy/network/v2/api/site/{site_id}/security/policies',
+                f'/proxy/network/v2/api/site/{site_id}/security/firewall-policies',
                 f'/proxy/network/v2/api/site/{site_id}/firewall/zone-policies',
                 f'/proxy/network/v2/api/site/{site_id}/firewall/policies',
             ]
