@@ -1,6 +1,7 @@
 # Client St0r
 
-[![Version 3.17.14](https://img.shields.io/badge/version-3.17.14-brightgreen)](https://github.com/agit8or1/clientst0r)
+[![GitHub Stars](https://img.shields.io/github/stars/agit8or1/clientst0r?style=social)](https://github.com/agit8or1/clientst0r/stargazers)
+[![Version 3.17.28](https://img.shields.io/badge/version-3.17.28-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green)](https://github.com/agit8or1/clientst0r)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-blue)](https://www.djangoproject.com/)
@@ -10,6 +11,8 @@
 
 > **Open-source, self-hosted MSP documentation platform — an alternative to IT Glue and Hudu.**
 > Full data ownership. No SaaS fees. Runs on your infrastructure.
+
+If Client St0r saves you time or money, a ⭐ star helps others find it.
 
 | [IT Glue Alternative →](docs/it-glue-alternative.md) | [Hudu Alternative →](docs/hudu-alternative.md) | [What is ClientSt0r? →](docs/what-is-clientst0r.md) |
 |---|---|---|
