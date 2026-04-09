@@ -35,6 +35,12 @@ class UnifiProvider:
         self._csrf_token = ''
         self._fp_diag: list = []
         self._tr_diag: list = []
+        # Persistent session for legacy cookie-based API — preserves cookies across redirects
+        self._legacy_session = requests.Session()
+        self._legacy_session.headers.update({'Accept': 'application/json',
+                                             'Content-Type': 'application/json'})
+        if not verify_ssl:
+            self._legacy_session.verify = False
 
         self.session = requests.Session()
         self.session.headers.update({
@@ -127,27 +133,42 @@ class UnifiProvider:
     # ------------------------------------------------------------------
 
     def _legacy_login(self) -> bool:
-        """Log in to the legacy API and store session cookie/token/csrf."""
+        """Log in to the legacy API using a persistent session (captures cookies across redirects)."""
         for login_path in ('/api/auth/login', '/api/login', '/proxy/network/api/auth/login'):
             try:
-                resp = requests.post(
+                resp = self._legacy_session.post(
                     f"{self.host}{login_path}",
                     json={'username': self.username, 'password': self.password},
-                    verify=self.verify_ssl,
                     timeout=10,
                 )
                 if resp.status_code == 200:
-                    self._session_cookie = resp.cookies
-                    # UniFi OS 3.x/4.x returns token and csrf_token in JSON body
+                    # Session now holds all cookies (including those from redirect chain)
+                    self._session_cookie = self._legacy_session.cookies
                     try:
                         body = resp.json()
                         self._auth_token = body.get('token') or body.get('access_token') or ''
-                        self._csrf_token = (body.get('csrf_token') or body.get('csrfToken') or
-                                            resp.cookies.get('TOKEN') or '')
+                        # CSRF token: check body first, then any cookie named csrf/TOKEN
+                        csrf = (body.get('csrf_token') or body.get('csrfToken') or
+                                body.get('X-Csrf-Token') or '')
+                        if not csrf:
+                            for cname in ('csrf_token', 'csrfToken', 'X-CSRF-Token', 'TOKEN'):
+                                v = self._legacy_session.cookies.get(cname)
+                                if v:
+                                    csrf = v
+                                    break
+                        self._csrf_token = csrf
+                        # Update session default headers with auth token if returned
+                        if self._auth_token:
+                            self._legacy_session.headers.update(
+                                {'Authorization': f'Bearer {self._auth_token}'}
+                            )
                     except Exception:
                         self._auth_token = ''
                         self._csrf_token = ''
-                    logger.debug(f"UniFi legacy login OK via {login_path}")
+                    logger.info(f"UniFi legacy login OK via {login_path} "
+                                f"(token={'yes' if self._auth_token else 'no'}, "
+                                f"csrf={'yes' if self._csrf_token else 'no'}, "
+                                f"cookies={list(self._legacy_session.cookies.keys())})")
                     return True
                 logger.debug(f"UniFi login {login_path} returned {resp.status_code}")
             except Exception as e:
@@ -157,20 +178,16 @@ class UnifiProvider:
         return False
 
     def _legacy_get(self, path: str) -> dict:
-        """GET via legacy session-cookie API (with token/CSRF header support for UniFi OS 3.x/4.x)."""
+        """GET via legacy session using the persistent session (cookie + Bearer token)."""
         if not self._session_cookie:
             if not self._legacy_login():
                 return {}
         headers = {}
-        if getattr(self, '_auth_token', ''):
-            headers['Authorization'] = f'Bearer {self._auth_token}'
-        if getattr(self, '_csrf_token', ''):
+        if self._csrf_token:
             headers['X-Csrf-Token'] = self._csrf_token
-        resp = requests.get(
+        resp = self._legacy_session.get(
             f"{self.host}{path}",
-            cookies=self._session_cookie,
             headers=headers,
-            verify=self.verify_ssl,
             timeout=15,
         )
         resp.raise_for_status()
@@ -230,9 +247,14 @@ class UnifiProvider:
 
         def _build_paths(ref):
             return [
+                # Network 9.x/10.x security prefix (via proxy)
                 f'/proxy/network/v2/api/site/{ref}/security/traffic-rules',
                 f'/proxy/network/v2/api/site/{ref}/security/trafficrules',
+                # Legacy 7.x/8.x (via proxy)
                 f'/proxy/network/v2/api/site/{ref}/trafficrules',
+                # Direct paths (UOS 4.x/5.x may expose Network app without /proxy prefix)
+                f'/v2/api/site/{ref}/security/traffic-rules',
+                f'/v2/api/site/{ref}/trafficrules',
             ]
 
         def _build_integration(ref):
@@ -302,15 +324,24 @@ class UnifiProvider:
 
         def _build_paths(ref):
             return [
+                # Network 9.x/10.x security prefix (via proxy)
                 f'/proxy/network/v2/api/site/{ref}/security/zone-policies',
                 f'/proxy/network/v2/api/site/{ref}/security/policies',
                 f'/proxy/network/v2/api/site/{ref}/security/firewall-policies',
+                # Legacy 7.x/8.x (via proxy)
                 f'/proxy/network/v2/api/site/{ref}/firewall/zone-policies',
                 f'/proxy/network/v2/api/site/{ref}/firewall/policies',
+                # Direct paths (UOS 4.x/5.x may expose Network app without /proxy prefix)
+                f'/v2/api/site/{ref}/security/zone-policies',
+                f'/v2/api/site/{ref}/firewall/zone-policies',
             ]
 
         def _build_legacy_rest(ref):
-            return [f'/proxy/network/api/s/{ref}/rest/firewallpolicy']
+            return [
+                f'/proxy/network/api/s/{ref}/rest/firewallpolicy',
+                # Some versions use 'firewallpolicies' (plural)
+                f'/proxy/network/api/s/{ref}/rest/firewallpolicies',
+            ]
 
         def _build_integration(ref):
             return [
