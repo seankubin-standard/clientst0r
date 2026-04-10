@@ -559,7 +559,11 @@ class RMMSync:
 
             for device in devices:
                 try:
-                    software_data = self.provider.list_software(device.external_id)
+                    # TRMM software endpoint uses the numeric agent PK (e.g. /software/42/),
+                    # not the UUID agent_id stored in external_id. Pull the numeric id from
+                    # raw_data which holds the original API response.
+                    rmm_id = str((device.raw_data or {}).get('id') or device.external_id)
+                    software_data = self.provider.list_software(rmm_id)
                     
                     # Track existing software IDs
                     existing_software_ids = set()

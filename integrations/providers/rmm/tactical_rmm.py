@@ -256,11 +256,12 @@ class TacticalRMMProvider(BaseRMMProvider):
                 except Exception as e:
                     logger.error(f"Error normalizing Tactical RMM software: {e}")
 
-            logger.debug(f"Tactical RMM: Retrieved {len(software_list)} software items for agent {device_id}")
+            logger.info(f"Tactical RMM: Retrieved {len(software_list)} software items for agent {device_id}")
             return software_list
 
         except Exception as e:
-            logger.error(f"Error listing Tactical RMM software for agent {device_id}: {e}")
+            logger.error(f"Error listing Tactical RMM software for agent {device_id}: {e} "
+                         f"(ensure device_id is the numeric agent PK, not UUID)")
             # Don't raise - software listing is optional
             return software_list
 
