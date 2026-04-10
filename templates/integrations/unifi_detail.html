@@ -196,16 +196,16 @@
                     {% if site.firewall_policies %}
                     {% for r in site.firewall_policies %}
                     <tr>
-                        <td>{% if r.enabled %}<i class="fas fa-check-circle text-success me-1"></i>{% else %}<i class="fas fa-times-circle text-secondary me-1"></i>{% endif %}{{ r.name|default:r.description|default:"—" }}</td>
+                        <td>{% if r.enabled %}<i class="fas fa-check-circle text-success me-1"></i>{% else %}<i class="fas fa-times-circle text-secondary me-1"></i>{% endif %}{{ r.name|default:"—" }}</td>
                         <td>
-                            {% with a=r.action|default:r.ruleAction|default:"" %}
+                            {% with a=r.action|default:"" %}
                             {% if "DROP" in a|upper or "BLOCK" in a|upper %}<span class="badge bg-danger text-white">{{ a }}</span>
                             {% elif "REJECT" in a|upper %}<span class="badge bg-warning text-dark">{{ a }}</span>
-                            {% else %}<span class="badge bg-success text-white">{{ a|default:"allow" }}</span>{% endif %}
+                            {% else %}<span class="badge bg-success text-white">{{ a|default:"ALLOW" }}</span>{% endif %}
                             {% endwith %}
                         </td>
-                        <td class="small">{{ r.source.zone|default:r.sourceZone|default:"any" }}</td>
-                        <td class="small">{{ r.destination.zone|default:r.destinationZone|default:"any" }}</td>
+                        <td class="small">{{ r.source.zone|default:r.source.zone_id|default:"any" }}</td>
+                        <td class="small">{{ r.destination.zone|default:r.destination.zone_id|default:"any" }}</td>
                     </tr>
                     {% endfor %}
                     {% elif not has_legacy %}

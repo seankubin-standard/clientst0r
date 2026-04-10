@@ -1401,8 +1401,10 @@ def unifi_sync(request, pk):
             for r in fp_rules:
                 rname = html_lib.escape(r.get('name') or r.get('description') or r.get('_id') or '—')
                 action = html_lib.escape(r.get('action') or r.get('ruleAction') or '—')
-                src_zone = html_lib.escape(r.get('source', {}).get('zone') or r.get('sourceZone') or 'any')
-                dst_zone = html_lib.escape(r.get('destination', {}).get('zone') or r.get('destinationZone') or 'any')
+                src = r.get('source', {})
+                dst = r.get('destination', {})
+                src_zone = html_lib.escape(src.get('zone') or src.get('zone_id') or r.get('sourceZone') or 'any')
+                dst_zone = html_lib.escape(dst.get('zone') or dst.get('zone_id') or r.get('destinationZone') or 'any')
                 enabled = '\u2705' if r.get('enabled', True) else '\u274c'
                 action_badge = 'bg-danger' if action.upper() in ('DROP', 'REJECT', 'BLOCK') else 'bg-success'
                 fp_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{src_zone}</td><td>{dst_zone}</td></tr>'
