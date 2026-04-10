@@ -489,7 +489,11 @@
                                     </table>
                                 </div>
                                 {% else %}
+                                {% if rmm.connection.sync_software %}
+                                <p class="text-muted small mt-2 mb-0"><i class="fas fa-info-circle me-1"></i>No software data yet — trigger a manual sync on the RMM connection to populate this.</p>
+                                {% else %}
                                 <p class="text-muted small mt-2 mb-0"><i class="fas fa-info-circle me-1"></i>No software inventory — enable <em>Sync Software</em> on the RMM connection to populate this.</p>
+                                {% endif %}
                                 {% endif %}
                                 {% endwith %}
                             </div>

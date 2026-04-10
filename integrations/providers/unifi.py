@@ -217,6 +217,57 @@ class UnifiProvider:
             logger.warning(f"UniFi get_vlans({site_ref}) failed: {e}")
             return []
 
+    def get_zones(self, site_ref: str, extra_refs: list = None) -> list:
+        """Get zone definitions (Network 9.x/10.x). Returns list of zone dicts."""
+        refs = [site_ref] + [r for r in (extra_refs or []) if r and r != site_ref]
+        for ref in refs:
+            for path in (
+                f'/proxy/network/v2/api/site/{ref}/zones',
+                f'/proxy/network/v2/api/site/{ref}/security/zones',
+            ):
+                raw, status, _ = self._try_path(path)
+                if raw is not None:
+                    items = raw if isinstance(raw, list) else raw.get('data', raw.get('zones', []))
+                    if items:
+                        return items
+                raw, status, _ = self._try_path(path, use_legacy=True)
+                if raw is not None:
+                    items = raw if isinstance(raw, list) else raw.get('data', raw.get('zones', []))
+                    if items:
+                        return items
+        return []
+
+    def get_traffic_routes(self, site_ref: str, extra_refs: list = None) -> list:
+        """Get Traffic Routes (Network 10.x — website/app routing/blocking rules)."""
+        refs = [site_ref] + [r for r in (extra_refs or []) if r and r != site_ref]
+
+        def _parse(raw):
+            if isinstance(raw, list):
+                return raw
+            for k in ('data', 'trafficRoutes', 'traffic_routes', 'routes', 'items'):
+                if k in raw and isinstance(raw[k], list):
+                    return raw[k]
+            return []
+
+        for ref in refs:
+            paths = [
+                f'/proxy/network/v2/api/site/{ref}/traffic-routes',
+                f'/proxy/network/v2/api/site/{ref}/trafficRoutes',
+                f'/proxy/network/v2/api/site/{ref}/traffic_routes',
+                f'/proxy/network/v2/api/site/{ref}/security/traffic-routes',
+            ]
+            for path in paths:
+                for use_legacy in (False, True):
+                    if use_legacy and not (self.username and self.password):
+                        continue
+                    raw, status, _ = self._try_path(path, use_legacy=use_legacy)
+                    if raw is not None:
+                        items = _parse(raw)
+                        if items:
+                            logger.info(f"UniFi traffic routes found via {path}: {len(items)}")
+                            return items
+        return []
+
     def get_firewall_rules(self, site_ref: str) -> list:
         """Get firewall rules. site_ref = internalReference (e.g. 'default').
         Requires username/password (legacy API)."""
@@ -500,15 +551,18 @@ class UnifiProvider:
             wlans = self.get_wlans(site_ref)
             vlans = self.get_vlans(site_ref)
             firewall_rules = self.get_firewall_rules(site_ref)
+            zones = self.get_zones(site_ref, extra_refs=extra_refs)
+            zone_map = {z.get('_id') or z.get('id', ''): z.get('name', '') for z in zones}
             firewall_policies = self.get_firewall_policies(site_ref, site_id=site_id,
                                                            extra_refs=extra_refs)
             fp_diag = list(self._fp_diag)
             traffic_rules = self.get_traffic_rules(site_ref, site_id=site_id,
                                                    extra_refs=extra_refs)
             tr_diag = list(self._tr_diag)
+            traffic_routes = self.get_traffic_routes(site_ref, extra_refs=extra_refs)
             # If still empty, run broader endpoint probe to find what paths exist
             probe_results = {}
-            if not firewall_policies and not traffic_rules:
+            if not firewall_policies and not traffic_rules and not traffic_routes:
                 probe_results = self.probe_site_endpoints(site_ref)
             client_count = self.get_client_count(site_ref)
 
@@ -527,6 +581,8 @@ class UnifiProvider:
                 'firewall_rules': firewall_rules,
                 'firewall_policies': firewall_policies,
                 'traffic_rules': traffic_rules,
+                'traffic_routes': traffic_routes,
+                'zone_map': zone_map,
                 'client_count': client_count,
                 '_fp_diag': fp_diag,
                 '_tr_diag': tr_diag,

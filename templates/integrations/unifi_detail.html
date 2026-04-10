@@ -255,6 +255,34 @@
         </div>
         {% endif %}
 
+        {# Traffic Routes — Network 10.x website/app routing and blocking #}
+        {% if site.traffic_routes %}
+        <div class="px-3 pt-3 pb-0">
+            <h6 class="text-uppercase text-muted small fw-bold mb-2"><i class="fas fa-route me-1"></i>Traffic Routes / App Rules ({{ site.traffic_routes|length }})</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-3">
+                <thead class="table-dark">
+                    <tr><th>Route</th><th>Action</th><th>Target</th></tr>
+                </thead>
+                <tbody>
+                    {% for r in site.traffic_routes %}
+                    <tr>
+                        <td>{% if r.enabled %}<i class="fas fa-check-circle text-success me-1"></i>{% else %}<i class="fas fa-times-circle text-secondary me-1"></i>{% endif %}{{ r.name|default:"—" }}</td>
+                        <td>
+                            {% with a=r.action|default:r.type|default:"" %}
+                            {% if "BLOCK" in a|upper or "DROP" in a|upper %}<span class="badge bg-danger text-white">{{ a }}</span>
+                            {% else %}<span class="badge bg-success text-white">{{ a|default:"route" }}</span>{% endif %}
+                            {% endwith %}
+                        </td>
+                        <td class="small text-muted">{{ r.matchingTarget|default:r.matching_target|default:"all" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
     </div>
 </div>
 {% endfor %}

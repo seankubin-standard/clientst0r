@@ -1199,6 +1199,8 @@ def unifi_detail(request, pk):
             'vlans': [_norm_vlan(v) for v in s.get('vlans', [])],
             'firewall_policies': s.get('firewall_policies', []),
             'traffic_rules': s.get('traffic_rules', []),
+            'traffic_routes': s.get('traffic_routes', []),
+            'zone_map': s.get('zone_map', {}),
             'client_count': s.get('client_count', 0),
         })
 
@@ -1396,6 +1398,7 @@ def unifi_sync(request, pk):
 </div>'''
 
             # Firewall Policies (zone-based, UniFi OS 3.x+)
+            zone_map = site.get('zone_map', {})
             fp_rules = site.get('firewall_policies', [])
             fp_rows = ''
             for r in fp_rules:
@@ -1403,8 +1406,10 @@ def unifi_sync(request, pk):
                 action = html_lib.escape(r.get('action') or r.get('ruleAction') or '—')
                 src = r.get('source', {})
                 dst = r.get('destination', {})
-                src_zone = html_lib.escape(src.get('zone') or src.get('zone_id') or r.get('sourceZone') or 'any')
-                dst_zone = html_lib.escape(dst.get('zone') or dst.get('zone_id') or r.get('destinationZone') or 'any')
+                src_zid = src.get('zone') or src.get('zone_id') or r.get('sourceZone') or ''
+                dst_zid = dst.get('zone') or dst.get('zone_id') or r.get('destinationZone') or ''
+                src_zone = html_lib.escape(zone_map.get(src_zid, src_zid) or 'any')
+                dst_zone = html_lib.escape(zone_map.get(dst_zid, dst_zid) or 'any')
                 enabled = '\u2705' if r.get('enabled', True) else '\u274c'
                 action_badge = 'bg-danger' if action.upper() in ('DROP', 'REJECT', 'BLOCK') else 'bg-success'
                 fp_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{src_zone}</td><td>{dst_zone}</td></tr>'
@@ -1486,6 +1491,28 @@ def unifi_sync(request, pk):
   </div>
 </div>'''
 
+            # Traffic Routes (Network 10.x — website/app routing and blocking)
+            troute_rules = site.get('traffic_routes', [])
+            troute_rows = ''
+            for r in troute_rules:
+                rname = html_lib.escape(r.get('name') or r.get('description') or r.get('_id') or '—')
+                action = html_lib.escape(r.get('action') or r.get('type') or '—')
+                target = html_lib.escape(r.get('matchingTarget') or r.get('matching_target') or
+                                         r.get('domains') or r.get('ipAddresses') or 'all')
+                enabled = '\u2705' if r.get('enabled', True) else '\u274c'
+                action_badge = 'bg-danger' if action.upper() in ('BLOCK', 'DROP', 'REJECT') else 'bg-success'
+                troute_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td class="small text-muted">{target}</td></tr>'
+            troute_table = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-route me-2"></i>Traffic Routes / App Rules ({len(troute_rules)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Route</th><th>Action</th><th>Target</th></tr></thead>
+      <tbody>{troute_rows or "<tr><td colspan='3' class='text-muted'>No traffic routes configured.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>''' if troute_rules else ''
+
             # Endpoint probe results (shown when both policies and rules are empty)
             probe = site.get('_probe', {})
             probe_section = ''
@@ -1515,7 +1542,7 @@ def unifi_sync(request, pk):
     <span class="badge bg-light text-dark ms-2">{site["client_count"]} clients connected</span>
   </div>
   <div class="card-body">
-    {devices_table}{wlans_table}{vlans_table}{fw_table}{fp_table}{tr_table}{probe_section}
+    {devices_table}{wlans_table}{vlans_table}{fw_table}{fp_table}{tr_table}{troute_table}{probe_section}
   </div>
 </div>'''
 
