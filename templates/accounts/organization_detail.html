@@ -25,6 +25,14 @@
     </div>
 </div>
 
+<div class="d-flex flex-wrap gap-2 mb-4">
+    {% for svc in services %}
+    <a href="{% url 'accounts:organization_service_info' organization.id svc.slug %}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas {{ svc.icon }} me-1"></i>{{ svc.label }}
+    </a>
+    {% endfor %}
+</div>
+
 <div class="row">
     <!-- Company Information -->
     <div class="col-md-6 mb-4">

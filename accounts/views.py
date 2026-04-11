@@ -495,6 +495,15 @@ def organization_detail(request, org_id):
     all_categories = SupportRating.CATEGORY_CHOICES
     ratings = [(key, label, ratings_by_category.get(key)) for key, label in all_categories]
 
+    SERVICES = [
+        {'slug': 'voip',       'label': 'VoIP',       'icon': 'fa-phone'},
+        {'slug': 'email',      'label': 'Email',       'icon': 'fa-envelope'},
+        {'slug': 'o365',       'label': 'O365',        'icon': 'fa-microsoft'},
+        {'slug': 'web',        'label': 'Web',         'icon': 'fa-globe'},
+        {'slug': 'firewall',   'label': 'Firewall',    'icon': 'fa-shield-alt'},
+        {'slug': 'procedures', 'label': 'Procedures',  'icon': 'fa-clipboard-list'},
+    ]
+
     return render(request, 'accounts/organization_detail.html', {
         'organization': org,
         'members': members,
@@ -502,6 +511,7 @@ def organization_detail(request, org_id):
         'locations': locations,
         'support_ratings': ratings,
         'rating_choices': SupportRating.RATING_CHOICES,
+        'services': SERVICES,
     })
 
 
@@ -707,6 +717,118 @@ def organization_support_rating(request, org_id):
         'rating': obj.rating,
         'label': obj.get_rating_display(),
         'notes': obj.notes,
+    })
+
+
+@login_required
+def organization_service_info(request, org_id, service_slug):
+    """
+    Service quick-info page — aggregates passwords, documents, and assets
+    relevant to a given service category for an organization.
+    """
+    from django.db.models import Q
+    from vault.models import Password
+    from docs.models import Document
+    from assets.models import Asset
+
+    org = get_object_or_404(Organization, id=org_id)
+    membership = Membership.objects.filter(user=request.user, organization=org, is_active=True).first()
+    if not membership and not request.user.is_superuser:
+        messages.error(request, "You don't have access to this organization.")
+        return redirect('accounts:organization_list')
+
+    SERVICE_CONFIG = {
+        'voip': {
+            'label': 'VoIP / Phone',
+            'icon': 'fa-phone',
+            'color': 'primary',
+            'keywords': ['voip', 'sip', 'phone', 'pbx', '3cx', 'ringcentral', 'teams voice', 'telo'],
+            'password_types': ['network_device', 'other'],
+        },
+        'email': {
+            'label': 'Email',
+            'icon': 'fa-envelope',
+            'color': 'info',
+            'keywords': ['email', 'smtp', 'imap', 'pop3', 'mail', 'exchange', 'postfix'],
+            'password_types': ['email'],
+        },
+        'o365': {
+            'label': 'O365 / Microsoft',
+            'icon': 'fa-microsoft',
+            'color': 'warning',
+            'keywords': ['o365', 'office365', 'microsoft', 'azure', 'sharepoint', 'teams', 'entra', 'intune'],
+            'password_types': ['windows_ad', 'website'],
+        },
+        'web': {
+            'label': 'Web / Hosting',
+            'icon': 'fa-globe',
+            'color': 'success',
+            'keywords': ['web', 'website', 'hosting', 'domain', 'ssl', 'dns', 'wordpress', 'cpanel', 'plesk', 'wix'],
+            'password_types': ['website', 'ftp'],
+        },
+        'firewall': {
+            'label': 'Firewall / VPN',
+            'icon': 'fa-shield-alt',
+            'color': 'danger',
+            'keywords': ['firewall', 'vpn', 'router', 'cisco', 'fortinet', 'fortigate', 'sophos', 'palo alto', 'watchguard', 'meraki', 'pfSense'],
+            'password_types': ['network_device', 'vpn'],
+        },
+        'procedures': {
+            'label': 'Procedures',
+            'icon': 'fa-clipboard-list',
+            'color': 'secondary',
+            'keywords': ['procedure', 'runbook', 'process', 'sop', 'checklist', 'guide', 'how to', 'howto', 'onboard', 'offboard'],
+            'password_types': [],
+        },
+    }
+
+    if service_slug not in SERVICE_CONFIG:
+        messages.error(request, "Unknown service.")
+        return redirect('accounts:organization_detail', org_id=org_id)
+
+    cfg = SERVICE_CONFIG[service_slug]
+    keywords = cfg['keywords']
+
+    # Build keyword Q for title/name/notes searches
+    def kw_q(fields):
+        q = Q()
+        for kw in keywords:
+            for field in fields:
+                q |= Q(**{f'{field}__icontains': kw})
+        return q
+
+    # Passwords — match by keyword in title/url/notes OR by password_type
+    pw_q = kw_q(['title', 'url', 'notes', 'folder__name'])
+    if cfg['password_types']:
+        pw_q |= Q(password_type__in=cfg['password_types'])
+    passwords = Password.objects.filter(organization=org).filter(pw_q).select_related('folder').order_by('title')
+
+    # Documents — match by keyword in title or tag name
+    doc_q = kw_q(['title', 'tags__name', 'category__name'])
+    documents = Document.objects.filter(organization=org).filter(doc_q).distinct().order_by('title')
+
+    # Assets — match by keyword in name, notes, asset_type (CharField), tags
+    asset_q = kw_q(['name', 'notes', 'asset_type', 'tags__name'])
+    assets = Asset.objects.filter(organization=org).filter(asset_q).distinct().order_by('name')
+
+    SERVICES = [
+        {'slug': 'voip',       'label': 'VoIP',       'icon': 'fa-phone'},
+        {'slug': 'email',      'label': 'Email',       'icon': 'fa-envelope'},
+        {'slug': 'o365',       'label': 'O365',        'icon': 'fa-microsoft'},
+        {'slug': 'web',        'label': 'Web',         'icon': 'fa-globe'},
+        {'slug': 'firewall',   'label': 'Firewall',    'icon': 'fa-shield-alt'},
+        {'slug': 'procedures', 'label': 'Procedures',  'icon': 'fa-clipboard-list'},
+    ]
+
+    return render(request, 'accounts/organization_service_info.html', {
+        'organization': org,
+        'user_membership': membership,
+        'service_slug': service_slug,
+        'service': cfg,
+        'passwords': passwords,
+        'documents': documents,
+        'assets': assets,
+        'services': SERVICES,
     })
 
 

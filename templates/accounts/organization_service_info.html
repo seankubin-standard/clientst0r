@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}{{ organization.name }} — {{ service.label }} — Client St0r{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>
+        <i class="fas {{ service.icon }} text-{{ service.color }}"></i>
+        {{ service.label }}
+        <small class="text-muted fs-6 ms-2">{{ organization.name }}</small>
+    </h2>
+    <a href="{% url 'accounts:organization_detail' organization.id %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i> Back
+    </a>
+</div>
+
+{# Service quick-nav #}
+<div class="d-flex flex-wrap gap-2 mb-4">
+    {% for svc in services %}
+    <a href="{% url 'accounts:organization_service_info' organization.id svc.slug %}"
+        class="btn btn-sm {% if svc.slug == service_slug %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+        <i class="fas {{ svc.icon }} me-1"></i>{{ svc.label }}
+    </a>
+    {% endfor %}
+</div>
+
+<div class="row g-4">
+
+    {# Passwords / Secrets #}
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-key me-1"></i> Secrets / Credentials</h6>
+                <a href="{% url 'vault:password_create' %}" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2" title="Add">
+                    <i class="fas fa-plus"></i>
+                </a>
+            </div>
+            {% if passwords %}
+            <div class="list-group list-group-flush">
+                {% for pw in passwords %}
+                <a href="{% url 'vault:password_detail' pw.pk %}" class="list-group-item list-group-item-action py-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-semibold small">{{ pw.title }}</div>
+                            {% if pw.username %}<div class="text-muted" style="font-size:.8em;">{{ pw.username }}</div>{% endif %}
+                        </div>
+                        <span class="badge bg-light text-dark border small">{{ pw.get_password_type_display }}</span>
+                    </div>
+                    {% if pw.url %}<div class="text-muted" style="font-size:.75em;">{{ pw.url|truncatechars:50 }}</div>{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body text-center text-muted py-4">
+                <i class="fas fa-key fa-2x mb-2 opacity-25"></i>
+                <p class="small mb-2">No matching credentials found.</p>
+                <a href="{% url 'vault:password_create' %}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-plus me-1"></i> Add Credential
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Documents #}
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-file-alt me-1"></i> Documents</h6>
+                <a href="{% url 'docs:document_create' %}" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2" title="Add">
+                    <i class="fas fa-plus"></i>
+                </a>
+            </div>
+            {% if documents %}
+            <div class="list-group list-group-flush">
+                {% for doc in documents %}
+                <a href="{% url 'docs:document_detail' doc.slug %}" class="list-group-item list-group-item-action py-2">
+                    <div class="fw-semibold small">{{ doc.title }}</div>
+                    {% if doc.category %}<span class="badge bg-light text-dark border" style="font-size:.75em;">{{ doc.category.name }}</span>{% endif %}
+                    {% for tag in doc.tags.all %}<span class="badge bg-secondary ms-1" style="font-size:.7em;">{{ tag.name }}</span>{% endfor %}
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body text-center text-muted py-4">
+                <i class="fas fa-file-alt fa-2x mb-2 opacity-25"></i>
+                <p class="small mb-2">No matching documents found.</p>
+                <a href="{% url 'docs:document_create' %}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-plus me-1"></i> Create Document
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Assets #}
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-server me-1"></i> Assets</h6>
+                <a href="{% url 'assets:asset_create' %}" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2" title="Add">
+                    <i class="fas fa-plus"></i>
+                </a>
+            </div>
+            {% if assets %}
+            <div class="list-group list-group-flush">
+                {% for asset in assets %}
+                <a href="{% url 'assets:asset_detail' asset.pk %}" class="list-group-item list-group-item-action py-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="fw-semibold small">{{ asset.name }}</div>
+                        {% if asset.asset_type %}<span class="badge bg-light text-dark border small">{{ asset.get_asset_type_display }}</span>{% endif %}
+                    </div>
+                    {% if asset.ip_address %}<div class="text-muted" style="font-size:.8em;"><code>{{ asset.ip_address }}</code></div>{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body text-center text-muted py-4">
+                <i class="fas fa-server fa-2x mb-2 opacity-25"></i>
+                <p class="small mb-2">No matching assets found.</p>
+                <a href="{% url 'assets:asset_create' %}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-plus me-1"></i> Add Asset
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

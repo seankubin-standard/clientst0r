@@ -39,6 +39,7 @@ urlpatterns = [
     path('organizations/<int:org_id>/edit/', views.organization_edit, name='organization_edit'),
     path('organizations/<int:org_id>/delete/', views.organization_delete, name='organization_delete'),
     path('organizations/<int:org_id>/support-rating/', views.organization_support_rating, name='organization_support_rating'),
+    path('organizations/<int:org_id>/service/<slug:service_slug>/', views.organization_service_info, name='organization_service_info'),
 
     # Member Management
     path('organizations/<int:org_id>/members/add/', views.member_add, name='member_add'),
