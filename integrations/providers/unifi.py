@@ -409,6 +409,10 @@ class UnifiProvider:
                 f'/proxy/network/v2/api/site/{ref}/security/zone-policies',
                 f'/proxy/network/v2/api/site/{ref}/security/policies',
                 f'/proxy/network/v2/api/site/{ref}/security/firewall-policies',
+                # Network 10.x — firewall section (traditional + zone)
+                f'/proxy/network/v2/api/site/{ref}/firewall/rules',
+                f'/proxy/network/v2/api/site/{ref}/security/firewall/rules',
+                f'/proxy/network/v2/api/site/{ref}/security/firewall',
                 # Network 10.x alternate naming — no security/ prefix, various forms
                 f'/proxy/network/v2/api/site/{ref}/zone-policies',
                 f'/proxy/network/v2/api/site/{ref}/zonepolicies',
@@ -426,8 +430,11 @@ class UnifiProvider:
         def _build_legacy_rest(ref):
             return [
                 f'/proxy/network/api/s/{ref}/rest/firewallpolicy',
-                # Some versions use 'firewallpolicies' (plural)
                 f'/proxy/network/api/s/{ref}/rest/firewallpolicies',
+                # Network 10.x legacy REST fallbacks
+                f'/proxy/network/api/s/{ref}/rest/firewall',
+                f'/proxy/network/api/s/{ref}/rest/firewallrule',
+                f'/proxy/network/api/s/{ref}/rest/firewallrules',
             ]
 
         def _build_integration(ref):
@@ -451,7 +458,8 @@ class UnifiProvider:
             if isinstance(raw, list):
                 return raw
             for key in ('data', 'policies', 'zonePolicies', 'zone_policies',
-                        'firewallPolicies', 'firewall_policies', 'rules', 'items'):
+                        'firewallPolicies', 'firewall_policies', 'rules', 'items',
+                        'firewall_rules', 'firewallRules', 'result'):
                 if key in raw and isinstance(raw[key], list):
                     return raw[key]
             return []
