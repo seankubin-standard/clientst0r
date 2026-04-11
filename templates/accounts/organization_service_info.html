@@ -18,7 +18,7 @@
 <div class="d-flex flex-wrap gap-2 mb-4">
     {% for svc in services %}
     <a href="{% url 'accounts:organization_service_info' organization.id svc.slug %}"
-        class="btn btn-sm {% if svc.slug == service_slug %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+        class="btn btn-sm {% if svc.slug == 'voip' %}{% if svc.slug == service_slug %}btn-primary{% else %}btn-outline-primary{% endif %}{% elif svc.slug == 'email' %}{% if svc.slug == service_slug %}btn-info{% else %}btn-outline-info{% endif %}{% elif svc.slug == 'o365' %}{% if svc.slug == service_slug %}btn-warning{% else %}btn-outline-warning{% endif %}{% elif svc.slug == 'web' %}{% if svc.slug == service_slug %}btn-success{% else %}btn-outline-success{% endif %}{% elif svc.slug == 'firewall' %}{% if svc.slug == service_slug %}btn-danger{% else %}btn-outline-danger{% endif %}{% else %}{% if svc.slug == service_slug %}btn-secondary{% else %}btn-outline-secondary{% endif %}{% endif %}">
         <i class="fas {{ svc.icon }} me-1"></i>{{ svc.label }}
     </a>
     {% endfor %}

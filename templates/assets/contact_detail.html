@@ -1,100 +1,356 @@
 {% extends "base.html" %}
 
-{% block title %}{{ contact.name }} - Client St0r{% endblock %}
+{% block title %}{{ contact.full_name }} - Client St0r{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1><i class="fas fa-user"></i> {{ contact.name }}</h1>
+    <h1><i class="fas fa-user"></i> {{ contact.full_name }}
+        {% if contact.title %}<small class="text-muted fs-5 ms-2">{{ contact.title }}</small>{% endif %}
+    </h1>
     <div>
-        <a href="{% url 'assets:contact_edit' contact.pk %}" class="btn btn-secondary">
+        <a href="{% url 'assets:contact_edit' contact.pk %}" class="btn btn-secondary btn-sm">
             <i class="fas fa-edit"></i> Edit
         </a>
-        <a href="{% url 'assets:contact_delete' contact.pk %}" class="btn btn-danger">
+        <a href="{% url 'assets:contact_delete' contact.pk %}" class="btn btn-danger btn-sm">
             <i class="fas fa-trash"></i> Delete
         </a>
-        <a href="{% url 'assets:contact_list' %}" class="btn btn-outline-secondary">
-            <i class="fas fa-arrow-left"></i> Back to List
+        <a href="{% url 'assets:contact_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left"></i> Back
         </a>
     </div>
 </div>
 
-<div class="row">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h3 class="mb-0"><i class="fas fa-info-circle"></i> Contact Information</h3>
-            </div>
+<div class="row g-4">
+
+    {# ── Left column: info + rating ── #}
+    <div class="col-lg-4">
+
+        {# Contact Info #}
+        <div class="card mb-4">
+            <div class="card-header"><h6 class="mb-0"><i class="fas fa-info-circle me-1"></i> Contact Info</h6></div>
             <div class="card-body">
-                <dl class="row">
-                    <dt class="col-sm-4">Name:</dt>
-                    <dd class="col-sm-8">{{ contact.name }}</dd>
-
-                    {% if contact.title %}
-                    <dt class="col-sm-4">Title:</dt>
-                    <dd class="col-sm-8">{{ contact.title }}</dd>
-                    {% endif %}
-
+                <dl class="row mb-0">
                     {% if contact.email %}
-                    <dt class="col-sm-4">Email:</dt>
-                    <dd class="col-sm-8">
-                        <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
-                    </dd>
+                    <dt class="col-5 text-muted small">Email</dt>
+                    <dd class="col-7 small"><a href="mailto:{{ contact.email }}">{{ contact.email }}</a></dd>
                     {% endif %}
-
                     {% if contact.phone %}
-                    <dt class="col-sm-4">Phone:</dt>
-                    <dd class="col-sm-8">
-                        <a href="tel:{{ contact.phone }}">{{ contact.phone }}</a>
-                    </dd>
+                    <dt class="col-5 text-muted small">Phone</dt>
+                    <dd class="col-7 small"><a href="tel:{{ contact.phone }}">{{ contact.phone }}</a></dd>
                     {% endif %}
-
                     {% if contact.mobile %}
-                    <dt class="col-sm-4">Mobile:</dt>
-                    <dd class="col-sm-8">
-                        <a href="tel:{{ contact.mobile }}">{{ contact.mobile }}</a>
-                    </dd>
+                    <dt class="col-5 text-muted small">Mobile</dt>
+                    <dd class="col-7 small"><a href="tel:{{ contact.mobile }}">{{ contact.mobile }}</a></dd>
                     {% endif %}
-
-                    <dt class="col-sm-4">Created:</dt>
-                    <dd class="col-sm-8">{{ contact.created_at|date:"F j, Y g:i A" }}</dd>
-
-                    <dt class="col-sm-4">Last Updated:</dt>
-                    <dd class="col-sm-8">{{ contact.updated_at|date:"F j, Y g:i A" }}</dd>
+                    <dt class="col-5 text-muted small">Added</dt>
+                    <dd class="col-7 small">{{ contact.created_at|date:"M j, Y" }}</dd>
                 </dl>
-
                 {% if contact.notes %}
-                <h5 class="mt-3"><i class="fas fa-sticky-note"></i> Notes</h5>
-                <p>{{ contact.notes|linebreaks }}</p>
+                <hr class="my-2">
+                <div class="small text-muted">{{ contact.notes|linebreaks }}</div>
                 {% endif %}
             </div>
         </div>
-    </div>
 
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h3 class="mb-0"><i class="fas fa-server"></i> Associated Assets</h3>
+        {# Tech Rating #}
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-star me-1 text-warning"></i> Tech Rating</h6>
+                {% if avg_rating %}
+                <span class="badge bg-warning text-dark fs-6" id="avg-badge">{{ avg_rating }} / 5
+                    <small class="fw-normal opacity-75">({{ rating_count }})</small>
+                </span>
+                {% else %}
+                <span class="badge bg-secondary" id="avg-badge">No ratings yet</span>
+                {% endif %}
             </div>
             <div class="card-body">
+                {# Star input #}
+                <form id="rating-form">
+                    <div class="d-flex gap-1 mb-2" id="star-row">
+                        {% for i in "12345" %}
+                        <i class="fa-star fs-4 star-btn {% if avg_rating and avg_rating >= forloop.counter %}fas text-warning{% else %}far text-muted{% endif %}"
+                            data-val="{{ forloop.counter }}" style="cursor:pointer;"></i>
+                        {% endfor %}
+                    </div>
+                    <div id="star-label" class="small text-muted mb-2">Click a star to rate</div>
+                    <textarea class="form-control form-control-sm mb-2" id="rating-feedback" rows="2"
+                        placeholder="Optional feedback note…"></textarea>
+                    <button type="submit" class="btn btn-warning btn-sm w-100">
+                        <i class="fas fa-paper-plane me-1"></i> Submit Rating
+                    </button>
+                </form>
+                <div id="rating-msg" class="small mt-2" style="min-height:1.2em;"></div>
+
+                {# Previous ratings #}
+                {% if ratings %}
+                <hr class="my-3">
+                <div class="small fw-semibold text-muted mb-2">Previous Feedback</div>
+                <div id="ratings-list" style="max-height:280px;overflow-y:auto;">
+                    {% for r in ratings %}
+                    <div class="border rounded p-2 mb-2 bg-light">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                {% for i in "12345" %}
+                                <i class="fas fa-star {% if r.rating >= forloop.counter %}text-warning{% else %}text-muted opacity-25{% endif %}" style="font-size:.75rem;"></i>
+                                {% endfor %}
+                            </div>
+                            <div class="text-muted" style="font-size:.75rem;">
+                                {{ r.rated_by.get_full_name|default:r.rated_by.username }} &middot; {{ r.created_at|date:"M j, Y" }}
+                            </div>
+                        </div>
+                        {% if r.feedback %}
+                        <div class="mt-1 small">{{ r.feedback }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div id="ratings-list"></div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+    {# ── Right column: notes + assets ── #}
+    <div class="col-lg-8">
+
+        {# Tech Notes #}
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-sticky-note me-1"></i> Tech Notes</h6>
+                <button class="btn btn-sm btn-outline-primary" id="toggle-note-form">
+                    <i class="fas fa-plus me-1"></i> Add Note
+                </button>
+            </div>
+            <div class="card-body">
+                {# Add note form (hidden by default) #}
+                <div id="note-form-wrap" style="display:none;" class="mb-3">
+                    <form id="note-form">
+                        <input type="hidden" id="note-id" value="">
+                        <textarea class="form-control mb-2" id="note-body" rows="3" placeholder="Write a note…"></textarea>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="note-private">
+                                <label class="form-check-label small" for="note-private">Private (only you)</label>
+                            </div>
+                            <div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary me-1" id="cancel-note">Cancel</button>
+                                <button type="submit" class="btn btn-sm btn-primary">Save Note</button>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="note-msg" class="small mt-1" style="min-height:1.2em;"></div>
+                </div>
+
+                {# Notes list #}
+                <div id="notes-list">
+                {% if notes %}
+                    {% for note in notes %}
+                    <div class="border rounded p-3 mb-2 note-item" id="note-item-{{ note.id }}">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="small text-muted">
+                                <i class="fas fa-user me-1"></i>{{ note.author.get_full_name|default:note.author.username }}
+                                &middot; {{ note.created_at|date:"M j, Y" }}
+                                {% if note.is_private %}<span class="badge bg-secondary ms-1">Private</span>{% endif %}
+                            </div>
+                            {% if note.author == request.user or user.is_superuser %}
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary py-0 px-1 note-edit-btn"
+                                    data-id="{{ note.id }}" data-body="{{ note.body|escapejs }}"
+                                    data-private="{{ note.is_private|yesno:'1,0' }}" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-outline-danger py-0 px-1 note-delete-btn"
+                                    data-id="{{ note.id }}" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="mt-2 small note-body">{{ note.body|linebreaks }}</div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted small" id="no-notes-msg">No notes yet.</p>
+                {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# Associated Assets #}
+        <div class="card">
+            <div class="card-header"><h6 class="mb-0"><i class="fas fa-server me-1"></i> Associated Assets</h6></div>
+            <div class="card-body">
                 {% if assets %}
-                <div class="list-group">
+                <div class="list-group list-group-flush">
                     {% for asset in assets %}
-                    <a href="{% url 'assets:asset_detail' asset.pk %}" class="list-group-item list-group-item-action">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h5 class="mb-1">{{ asset.name }}</h5>
+                    <a href="{% url 'assets:asset_detail' asset.pk %}" class="list-group-item list-group-item-action py-2">
+                        <div class="d-flex justify-content-between">
+                            <span class="fw-semibold small">{{ asset.name }}</span>
                             <small class="text-muted">{{ asset.get_asset_type_display }}</small>
                         </div>
-                        {% if asset.asset_tag %}
-                        <p class="mb-1"><small><strong>Tag:</strong> {{ asset.asset_tag }}</small></p>
-                        {% endif %}
+                        {% if asset.asset_tag %}<small class="text-muted">Tag: {{ asset.asset_tag }}</small>{% endif %}
                     </a>
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="text-muted">No assets associated with this contact.</p>
+                <p class="text-muted small mb-0">No assets associated with this contact.</p>
                 {% endif %}
             </div>
         </div>
+
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CONTACT_PK  = {{ contact.pk }};
+const CSRF        = () => document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+const STAR_LABELS = ['','Terrible','Poor','OK','Good','Excellent'];
+
+// ── hidden CSRF form ──────────────────────────────────────────
+document.body.insertAdjacentHTML('beforeend','<form id="global-csrf" style="display:none">{% csrf_token %}</form>');
+
+// ── Stars ─────────────────────────────────────────────────────
+let selectedRating = 0;
+document.querySelectorAll('.star-btn').forEach(star => {
+    star.addEventListener('mouseenter', () => {
+        const v = parseInt(star.dataset.val);
+        document.querySelectorAll('.star-btn').forEach(s => {
+            s.classList.toggle('fas', parseInt(s.dataset.val) <= v);
+            s.classList.toggle('far', parseInt(s.dataset.val) > v);
+            s.classList.toggle('text-warning', parseInt(s.dataset.val) <= v);
+            s.classList.toggle('text-muted', parseInt(s.dataset.val) > v);
+        });
+        document.getElementById('star-label').textContent = STAR_LABELS[v];
+    });
+    star.addEventListener('mouseleave', () => {
+        document.querySelectorAll('.star-btn').forEach(s => {
+            const v2 = parseInt(s.dataset.val);
+            s.classList.toggle('fas', v2 <= selectedRating);
+            s.classList.toggle('far', v2 > selectedRating);
+            s.classList.toggle('text-warning', v2 <= selectedRating);
+            s.classList.toggle('text-muted', v2 > selectedRating);
+        });
+        document.getElementById('star-label').textContent = selectedRating ? STAR_LABELS[selectedRating] : 'Click a star to rate';
+    });
+    star.addEventListener('click', () => {
+        selectedRating = parseInt(star.dataset.val);
+        document.getElementById('star-label').textContent = STAR_LABELS[selectedRating];
+    });
+});
+
+document.getElementById('rating-form').addEventListener('submit', e => {
+    e.preventDefault();
+    if (!selectedRating) { document.getElementById('rating-msg').textContent = 'Please select a star rating.'; return; }
+    const feedback = document.getElementById('rating-feedback').value.trim();
+    fetch(`/assets/contacts/${CONTACT_PK}/rate/`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':CSRF()},
+        body: `rating=${selectedRating}&feedback=${encodeURIComponent(feedback)}`
+    }).then(r=>r.json()).then(data => {
+        if (!data.ok) { document.getElementById('rating-msg').textContent = 'Error: ' + data.error; return; }
+        // Update average badge
+        document.getElementById('avg-badge').className = 'badge bg-warning text-dark fs-6';
+        document.getElementById('avg-badge').innerHTML = `${data.avg} / 5 <small class="fw-normal opacity-75">(${data.count})</small>`;
+        // Prepend new rating card
+        const stars = Array.from({length:5},(_,i)=>`<i class="fas fa-star ${i<data.rating?'text-warning':'text-muted opacity-25'}" style="font-size:.75rem;"></i>`).join('');
+        const card = `<div class="border rounded p-2 mb-2 bg-light">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>${stars}</div>
+                <div class="text-muted" style="font-size:.75rem;">${data.by} &middot; ${data.created}</div>
+            </div>
+            ${data.feedback ? `<div class="mt-1 small">${data.feedback}</div>` : ''}
+        </div>`;
+        document.getElementById('ratings-list').insertAdjacentHTML('afterbegin', card);
+        // Reset form
+        selectedRating = 0;
+        document.getElementById('rating-feedback').value = '';
+        document.getElementById('star-label').textContent = 'Click a star to rate';
+        document.querySelectorAll('.star-btn').forEach(s => { s.classList.replace('fas','far'); s.classList.remove('text-warning'); s.classList.add('text-muted'); });
+        const msg = document.getElementById('rating-msg');
+        msg.textContent = 'Rating submitted — thank you!';
+        setTimeout(()=>msg.textContent='',3000);
+    }).catch(()=>{ document.getElementById('rating-msg').textContent='Save failed.'; });
+});
+
+// ── Notes ─────────────────────────────────────────────────────
+document.getElementById('toggle-note-form').addEventListener('click', () => {
+    const wrap = document.getElementById('note-form-wrap');
+    wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
+    if (wrap.style.display !== 'none') document.getElementById('note-body').focus();
+});
+document.getElementById('cancel-note').addEventListener('click', () => {
+    document.getElementById('note-form-wrap').style.display = 'none';
+    document.getElementById('note-id').value = '';
+    document.getElementById('note-body').value = '';
+    document.getElementById('note-private').checked = false;
+});
+
+document.getElementById('note-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const body = document.getElementById('note-body').value.trim();
+    if (!body) return;
+    const noteId = document.getElementById('note-id').value;
+    const isPrivate = document.getElementById('note-private').checked ? '1' : '0';
+    fetch(`/assets/contacts/${CONTACT_PK}/notes/add/`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':CSRF()},
+        body: `body=${encodeURIComponent(body)}&is_private=${isPrivate}&note_id=${noteId}`
+    }).then(r=>r.json()).then(data => {
+        if (!data.ok) { document.getElementById('note-msg').textContent='Error: '+data.error; return; }
+        document.getElementById('no-notes-msg')?.remove();
+        const privBadge = data.is_private ? '<span class="badge bg-secondary ms-1">Private</span>' : '';
+        const editBtns = `<div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary py-0 px-1 note-edit-btn" data-id="${data.note_id}" data-body="${data.body.replace(/"/g,'&quot;')}" data-private="${data.is_private?'1':'0'}" title="Edit"><i class="fas fa-edit"></i></button>
+            <button class="btn btn-outline-danger py-0 px-1 note-delete-btn" data-id="${data.note_id}" title="Delete"><i class="fas fa-trash"></i></button>
+        </div>`;
+        if (noteId) {
+            // Update existing
+            const item = document.getElementById(`note-item-${noteId}`);
+            if (item) {
+                item.querySelector('.note-body').innerHTML = data.body.split('\n').map(l=>`<p>${l}</p>`).join('');
+            }
+        } else {
+            const html = `<div class="border rounded p-3 mb-2 note-item" id="note-item-${data.note_id}">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="small text-muted"><i class="fas fa-user me-1"></i>${data.by} &middot; ${data.created}${privBadge}</div>
+                    ${editBtns}
+                </div>
+                <div class="mt-2 small note-body">${data.body.split('\n').map(l=>`<p>${l}</p>`).join('')}</div>
+            </div>`;
+            document.getElementById('notes-list').insertAdjacentHTML('afterbegin', html);
+            attachNoteHandlers(document.getElementById(`note-item-${data.note_id}`));
+        }
+        document.getElementById('note-form-wrap').style.display = 'none';
+        document.getElementById('note-id').value = '';
+        document.getElementById('note-body').value = '';
+        document.getElementById('note-private').checked = false;
+    }).catch(()=>{ document.getElementById('note-msg').textContent='Save failed.'; });
+});
+
+function attachNoteHandlers(item) {
+    item.querySelector('.note-edit-btn')?.addEventListener('click', function() {
+        document.getElementById('note-id').value = this.dataset.id;
+        document.getElementById('note-body').value = this.dataset.body;
+        document.getElementById('note-private').checked = this.dataset.private === '1';
+        document.getElementById('note-form-wrap').style.display = '';
+        document.getElementById('note-body').focus();
+    });
+    item.querySelector('.note-delete-btn')?.addEventListener('click', function() {
+        const nid = this.dataset.id;
+        if (!confirm('Delete this note?')) return;
+        fetch(`/assets/contacts/${CONTACT_PK}/notes/${nid}/delete/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken':CSRF()}
+        }).then(r=>r.json()).then(data => {
+            if (data.ok) document.getElementById(`note-item-${nid}`)?.remove();
+        });
+    });
+}
+document.querySelectorAll('.note-item').forEach(attachNoteHandlers);
+</script>
 {% endblock %}

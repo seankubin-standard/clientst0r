@@ -36,6 +36,44 @@ class Contact(BaseModel):
         return f"{self.first_name} {self.last_name}"
 
 
+class ContactRating(BaseModel):
+    """
+    Tech feedback rating for a contact. Multiple ratings accumulate over time —
+    each submission is stored individually; the displayed score is the average.
+    """
+    RATING_CHOICES = [(1,'1'),(2,'2'),(3,'3'),(4,'4'),(5,'5')]
+
+    contact   = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='ratings')
+    rated_by  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='contact_ratings')
+    rating    = models.PositiveSmallIntegerField(choices=RATING_CHOICES)
+    feedback  = models.TextField(blank=True, help_text='Optional feedback note for this rating')
+
+    class Meta:
+        db_table = 'contact_ratings'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.contact} — {self.rating}★ by {self.rated_by}"
+
+
+class ContactNote(BaseModel):
+    """
+    Freeform tech note attached to a contact. Any staff user can add;
+    only the author can edit or delete their own notes.
+    """
+    contact    = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='tech_notes')
+    author     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='contact_notes')
+    body       = models.TextField()
+    is_private = models.BooleanField(default=False, help_text='Private notes visible only to the author')
+
+    class Meta:
+        db_table = 'contact_notes'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Note on {self.contact} by {self.author}"
+
+
 class Asset(BaseModel):
     """
     Asset/device with flexible JSON fields.

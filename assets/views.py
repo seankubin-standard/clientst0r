@@ -10,7 +10,7 @@ from core.middleware import get_request_organization
 from core.decorators import require_write, require_organization_context
 from core.webhook_sender import send_webhook
 from core.models import Webhook
-from .models import Asset, Contact, Relationship
+from .models import Asset, Contact, Relationship, ContactRating, ContactNote
 from .forms import AssetForm, ContactForm
 
 
@@ -307,10 +307,112 @@ def contact_detail(request, pk):
         primary_contact=contact
     ).select_related('organization', 'equipment_model')
 
+    from django.db.models import Avg, Count
+    ratings_qs = ContactRating.objects.filter(contact=contact).select_related('rated_by')
+    avg_data = ratings_qs.aggregate(avg=Avg('rating'), count=Count('id'))
+    notes_qs = ContactNote.objects.filter(contact=contact).select_related('author')
+    if not request.user.is_superuser:
+        notes_qs = notes_qs.filter(is_private=False) | notes_qs.filter(author=request.user)
+
     return render(request, 'assets/contact_detail.html', {
         'contact': contact,
         'assets': assets,
+        'ratings': ratings_qs,
+        'avg_rating': round(avg_data['avg'], 1) if avg_data['avg'] else None,
+        'rating_count': avg_data['count'],
+        'notes': notes_qs,
     })
+
+
+@login_required
+def contact_add_rating(request, pk):
+    """Submit a rating + feedback for a contact."""
+    org = get_request_organization(request)
+    contact = get_object_or_404(Contact, pk=pk, organization=org)
+
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+
+    try:
+        rating_val = int(request.POST.get('rating', 0))
+    except (ValueError, TypeError):
+        rating_val = 0
+
+    if rating_val not in range(1, 6):
+        return JsonResponse({'ok': False, 'error': 'Invalid rating (1-5)'}, status=400)
+
+    feedback = request.POST.get('feedback', '').strip()
+    obj = ContactRating.objects.create(
+        contact=contact,
+        rated_by=request.user,
+        rating=rating_val,
+        feedback=feedback,
+    )
+
+    from django.db.models import Avg, Count
+    agg = ContactRating.objects.filter(contact=contact).aggregate(avg=Avg('rating'), count=Count('id'))
+
+    return JsonResponse({
+        'ok': True,
+        'rating_id': obj.id,
+        'avg': round(agg['avg'], 1) if agg['avg'] else rating_val,
+        'count': agg['count'],
+        'by': request.user.get_full_name() or request.user.username,
+        'feedback': feedback,
+        'created': obj.created_at.strftime('%b %d, %Y'),
+    })
+
+
+@login_required
+def contact_add_note(request, pk):
+    """Add or edit a note on a contact."""
+    org = get_request_organization(request)
+    contact = get_object_or_404(Contact, pk=pk, organization=org)
+
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+
+    note_id = request.POST.get('note_id', '').strip()
+    body = request.POST.get('body', '').strip()
+    is_private = request.POST.get('is_private') == '1'
+
+    if not body:
+        return JsonResponse({'ok': False, 'error': 'Note body required'}, status=400)
+
+    if note_id:
+        note = get_object_or_404(ContactNote, id=note_id, contact=contact)
+        if note.author != request.user and not request.user.is_superuser:
+            return JsonResponse({'ok': False, 'error': 'Not your note'}, status=403)
+        note.body = body
+        note.is_private = is_private
+        note.save()
+    else:
+        note = ContactNote.objects.create(
+            contact=contact, author=request.user, body=body, is_private=is_private
+        )
+
+    return JsonResponse({
+        'ok': True,
+        'note_id': note.id,
+        'body': note.body,
+        'is_private': note.is_private,
+        'by': request.user.get_full_name() or request.user.username,
+        'created': note.created_at.strftime('%b %d, %Y'),
+    })
+
+
+@login_required
+def contact_delete_note(request, pk, note_id):
+    """Delete a note (author or superuser only)."""
+    org = get_request_organization(request)
+    contact = get_object_or_404(Contact, pk=pk, organization=org)
+    note = get_object_or_404(ContactNote, id=note_id, contact=contact)
+
+    if note.author != request.user and not request.user.is_superuser:
+        return JsonResponse({'ok': False, 'error': 'Not your note'}, status=403)
+
+    note.delete()
+    return JsonResponse({'ok': True})
 
 
 @login_required

@@ -33,6 +33,9 @@ urlpatterns = [
     path('contacts/<int:pk>/', views.contact_detail, name='contact_detail'),
     path('contacts/<int:pk>/edit/', views.contact_edit, name='contact_edit'),
     path('contacts/<int:pk>/delete/', views.contact_delete, name='contact_delete'),
+    path('contacts/<int:pk>/rate/', views.contact_add_rating, name='contact_add_rating'),
+    path('contacts/<int:pk>/notes/add/', views.contact_add_note, name='contact_add_note'),
+    path('contacts/<int:pk>/notes/<int:note_id>/delete/', views.contact_delete_note, name='contact_delete_note'),
 
     # Relationships
     path('relationships/map/', relationship_views.relationship_map, name='relationship_map'),
