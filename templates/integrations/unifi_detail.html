@@ -75,6 +75,9 @@
     <i class="fas fa-cloud me-2"></i><strong>Cloud mode (UniFi Site Manager):</strong>
     WLANs, VLANs, firewall rules and traffic rules are not available via the Site Manager API.
     Device hardware details come from the cloud inventory.
+    {% if available_orgs %}
+    Assign each site to an organization below to control which org its devices belong to.
+    {% endif %}
 </div>
 {% elif not has_legacy %}
 <div class="alert alert-secondary mb-3">
@@ -91,13 +94,20 @@
 {% if sites %}
 {% for site in sites %}
 <div class="card mb-4 border-0 shadow-sm">
-    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span><i class="fas fa-map-marker-alt me-2"></i><strong>{{ site.name }}</strong></span>
-        <div>
+        <div class="d-flex align-items-center flex-wrap gap-2">
             {% if site.devices %}<span class="badge bg-light text-dark me-1"><i class="fas fa-server me-1"></i>{{ site.devices|length }} devices</span>{% endif %}
             {% if site.wlans %}<span class="badge bg-light text-dark me-1"><i class="fas fa-wifi me-1"></i>{{ site.wlans|length }} WLANs</span>{% endif %}
             {% if site.vlans %}<span class="badge bg-light text-dark me-1"><i class="fas fa-sitemap me-1"></i>{{ site.vlans|length }} networks</span>{% endif %}
-            {% if site.client_count %}<span class="badge bg-light text-dark"><i class="fas fa-users me-1"></i>{{ site.client_count }} clients</span>{% endif %}
+            {% if site.client_count %}<span class="badge bg-light text-dark me-1"><i class="fas fa-users me-1"></i>{{ site.client_count }} clients</span>{% endif %}
+            {% if is_cloud and available_orgs %}
+            <select class="form-select form-select-sm site-org-select" style="min-width:160px;max-width:220px;"
+                    data-site="{{ site.name }}" title="Assign to organization">
+                <option value="">— No org assigned —</option>
+                {% for o in available_orgs %}<option value="{{ o.id }}"{% if site.assigned_org_id == o.id %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+            </select>
+            {% endif %}
         </div>
     </div>
     <div class="card-body p-0">
@@ -204,8 +214,8 @@
                             {% else %}<span class="badge bg-success text-white">{{ a|default:"ALLOW" }}</span>{% endif %}
                             {% endwith %}
                         </td>
-                        <td class="small">{{ r.source.zone|default:r.source.zone_id|default:"any" }}</td>
-                        <td class="small">{{ r.destination.zone|default:r.destination.zone_id|default:"any" }}</td>
+                        <td class="small">{{ r._src_zone_name|default:"any" }}</td>
+                        <td class="small">{{ r._dst_zone_name|default:"any" }}</td>
                     </tr>
                     {% endfor %}
                     {% elif not has_legacy %}
@@ -240,7 +250,7 @@
                             {% else %}<span class="badge bg-success text-white">{{ a|default:"allow" }}</span>{% endif %}
                             {% endwith %}
                         </td>
-                        <td class="small text-muted">{{ r.matching_target|default:"all" }}</td>
+                        <td class="small text-muted">{{ r._target_display|default:"all" }}</td>
                     </tr>
                     {% endfor %}
                     {% elif not has_legacy %}
@@ -275,7 +285,7 @@
                             {% else %}<span class="badge bg-success text-white">{{ a|default:"route" }}</span>{% endif %}
                             {% endwith %}
                         </td>
-                        <td class="small text-muted">{{ r.matchingTarget|default:r.matching_target|default:"all" }}</td>
+                        <td class="small text-muted">{{ r._target_display|default:"all" }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -305,5 +315,37 @@ document.querySelectorAll('.local-time[data-utc]').forEach(el => {
             String(d.getMinutes()).padStart(2,'0');
     }
 });
+
+{% if is_cloud and available_orgs %}
+function collectSiteOrgMap() {
+    const map = {};
+    document.querySelectorAll('.site-org-select').forEach(sel => {
+        map[sel.dataset.site] = sel.value || null;
+    });
+    return map;
+}
+
+let siteOrgSaveTimeout = null;
+document.querySelectorAll('.site-org-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+        clearTimeout(siteOrgSaveTimeout);
+        siteOrgSaveTimeout = setTimeout(() => {
+            const map = collectSiteOrgMap();
+            fetch('{% url "integrations:unifi_site_org" connection.pk %}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+                body: JSON.stringify({site_org_map: map})
+            }).then(r => r.json()).then(data => {
+                if (data.ok) {
+                    sel.classList.add('is-valid');
+                    setTimeout(() => sel.classList.remove('is-valid'), 1500);
+                } else {
+                    sel.classList.add('is-invalid');
+                }
+            }).catch(() => sel.classList.add('is-invalid'));
+        }, 400);
+    });
+});
+{% endif %}
 </script>
 {% endblock %}

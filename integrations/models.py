@@ -645,6 +645,10 @@ class UnifiConnection(BaseModel):
     sync_interval_minutes = models.PositiveIntegerField(default=720, help_text='Auto-sync interval in minutes (0=disabled)')
     last_asset_sync_at = models.DateTimeField(null=True, blank=True)
 
+    # Cloud org assignment: maps site name → Organization.id (cloud mode only)
+    site_org_map = models.JSONField(default=dict, blank=True,
+                                    help_text='Cloud mode: maps site name to organization ID')
+
     # Link to generated doc
     doc = models.ForeignKey('docs.Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='unifi_connections')
 

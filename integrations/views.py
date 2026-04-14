@@ -1190,19 +1190,86 @@ def unifi_detail(request, pk):
             'purpose': v.get('purpose') or '—',
         }
 
+    def _resolve_zone(zone_map, zid):
+        if not zid:
+            return 'any'
+        name = zone_map.get(zid) or zone_map.get(str(zid))
+        return name if name else str(zid)
+
+    def _target_str(val):
+        if val is None:
+            return ''
+        if isinstance(val, list):
+            shown = val[:8]
+            extra = len(val) - len(shown)
+            s = ', '.join(str(x) for x in shown)
+            return s + (f' (+{extra} more)' if extra else '')
+        if isinstance(val, dict):
+            return val.get('type') or val.get('name') or str(val)
+        return str(val)
+
+    def _norm_policy(r, zone_map):
+        r = dict(r)
+        src = r.get('source') or {}
+        dst = r.get('destination') or {}
+        src_zid = src.get('zone') or src.get('zone_id') or ''
+        dst_zid = dst.get('zone') or dst.get('zone_id') or ''
+        r['_src_zone_name'] = _resolve_zone(zone_map, src_zid)
+        r['_dst_zone_name'] = _resolve_zone(zone_map, dst_zid)
+        # Flatten action if needed
+        action = r.get('action', '')
+        if isinstance(action, dict):
+            r['action'] = action.get('type') or action.get('name') or str(action)
+        elif isinstance(action, list):
+            r['action'] = ', '.join(str(x) for x in action)
+        return r
+
+    def _norm_traffic_rule(r):
+        r = dict(r)
+        mt = r.get('matching_target') or r.get('matchingTarget')
+        r['_target_display'] = _target_str(mt) if mt else 'all'
+        action = r.get('action', '')
+        if isinstance(action, dict):
+            r['action'] = action.get('type') or action.get('name') or str(action)
+        return r
+
+    def _norm_traffic_route(r):
+        r = dict(r)
+        mt = r.get('matchingTarget') or r.get('matching_target') or r.get('domains') or r.get('ipAddresses')
+        r['_target_display'] = _target_str(mt) if mt else 'all'
+        return r
+
     sites = []
     for s in data.get('sites', []):
+        zone_map = s.get('zone_map', {})
+        site_name = s.get('name', '')
         sites.append({
-            'name': s.get('name', ''),
+            'name': site_name,
+            'assigned_org_id': (connection.site_org_map or {}).get(site_name),
             'devices': [_norm_device(d) for d in s.get('devices', [])],
             'wlans': s.get('wlans', []),
             'vlans': [_norm_vlan(v) for v in s.get('vlans', [])],
-            'firewall_policies': s.get('firewall_policies', []),
-            'traffic_rules': s.get('traffic_rules', []),
-            'traffic_routes': s.get('traffic_routes', []),
-            'zone_map': s.get('zone_map', {}),
+            'firewall_policies': [_norm_policy(r, zone_map) for r in s.get('firewall_policies', [])],
+            'traffic_rules': [_norm_traffic_rule(r) for r in s.get('traffic_rules', [])],
+            'traffic_routes': [_norm_traffic_route(r) for r in s.get('traffic_routes', [])],
+            'zone_map': zone_map,
             'client_count': s.get('client_count', 0),
         })
+
+    # Build list of assignable orgs for cloud org selector
+    if is_cloud:
+        from core.models import Organization, Membership
+        if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+            available_orgs = list(Organization.objects.filter(is_active=True).order_by('name').values('id', 'name'))
+        else:
+            member_ids = Membership.objects.filter(
+                user=request.user, is_active=True, organization__is_active=True
+            ).values_list('organization_id', flat=True)
+            available_orgs = list(Organization.objects.filter(id__in=member_ids).order_by('name').values('id', 'name'))
+    else:
+        available_orgs = []
+
+    site_org_map = connection.site_org_map or {}
 
     total_devices = sum(len(s['devices']) for s in sites)
     return render(request, 'integrations/unifi_detail.html', {
@@ -1212,6 +1279,8 @@ def unifi_detail(request, pk):
         'has_legacy': has_legacy,
         'legacy_ok': legacy_ok,
         'total_devices': total_devices,
+        'available_orgs': available_orgs,
+        'site_org_map': site_org_map,
     })
 
 
@@ -1248,6 +1317,48 @@ def unifi_delete(request, pk):
         return redirect('integrations:integration_list')
 
     return render(request, 'integrations/unifi_confirm_delete.html', {'connection': connection})
+
+
+@login_required
+@require_admin
+@require_POST
+def unifi_site_org(request, pk):
+    """Save cloud site → organization assignments (AJAX POST)."""
+    from core.models import Organization
+    from django.contrib.auth.models import User
+    org = get_request_organization(request)
+    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+
+    if getattr(connection, 'mode', 'self_hosted') != UnifiConnection.MODE_CLOUD:
+        return JsonResponse({'ok': False, 'error': 'Only available for cloud connections.'}, status=400)
+
+    import json as _json
+    try:
+        body = _json.loads(request.body)
+        site_org_map = body.get('site_org_map', {})
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON.'}, status=400)
+
+    # Validate org IDs — only allow orgs the admin can access
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        valid_ids = set(Organization.objects.filter(is_active=True).values_list('id', flat=True))
+    else:
+        from core.models import Membership
+        valid_ids = set(
+            Membership.objects.filter(user=request.user, is_active=True, organization__is_active=True)
+            .values_list('organization_id', flat=True)
+        )
+    # Include null/empty (clear assignment)
+    cleaned = {}
+    for site_name, org_id in site_org_map.items():
+        if not org_id:
+            cleaned[site_name] = None
+        elif int(org_id) in valid_ids:
+            cleaned[site_name] = int(org_id)
+
+    connection.site_org_map = cleaned
+    connection.save(update_fields=['site_org_map'])
+    return JsonResponse({'ok': True})
 
 
 def _get_unifi_provider(connection):
