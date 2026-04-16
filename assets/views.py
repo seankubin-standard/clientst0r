@@ -520,8 +520,11 @@ def asset_generate_profile(request, pk):
 
     # Gather RMM device data if linked
     rmm = None
+    rmm_software = []
     try:
-        rmm = asset.rmm_devices.select_related('connection').first()
+        rmm = asset.rmm_devices.select_related('connection').prefetch_related('software').first()
+        if rmm:
+            rmm_software = list(rmm.software.order_by('name')[:150])
     except Exception:
         pass
 
@@ -608,9 +611,29 @@ def asset_generate_profile(request, pk):
   </div>
 </div>'''
 
+    import html as html_lib
+    software_section = ''
+    if rmm_software:
+        total_sw = rmm.software.count()
+        sw_rows = ''.join(
+            f'<tr><td>{html_lib.escape(sw.name)}</td><td class="text-muted">{html_lib.escape(sw.version or "")}</td></tr>'
+            for sw in rmm_software
+        )
+        more_note = f'<p class="text-muted small px-3 mb-2">Showing {len(rmm_software)} of {total_sw} installed applications.</p>' if total_sw > len(rmm_software) else ''
+        software_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-cubes me-2"></i>Installed Software ({total_sw})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Application</th><th>Version</th></tr></thead>
+      <tbody>{sw_rows}</tbody>
+    </table>
+    {more_note}
+  </div>
+</div>'''
+
     notes_section = ''
     if asset.notes:
-        import html as html_lib
         notes_section = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-sticky-note me-2"></i>Notes</div>
@@ -659,6 +682,7 @@ def asset_generate_profile(request, pk):
 
 {rmm_section}
 {alerts_section}
+{software_section}
 {notes_section}
 
 </div>'''
@@ -752,26 +776,33 @@ def asset_ai_doc(request, pk):
     }
 
     # Append RMM data if available
+    import logging as _logging
+    _rmm_log = _logging.getLogger('assets')
     try:
-        rmm = asset.rmm_devices.select_related('connection').prefetch_related('software').first()
+        rmm = asset.rmm_devices.select_related('connection').first()
         if rmm:
             asset_data['rmm_provider'] = rmm.connection.get_provider_type_display() if rmm.connection else ''
             asset_data['rmm_status'] = 'Online' if rmm.is_online else 'Offline'
             asset_data['rmm_last_seen'] = rmm.last_seen.strftime('%Y-%m-%d %H:%M') if rmm.last_seen else ''
             asset_data['rmm_site'] = rmm.site_name
             asset_data['rmm_os'] = f'{rmm.os_type} {rmm.os_version}'.strip()
-            # Include software inventory so AI blueprint can document installed software
-            software_qs = rmm.software.order_by('name')
-            if software_qs.exists():
-                sw_lines = []
-                for sw in software_qs[:80]:
-                    entry = sw.name + (f' {sw.version}' if sw.version else '')
-                    sw_lines.append(entry)
-                total = software_qs.count()
-                suffix = f' (+ {total - len(sw_lines)} more)' if total > len(sw_lines) else ''
+    except Exception as e:
+        _rmm_log.warning(f'asset_ai_doc: RMM data fetch failed for asset {pk}: {e}')
+
+    try:
+        rmm_obj = asset.rmm_devices.first()
+        if rmm_obj:
+            sw_qs = rmm_obj.software.order_by('name')
+            total_sw = sw_qs.count()
+            if total_sw > 0:
+                sw_lines = [
+                    sw.name + (f' {sw.version}' if sw.version else '')
+                    for sw in sw_qs[:80]
+                ]
+                suffix = f' (+ {total_sw - len(sw_lines)} more)' if total_sw > len(sw_lines) else ''
                 asset_data['installed_software'] = '; '.join(sw_lines) + suffix
-    except Exception:
-        pass
+    except Exception as e:
+        _rmm_log.warning(f'asset_ai_doc: software fetch failed for asset {pk}: {e}')
 
     generator = AIDocumentationGenerator()
     result = generator.generate_asset_documentation(asset_data, template_type, user_notes)

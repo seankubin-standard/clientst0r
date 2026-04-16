@@ -1191,9 +1191,14 @@ def unifi_detail(request, pk):
         }
 
     def _resolve_zone(zone_map, zid):
-        if not zid:
+        if not zid and zid != 0:
             return 'any'
         name = zone_map.get(zid) or zone_map.get(str(zid))
+        if not name:
+            try:
+                name = zone_map.get(int(zid))
+            except (TypeError, ValueError):
+                pass
         return name if name else str(zid)
 
     def _target_str(val):
@@ -1258,7 +1263,8 @@ def unifi_detail(request, pk):
 
     # Build list of assignable orgs for cloud org selector
     if is_cloud:
-        from core.models import Organization, Membership
+        from core.models import Organization
+        from accounts.models import Membership
         if request.user.is_superuser or getattr(request, 'is_staff_user', False):
             available_orgs = list(Organization.objects.filter(is_active=True).order_by('name').values('id', 'name'))
         else:
@@ -1343,7 +1349,7 @@ def unifi_site_org(request, pk):
     if request.user.is_superuser or getattr(request, 'is_staff_user', False):
         valid_ids = set(Organization.objects.filter(is_active=True).values_list('id', flat=True))
     else:
-        from core.models import Membership
+        from accounts.models import Membership
         valid_ids = set(
             Membership.objects.filter(user=request.user, is_active=True, organization__is_active=True)
             .values_list('organization_id', flat=True)

@@ -187,6 +187,13 @@ class PasswordForm(forms.ModelForm):
                 password_obj.custom_fields = {}
             password_obj.custom_fields['hibp_scan_frequency'] = int(freq)
 
+        # Ensure organization is set before encrypting so AAD matches on decrypt.
+        # On create, the view sets password.organization AFTER form.save(), so
+        # organization_id would be None during set_password — causing decryption
+        # to fail because the AAD context doesn't match.
+        if not password_obj.organization_id and self.organization:
+            password_obj.organization = self.organization
+
         # Set encrypted password if plaintext provided
         plaintext = self.cleaned_data.get('plaintext_password')
         if plaintext:
