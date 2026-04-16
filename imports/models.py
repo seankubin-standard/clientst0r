@@ -141,6 +141,12 @@ class ImportJob(BaseModel):
     # Dry run mode
     dry_run = models.BooleanField(default=True, help_text="Preview import without saving data")
 
+    # Duplicate handling
+    skip_duplicates = models.BooleanField(
+        default=True,
+        help_text="Skip items already imported in any previous job for this organization"
+    )
+
     class Meta:
         db_table = 'import_jobs'
         ordering = ['-created_at']

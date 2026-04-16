@@ -21,6 +21,14 @@
                 <i class="fas fa-play"></i> Start Import
             </a>
             {% endif %}
+            {% if job.status == 'completed' and job.dry_run %}
+            <form method="post" action="{% url 'imports:import_promote' job.pk %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-rocket me-1"></i> Run Actual Import
+                </button>
+            </form>
+            {% endif %}
             {% if job.status == 'pending' %}
             <a href="{% url 'imports:import_edit' job.pk %}" class="btn btn-secondary">
                 <i class="fas fa-edit"></i> Edit
@@ -80,6 +88,19 @@
                                     <span class="badge bg-secondary">No</span>
                                 {% endif %}
                             </p>
+                            <p><strong>Skip Duplicates:</strong>
+                                {% if job.skip_duplicates %}
+                                    <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">No</span>
+                                {% endif %}
+                            </p>
+                            {% if job.status == 'completed' and job.dry_run %}
+                            <div class="alert alert-info mt-2 mb-0 py-2">
+                                <i class="fas fa-info-circle me-1"></i>
+                                This was a preview run. Click <strong>Run Actual Import</strong> to import the data.
+                            </div>
+                            {% endif %}
                         </div>
                         <div class="col-md-6">
                             <p><strong>Created:</strong> {{ job.created_at|date:"Y-m-d H:i:s" }}</p>

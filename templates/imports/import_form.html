@@ -117,10 +117,15 @@
                         </div>
 
                         <hr>
-                        <div class="form-check mb-3">
+                        <div class="form-check mb-2">
                             {{ form.dry_run }}
                             <label class="form-check-label" for="{{ form.dry_run.id_for_label }}"><strong>Dry Run (Preview Only)</strong></label>
                             <br><small class="form-text text-muted">{{ form.dry_run.help_text }}</small>
+                        </div>
+                        <div class="form-check mb-3">
+                            {{ form.skip_duplicates }}
+                            <label class="form-check-label" for="{{ form.skip_duplicates.id_for_label }}"><strong>Skip Duplicates</strong></label>
+                            <br><small class="form-text text-muted">{{ form.skip_duplicates.help_text }}</small>
                         </div>
 
                         <div class="d-flex gap-2">

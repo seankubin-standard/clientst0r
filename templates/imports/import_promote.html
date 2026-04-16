@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Run Actual Import — Job #{{ job.id }} - {{ block.super }}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-md-8 offset-md-2">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'imports:import_list' %}">Import Jobs</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'imports:import_detail' job.pk %}">Job #{{ job.id }}</a></li>
+                    <li class="breadcrumb-item active">Run Actual Import</li>
+                </ol>
+            </nav>
+            <div class="card border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-rocket me-2"></i>Run Actual Import — Job #{{ job.id }}</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>You are about to run the actual import.</strong> This will create records in the database.
+                        The dry-run preview for this job showed:
+                        <ul class="mb-0 mt-2">
+                            <li>{{ job.items_imported }} item(s) to import</li>
+                            <li>{{ job.items_skipped }} item(s) skipped</li>
+                            <li>{{ job.items_failed }} item(s) failed</li>
+                        </ul>
+                    </div>
+                    <p>The job will be reset to <strong>pending</strong> with <strong>Dry Run = No</strong>. All previous preview results will be cleared and the import will run fresh.</p>
+                    <form method="post">
+                        {% csrf_token %}
+                        <a href="{% url 'imports:import_detail' job.pk %}" class="btn btn-secondary me-2">
+                            <i class="fas fa-arrow-left me-1"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-rocket me-1"></i> Confirm — Run Actual Import
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

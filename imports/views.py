@@ -209,6 +209,38 @@ def import_start(request, pk):
 
 @login_required
 @user_passes_test(is_staff_or_superuser)
+def import_promote(request, pk):
+    """Promote a completed dry-run job to an actual import.
+
+    Resets the job to 'pending' with dry_run=False, clears prior results,
+    then redirects to the start page so the user can confirm and run it.
+    """
+    job = get_object_or_404(ImportJob, pk=pk)
+
+    if not (job.status == 'completed' and job.dry_run):
+        messages.error(request, 'Only completed dry-run jobs can be promoted to an actual import.')
+        return redirect('imports:import_detail', pk=job.pk)
+
+    if request.method == 'POST':
+        job.dry_run = False
+        job.status = 'pending'
+        job.started_at = None
+        job.completed_at = None
+        job.items_imported = 0
+        job.items_skipped = 0
+        job.items_failed = 0
+        job.total_items = 0
+        job.error_message = ''
+        job.import_log = ''
+        job.save()
+        messages.info(request, 'Job converted to actual import. Review settings and click Start Import.')
+        return redirect('imports:import_start', pk=job.pk)
+
+    return render(request, 'imports/import_promote.html', {'job': job})
+
+
+@login_required
+@user_passes_test(is_staff_or_superuser)
 def import_log(request, pk):
     """View import job log."""
     job = get_object_or_404(ImportJob, pk=pk)

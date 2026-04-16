@@ -256,15 +256,30 @@ class BaseImportService:
         )
 
     def get_existing_mapping(self, source_type, source_id):
-        """Check if item was already imported."""
+        """Check if item was already imported.
+
+        When skip_duplicates is enabled, checks all completed (non-dry-run) jobs
+        for the same organization and source type, not just the current job.
+        """
         from imports.models import ImportMapping
 
+        if getattr(self.job, 'skip_duplicates', False):
+            qs = ImportMapping.objects.filter(
+                source_type=source_type,
+                source_id=str(source_id),
+                import_job__source_type=self.job.source_type,
+                import_job__status='completed',
+                import_job__dry_run=False,
+            )
+            if self.job.target_organization_id:
+                qs = qs.filter(import_job__target_organization=self.job.target_organization)
+            return qs.first()
+
         try:
-            mapping = ImportMapping.objects.get(
+            return ImportMapping.objects.get(
                 import_job=self.job,
                 source_type=source_type,
                 source_id=str(source_id)
             )
-            return mapping
         except ImportMapping.DoesNotExist:
             return None

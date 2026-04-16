@@ -16,7 +16,7 @@ class ImportJobForm(forms.ModelForm):
             'use_fuzzy_matching', 'fuzzy_match_threshold',
             'import_assets', 'import_passwords', 'import_documents',
             'import_contacts', 'import_locations', 'import_networks', 'import_floor_plans',
-            'dry_run'
+            'dry_run', 'skip_duplicates'
         ]
         widgets = {
             'source_type': forms.Select(attrs={'class': 'form-control'}),
@@ -35,6 +35,7 @@ class ImportJobForm(forms.ModelForm):
             'import_networks': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'import_floor_plans': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'dry_run': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'skip_duplicates': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
         help_texts = {
             'source_url': 'Full API URL (not needed for MagicPlan)',
@@ -46,6 +47,7 @@ class ImportJobForm(forms.ModelForm):
             'fuzzy_match_threshold': 'Similarity threshold (0-100, default 85). Higher = stricter matching.',
             'import_floor_plans': 'Import floor plans (MagicPlan only)',
             'dry_run': 'Preview import without saving data (recommended for first run)',
+            'skip_duplicates': 'Skip items already imported in any previous completed job for this organization',
         }
 
     def __init__(self, *args, **kwargs):
