@@ -203,7 +203,13 @@ def password_reveal(request, pk):
         }, status=429)
 
     org = get_request_organization(request)
-    password = get_object_or_404(Password, pk=pk, organization=org)
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    in_global_view = not org and (request.user.is_superuser or is_staff)
+
+    if in_global_view:
+        password = get_object_or_404(Password, pk=pk)
+    else:
+        password = get_object_or_404(Password, pk=pk, organization=org)
 
     if request.method == 'POST':
         try:
@@ -243,7 +249,11 @@ def password_test_breach(request, pk):
     Creates a breach check record and returns the results.
     """
     org = get_request_organization(request)
-    password = get_object_or_404(Password, pk=pk, organization=org)
+    _is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    if not org and (request.user.is_superuser or _is_staff):
+        password = get_object_or_404(Password, pk=pk)
+    else:
+        password = get_object_or_404(Password, pk=pk, organization=org)
 
     if request.method == 'POST':
         try:
@@ -509,7 +519,11 @@ def generate_otp_api(request, pk):
     Rate limited to 100 requests per hour per user.
     """
     org = get_request_organization(request)
-    password = get_object_or_404(Password, pk=pk, organization=org)
+    _is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    if not org and (request.user.is_superuser or _is_staff):
+        password = get_object_or_404(Password, pk=pk)
+    else:
+        password = get_object_or_404(Password, pk=pk, organization=org)
 
     try:
         otp_data = password.generate_otp()
@@ -559,7 +573,11 @@ def password_qrcode(request, pk):
     import pyotp
 
     org = get_request_organization(request)
-    password = get_object_or_404(Password, pk=pk, organization=org)
+    _is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    if not org and (request.user.is_superuser or _is_staff):
+        password = get_object_or_404(Password, pk=pk)
+    else:
+        password = get_object_or_404(Password, pk=pk, organization=org)
 
     if password.password_type != 'otp' or not password.otp_secret:
         return HttpResponse("Not an OTP entry or secret not configured", status=400)
