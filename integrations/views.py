@@ -1532,6 +1532,7 @@ def unifi_sync(request, pk):
 
             # Firewall Policies (zone-based, UniFi OS 3.x+)
             zone_map = site.get('zone_map', {})
+            zone_diag = site.get('_zone_diag', [])
             fp_rules = site.get('firewall_policies', [])
             fp_rows = ''
             for r in fp_rules:
@@ -1593,6 +1594,25 @@ def unifi_sync(request, pk):
                     )
                 else:
                     fp_empty = "<tr><td colspan='4' class='text-muted'>No firewall policies found for this site.</td></tr>"
+            # Zone diagnostic (only shown when zone_map is empty and policies exist)
+            zone_section = ''
+            if not zone_map and zone_diag:
+                zone_diag_rows = ''.join(
+                    f"<tr><td class='font-monospace small'>{html_lib.escape(d.get('path',''))}</td>"
+                    f"<td>{html_lib.escape(d.get('auth',''))}</td>"
+                    f"<td>{html_lib.escape(str(d.get('status','')))} "
+                    f"{'✓ empty (' + str(d.get('keys','')) + ')' if 'keys' in d else html_lib.escape(str(d.get('snippet','')))}</td></tr>"
+                    for d in zone_diag
+                )
+                zone_section = (
+                    f"<div class='card mb-3'>"
+                    f"<div class='card-header text-warning'><i class='fas fa-exclamation-triangle me-2'></i>"
+                    f"Zone Names Unavailable — API Diagnostic (re-sync to refresh)</div>"
+                    f"<div class='card-body p-0'><table class='table table-sm mb-0 small'>"
+                    f"<thead><tr><th>Path Tried</th><th>Auth</th><th>Result</th></tr></thead>"
+                    f"<tbody>{zone_diag_rows}</tbody></table></div></div>"
+                )
+
             fp_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-shield-alt me-2"></i>Firewall Policies / Zone Rules ({len(fp_rules)})</div>
@@ -1602,7 +1622,8 @@ def unifi_sync(request, pk):
       <tbody>{fp_rows or fp_empty}</tbody>
     </table>
   </div>
-</div>'''
+</div>
+{zone_section}'''
 
             # Traffic Rules (UniFi OS 3.x+)
             tr_rules = site.get('traffic_rules', [])
@@ -1779,9 +1800,11 @@ def unifi_import_assets(request, pk):
     from assets.models import Asset
     from django.core.validators import validate_ipv46_address
 
+    connection = _get_unifi_connection(request, pk)
     org = get_request_organization(request)
-    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
     data = connection.cached_data or {}
+    is_cloud = data.get('mode') == 'cloud'
+    site_org_map = connection.site_org_map or {}
     sites = data.get('sites', [])
 
     # Map UniFi productType to asset types — handles both prefix codes (local API)
@@ -1853,22 +1876,31 @@ def unifi_import_assets(request, pk):
         }
 
     # Build flat device list with site context; keep raw dict for POST processing
+    # For cloud connections, annotate each device with its assigned org
+    from core.models import Organization as _Org
+    org_name_cache = {}
     all_devices = []
     for site in sites:
+        site_name = site.get('name', '')
+        assigned_org_id = site_org_map.get(site_name)
+        if assigned_org_id and assigned_org_id not in org_name_cache:
+            try:
+                org_name_cache[assigned_org_id] = _Org.objects.get(pk=assigned_org_id).name
+            except _Org.DoesNotExist:
+                org_name_cache[assigned_org_id] = f'Org #{assigned_org_id}'
         for d in site.get('devices', []):
             all_devices.append({
-                'site_name': site.get('name', ''),
+                'site_name': site_name,
+                'assigned_org_id': assigned_org_id,
+                'assigned_org_name': org_name_cache.get(assigned_org_id, ''),
                 'device': _norm_preview(d),
                 '_raw': d,
             })
 
     if request.method == 'POST':
-        # Build normalized device list from raw UniFi data
-        normalized = []
-        for item in all_devices:
-            d = item['_raw']
+        def _normalize(d):
             mac = (d.get('mac') or d.get('macAddress') or '').lower().replace('-', ':')
-            normalized.append({
+            return {
                 'name': d.get('name') or d.get('hostname') or mac or 'Unknown Device',
                 'mac': mac,
                 'ip': _clean_ip(d.get('ip') or d.get('ipAddress') or ''),
@@ -1878,14 +1910,45 @@ def unifi_import_assets(request, pk):
                 'serial_number': d.get('serial') or d.get('serialNumber') or d.get('serialno') or '',
                 'os_version': d.get('version') or d.get('firmwareVersion') or '',
                 'hostname': d.get('hostname') or '',
-            })
-        result = _import_devices_to_assets(org, normalized, 'UniFi')
-        messages.success(request, f"Import complete: {result['created']} created, {result['updated']} updated, {result['skipped']} unchanged.")
+            }
+
+        totals = {'created': 0, 'updated': 0, 'skipped': 0}
+
+        if is_cloud and site_org_map:
+            # Cloud: group devices by assigned org, skip unassigned sites
+            groups = {}  # org_id -> list of normalized devices
+            for item in all_devices:
+                oid = item.get('assigned_org_id')
+                if not oid:
+                    continue
+                groups.setdefault(oid, []).append(_normalize(item['_raw']))
+            if not groups:
+                messages.warning(request, 'No sites have an organization assigned. Use the org dropdown on the detail page to assign sites before importing.')
+                return redirect('integrations:unifi_detail', pk=pk)
+            for oid, devs in groups.items():
+                try:
+                    target_org = _Org.objects.get(pk=oid)
+                    r = _import_devices_to_assets(target_org, devs, 'UniFi')
+                    totals['created'] += r['created']
+                    totals['updated'] += r['updated']
+                    totals['skipped'] += r['skipped']
+                except _Org.DoesNotExist:
+                    pass
+        else:
+            # Self-hosted or cloud without org map: import all to connection's org
+            target_org = connection.organization or org
+            normalized = [_normalize(item['_raw']) for item in all_devices]
+            r = _import_devices_to_assets(target_org, normalized, 'UniFi')
+            totals = r
+
+        messages.success(request, f"Import complete: {totals['created']} created, {totals['updated']} updated, {totals['skipped']} unchanged.")
         return redirect('integrations:unifi_detail', pk=pk)
 
     return render(request, 'integrations/unifi_import_assets.html', {
         'connection': connection,
         'all_devices': all_devices,
+        'is_cloud': is_cloud,
+        'site_org_map': site_org_map,
     })
 
 

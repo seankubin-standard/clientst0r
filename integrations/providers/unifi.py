@@ -219,6 +219,7 @@ class UnifiProvider:
 
     def get_zones(self, site_ref: str, extra_refs: list = None) -> list:
         """Get zone definitions (Network 9.x/10.x). Returns list of zone dicts."""
+        self._zone_diag = []
         refs = [site_ref] + [r for r in (extra_refs or []) if r and r != site_ref]
 
         def _zone_paths(ref):
@@ -263,12 +264,21 @@ class UnifiProvider:
                 for use_legacy in (False, True):
                     if use_legacy and not (self.username and self.password):
                         continue
-                    raw, status, _ = self._try_path(path, use_legacy=use_legacy)
+                    raw, status, snippet = self._try_path(path, use_legacy=use_legacy)
+                    auth = 'legacy' if use_legacy else 'api_key'
+                    diag = {'path': path, 'auth': auth, 'status': status}
                     if raw is not None:
                         items = _parse_zones(raw)
+                        diag['count'] = len(items)
+                        if not items:
+                            diag['keys'] = list(raw.keys()) if isinstance(raw, dict) else 'list'
+                        self._zone_diag.append(diag)
                         if items:
                             logger.info(f"UniFi zones found via {path}: {len(items)}")
                             return items
+                    else:
+                        diag['snippet'] = snippet[:80]
+                        self._zone_diag.append(diag)
         return []
 
     def get_traffic_routes(self, site_ref: str, extra_refs: list = None) -> list:
@@ -611,6 +621,7 @@ class UnifiProvider:
             firewall_rules = self.get_firewall_rules(site_ref)
             zone_extra_refs = ([site_id] if site_id and site_id != site_ref else []) + extra_refs
             zones = self.get_zones(site_ref, extra_refs=zone_extra_refs)
+            zone_diag = list(self._zone_diag)
             zone_map = {z.get('_id') or z.get('id', ''): z.get('name', '') for z in zones}
             firewall_policies = self.get_firewall_policies(site_ref, site_id=site_id,
                                                            extra_refs=extra_refs)
@@ -654,6 +665,7 @@ class UnifiProvider:
                 'traffic_routes': traffic_routes,
                 'zone_map': zone_map,
                 'client_count': client_count,
+                '_zone_diag': zone_diag,
                 '_fp_diag': fp_diag,
                 '_tr_diag': tr_diag,
                 '_probe': probe_results,

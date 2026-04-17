@@ -8,12 +8,21 @@
     </a>
 </div>
 
+{% if is_cloud %}
+<div class="alert alert-info">
+    <i class="fas fa-info-circle me-2"></i>
+    <strong>Cloud connection:</strong> Devices are imported into the organization assigned to each site.
+    Sites without an organization assignment are skipped.
+    Assign organizations using the dropdown on the <a href="{% url 'integrations:unifi_detail' connection.pk %}">connection detail page</a>.
+</div>
+{% else %}
 <div class="alert alert-info">
     <i class="fas fa-info-circle me-2"></i>
     The following <strong>{{ all_devices|length }}</strong> device(s) will be imported from
     <strong>{{ connection.name }}</strong> into your asset registry.
     Existing assets are matched by MAC address and updated; new assets are created.
 </div>
+{% endif %}
 
 <form method="post">
     {% csrf_token %}
@@ -30,6 +39,7 @@
                     <thead class="table-dark">
                         <tr>
                             <th>Site</th>
+                            {% if is_cloud %}<th>Target Org</th>{% endif %}
                             <th>Name</th>
                             <th>Type</th>
                             <th>Model</th>
@@ -42,8 +52,17 @@
                     <tbody>
                         {% for item in all_devices %}
                         {% with d=item.device %}
-                        <tr>
+                        <tr{% if is_cloud and not item.assigned_org_id %} class="table-warning text-muted"{% endif %}>
                             <td class="text-muted small">{{ item.site_name }}</td>
+                            {% if is_cloud %}
+                            <td class="small">
+                                {% if item.assigned_org_name %}
+                                    <span class="badge bg-success">{{ item.assigned_org_name }}</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">Unassigned — will skip</span>
+                                {% endif %}
+                            </td>
+                            {% endif %}
                             <td class="fw-semibold">{{ d.name }}</td>
                             <td><span class="badge bg-secondary text-white">{{ d.productType }}</span></td>
                             <td>{{ d.model }}</td>
@@ -54,7 +73,7 @@
                         </tr>
                         {% endwith %}
                         {% empty %}
-                        <tr><td colspan="8" class="text-muted py-3 text-center">No devices found. Sync the connection first.</td></tr>
+                        <tr><td colspan="9" class="text-muted py-3 text-center">No devices found. Sync the connection first.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
