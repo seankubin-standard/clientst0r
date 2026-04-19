@@ -272,9 +272,8 @@
         {% endif %}
 
         {# Traffic Routes — Network 10.x website/app routing and blocking #}
-        {% if site.traffic_routes %}
         <div class="px-3 pt-3 pb-0">
-            <h6 class="text-uppercase text-muted small fw-bold mb-2"><i class="fas fa-route me-1"></i>Traffic Routes / App Rules ({{ site.traffic_routes|length }})</h6>
+            <h6 class="text-uppercase text-muted small fw-bold mb-2"><i class="fas fa-route me-1"></i>Traffic Routes / App Rules{% if site.traffic_routes %} ({{ site.traffic_routes|length }}){% endif %}</h6>
         </div>
         <div class="table-responsive">
             <table class="table table-sm table-hover mb-3">
@@ -282,6 +281,7 @@
                     <tr><th>Route</th><th>Action</th><th>Target</th></tr>
                 </thead>
                 <tbody>
+                    {% if site.traffic_routes %}
                     {% for r in site.traffic_routes %}
                     <tr>
                         <td>{% if r.enabled %}<i class="fas fa-check-circle text-success me-1"></i>{% else %}<i class="fas fa-times-circle text-secondary me-1"></i>{% endif %}{{ r.name|default:"—" }}</td>
@@ -294,10 +294,12 @@
                         <td class="small text-muted">{{ r.target_display|default:"all" }}</td>
                     </tr>
                     {% endfor %}
+                    {% else %}
+                    <tr><td colspan="3" class="text-muted small py-2">No traffic routes configured.</td></tr>
+                    {% endif %}
                 </tbody>
             </table>
         </div>
-        {% endif %}
 
     </div>
 </div>
