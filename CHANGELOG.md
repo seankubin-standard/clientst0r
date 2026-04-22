@@ -5,6 +5,234 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.65] - 2026-04-22
+
+### New Features
+- **Release notes on the Updates page (#124)** — the System Updates page now shows a rendered changelog for the current version ("What's in vX.Y.Z") and a collapsible per-version list of everything that changed between the running version and the latest available update. Each version entry is expandable and tagged with New / Fix / Improved badges. CHANGELOG.md is now fully populated from v3.17.27 onwards.
+
+## [3.17.64] - 2026-04-20
+
+### Bug Fixes
+- **Copy button "Error fetching password" on HTTP installs (#122)** — `navigator.clipboard` is `undefined` in non-HTTPS (plain HTTP) browser contexts; calling `.writeText()` threw synchronously inside the fetch `.then()` handler, which propagated to the outer `.catch()` and showed the misleading "Error fetching password" alert. Added a `copyToClipboard()` helper that uses the Clipboard API when available and falls back to `document.execCommand('copy')` for plain-HTTP installs. Applies to username, password, and OTP copy buttons.
+
+## [3.17.63] - 2026-04-20
+
+### Bug Fixes
+- **API diagnostic table leaking into generated UniFi documentation (#105)** — when traffic rules were empty and legacy credentials were present, the generated HTML document embedded the raw API endpoint diagnostic table (path attempts, auth methods, status codes). This is debug data that belongs only on the integration sync detail page. Generated documents now show a clean "No traffic rules found." message.
+
+## [3.17.62] - 2026-04-20
+
+### Bug Fixes
+- **Traffic Routes section hidden when empty in UniFi detail page (#105)** — the Traffic Routes / App Rules section used `{% if site.traffic_routes %}` which hid the section entirely when no routes were found, giving the impression of a discrepancy vs. the generated documentation (which always renders both sections). Now always shown with "No traffic routes configured." empty state, matching Traffic Rules behaviour.
+
+## [3.17.61] - 2026-04-18
+
+### New Features
+- **Per-site Import button for UniFi cloud connections (#105)** — each site card on the cloud connection detail page now shows an Import button (when an org is assigned to that site) allowing devices to be imported into the assigned organisation directly without using the bulk import flow.
+
+## [3.17.60] - 2026-04-18
+
+### New Features
+- **UniFi cloud import per-site org routing (#105)** — when importing from a cloud connection, devices are now grouped by their assigned organisation and imported into the correct org rather than the session org. Sites without an org assignment are skipped.
+- **Zone API diagnostic (#105)** — added `_zone_diag` tracking to the UniFi zone lookup; shown as a yellow diagnostic card in the sync detail page when no zone names can be resolved, listing every API path attempted.
+
+### Bug Fixes
+- **UniFi cross-org 404 on cloud connections (#105)** — `get_object_or_404(UnifiConnection, pk=pk, organization=org)` failed when the session org differed from the connection's org. Replaced with `_get_unifi_connection()` helper that bypasses the org filter for superusers and staff.
+
+## [3.17.59] - 2026-04-17
+
+### Bug Fixes
+- **Whitelabeling site name not applying to page titles (#119, #120)** — child templates each define `{% block title %}` which completely overrides the parent `base.html` block, bypassing the dynamic brand expression. All 193 templates had hardcoded "Client St0r" in their title blocks. Bulk-replaced with the dynamic expression `{{ system_settings.custom_company_name|default:system_settings.site_name|default:"Client St0r" }}`.
+
+## [3.17.58] - 2026-04-17
+
+### Bug Fixes
+- **Site name / custom company name not updating browser tab or login page (#119, #120)** — `base.html` had a hardcoded title; `two_factor/_base_focus.html` had hardcoded "Client St0r" in both the `<title>` and `<h1>`. Both updated to use `system_settings.custom_company_name|default:system_settings.site_name|default:"Client St0r"` via the `organization_context` context processor which is available on all pages including unauthenticated login.
+
+## [3.17.57] - 2026-04-15
+
+### Bug Fixes
+- **Vault password reveal/copy/breach/TOTP return 404 in Global View (#119)** — `password_reveal`, `password_test_breach`, `generate_otp_api`, and the OTP QR view all used `get_object_or_404(Password, pk=pk, organization=org)` which fails when `org=None` (Global View mode). Added global view guard matching the existing pattern in `password_detail`: superusers and staff in Global View fetch by PK only.
+
+## [3.17.56] - 2026-04-15
+
+### Bug Fixes
+- **UniFi cloud connection 404 (#105)** — sync, test, and import views used `get_object_or_404(UnifiConnection, pk=pk, organization=org)` which fails for cloud connections whose org differs from the session org. Extracted `_get_unifi_connection()` helper.
+- **Firewall policy crash on Network 10.x (#105)** — `html.escape()` was called on the `action` field which can be a `dict` in Network 10.x (`{"type": "ACCEPT"}`). Added type-safety to extract the `type`/`name` key before escaping.
+- **Zone names showing as numeric IDs (#105)** — enhanced zone resolution to check inline `zoneName`/`name` fields within policy source/destination objects as a fallback when the zones API returns no results. Also added more API path variants including `firewall/zones` and legacy `networkconf` endpoint.
+
+## [3.17.55] - 2026-04-14
+
+### New Features
+- **Import job dry-run promote (#105)** — added `import_promote` view and confirmation page so dry-run import jobs can be promoted to real imports without re-uploading. Added `skip_duplicates` boolean field to `ImportJob` model (migration included).
+
+## [3.17.54] - 2026-04-13
+
+### Bug Fixes
+- **Missing `unifi_connections.mode` column on fresh installs** — migration was missing on clean database setups; added explicit migration to ensure the `mode` column is created.
+
+## [3.17.53] - 2026-04-13
+
+### Bug Fixes
+- **Vault list hardcoded URLs** — vault list templates used hardcoded `/vault/passwords/` paths instead of `{% url %}` tags, breaking installs with a custom `FORCE_SCRIPT_NAME`.
+
+## [3.17.52] - 2026-04-12
+
+### Bug Fixes
+- **Membership import failure** — CSV import for memberships was failing on missing field mapping.
+- **Vault password create decrypt error** — password creation form was not correctly handling the encryption round-trip on save.
+- **Software not appearing in device profiles** — software list was excluded from the profile document template context.
+
+## [3.17.51] - 2026-04-12
+
+### Bug Fixes
+- **UniFi `TemplateSyntaxError`** — a template tag syntax error in the UniFi detail page caused a 500 on render.
+- **AI blueprint software display** — software section was not rendering in AI-generated blueprint documents.
+
+## [3.17.50] - 2026-04-11
+
+### New Features
+- **UniFi cloud site org assignment** — added per-site organisation dropdown on the cloud connection detail page; selections are saved to `site_org_map` (JSONField) and used during import to route devices to the correct org.
+
+### Bug Fixes
+- **UniFi zone names still showing as IDs** — added int/string coercion for zone ID lookups and additional fallback: extract zone name from within policy `source`/`destination` objects when the zones API is unavailable.
+- **Traffic rule display** — improved normalisation of traffic rule entries from the integration v1 API format.
+
+## [3.17.49] - 2026-04-11
+
+### Bug Fixes
+- **Traffic routes list crash** — `traffic_routes` was not always a list; added defensive type check.
+- **Zone ID lookup** — improved zone map key coercion (int and string keys) to handle mixed-type IDs returned by different firmware versions.
+- **AI blueprint software format** — software entries were being rendered as raw Python repr instead of a readable list.
+
+## [3.17.48] - 2026-04-10
+
+### New Features
+- **Software list in AI blueprint** — installed software is now included in the AI-generated device documentation blueprint.
+
+### Bug Fixes
+- **UniFi cloud devices still empty** — `_get_all` only checked the `data` response key; the Site Manager API can return results under `items`, `devices`, or as a bare list; now tries all known key names.
+- **UniFi traffic rules error** — additional error handling for traffic rules endpoint on cloud connections.
+
+## [3.17.47] - 2026-04-10
+
+### Bug Fixes
+- **TRMM software sync missing connection FK (#113)** — software sync was creating `InstalledSoftware` records without setting the `rmm_connection` foreign key, causing integrity errors.
+- **UniFi zone names (#105)** — further improvements to zone name resolution from multiple API response shapes.
+
+## [3.17.46] - 2026-04-10
+
+### New Features
+- **Default organisation preference (#115)** — users can now set a default organisation that is auto-selected on login.
+
+### Bug Fixes
+- **Organisation location bugs (#116)** — fixed several edge cases in org location display and editing.
+
+## [3.17.45] - 2026-04-09
+
+### Bug Fixes
+- **Apply update returning HTML 500 instead of JSON** — the update apply endpoint was returning an HTML error page on import errors instead of a JSON response, breaking the JS update flow.
+
+## [3.17.44] - 2026-04-09
+
+### Bug Fixes
+- **Update check 500 on older DB schemas** — `AuditLog` query referenced `extra_data` column which did not exist on pre-migration databases; added `try/except` guard.
+
+## [3.17.43] - 2026-04-09
+
+### Bug Fixes
+- **UniFi Network 8.x+ zone policy paths** — added non-REST zone-policy paths for Network 8.x firmware; improved endpoint discovery probe to cover more firmware generations.
+
+## [3.17.42] - 2026-04-09
+
+### New Features
+- **Asset health indicators** — age warnings (configurable threshold), firmware version tracking, and warranty expiry checks added to the asset list and detail views.
+
+## [3.17.41] - 2026-04-09
+
+### Bug Fixes
+- **UniFi firewall policy path variants (#105)** — added additional path attempts for Network 10.x firewall policies including `security/firewall-policies`, `security/zone-policies`, and integration v1 variants.
+
+## [3.17.40] - 2026-04-09
+
+### New Features
+- **Contact ratings and tech notes** — organisations now support per-contact difficulty ratings and free-text technician notes.
+
+### Bug Fixes
+- **Service button colours** — fixed incorrect CSS class on service quick-info buttons.
+
+## [3.17.39] - 2026-04-09
+
+### New Features
+- **Service quick-info buttons** — organisation detail page now shows quick-info buttons for configured integrations (TRMM, UniFi, M365, etc.).
+
+## [3.17.38] - 2026-04-09
+
+### Improvements
+- **Signal-bar rating UI** — replaced SVG gauge graphics with a cleaner CSS signal-bar component for support difficulty ratings.
+
+## [3.17.37] - 2026-04-09
+
+### Bug Fixes
+- **Support ratings 403** — permission check was too restrictive; relaxed to allow org-scoped staff to submit ratings.
+
+## [3.17.36] - 2026-04-09
+
+### Bug Fixes
+- **Incorrect stat text in consult and about templates** — removed copy that referenced a wrong window/context.
+
+## [3.17.35] - 2026-04-09
+
+### New Features
+- **Free consultation request form** — public-facing form for prospective clients to submit consultation requests; submissions appear in the admin dashboard.
+
+## [3.17.34] - 2026-04-08
+
+### New Features
+- **Support difficulty ratings** — organisations can be rated for support complexity; ratings are shown on the org list and detail pages to help technicians set expectations.
+
+## [3.17.33] - 2026-04-08
+
+### Bug Fixes
+- **TRMM software sync (#113)** — expanded endpoint path attempts and fixed sync to process all devices rather than stopping after the first successful response.
+
+## [3.17.32] - 2026-04-08
+
+### New Features
+- **UniFi Traffic Routes section** — added Traffic Routes / App Rules (Network 10.x website/app blocking) as a separate section in the UniFi sync detail page and generated documentation.
+
+### Bug Fixes
+- **UniFi zone name display (#105)** — improved zone name rendering in the firewall policy table.
+- **TRMM software message** — corrected empty-state message when no software is found.
+
+## [3.17.31] - 2026-04-08
+
+### Bug Fixes
+- **TRMM software sync UUID vs PK (#113)** — sync was passing the numeric database PK to the TRMM API instead of the agent UUID; fixed to use the correct identifier.
+
+## [3.17.30] - 2026-04-08
+
+### Bug Fixes
+- **UniFi zone policy template crash (#105)** — template referenced `site.zone_policies` before it was populated; added guard. Fixed `zone_id` field mapping to handle both string and integer zone IDs.
+
+## [3.17.29] - 2026-04-08
+
+### Bug Fixes
+- **UniFi endpoint discovery (#105)** — added probe step that tests available API paths before syncing, reducing 404 noise in logs. Added Network 10.x path variants for zone policies and traffic rules.
+
+## [3.17.28] - 2026-04-08
+
+### Bug Fixes
+- **UniFi legacy session auth (#105)** — fixed session cookie handling for legacy REST auth on older UniFi firmware; expanded path probing to include more site reference formats.
+
+## [3.17.27] - 2026-04-08
+
+### New Features
+- **UniFi firewall/traffic rule diagnostics (#105)** — added `_tr_diag` and `_fp_diag` diagnostic tracking to the UniFi sync; shown in the sync detail page when rules cannot be retrieved, listing every API path attempted with status codes.
+
+### Bug Fixes
+- **UniFi legacy site ref fallback (#105)** — added `internalReference` → `name` → UUID fallback chain for site references passed to the legacy REST API.
+
 ## [3.17.26] - 2026-04-08
 
 ### Bug Fixes

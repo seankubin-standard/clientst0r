@@ -39,6 +39,15 @@
         padding: 0;
         margin: 0;
     }
+    .changelog-body h3 { font-size: 0.95rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.4rem; color: #495057; }
+    .changelog-body ul { padding-left: 1.25rem; margin-bottom: 0.5rem; }
+    .changelog-body li { margin-bottom: 0.2rem; font-size: 0.9rem; }
+    .changelog-body strong { color: #212529; }
+    .changelog-body p { font-size: 0.9rem; margin-bottom: 0.4rem; }
+    .version-entry summary { cursor: pointer; list-style: none; }
+    .version-entry summary::-webkit-details-marker { display: none; }
+    .version-entry summary .toggle-icon { transition: transform 0.2s; display: inline-block; }
+    .version-entry[open] summary .toggle-icon { transform: rotate(90deg); }
     /* Code blocks with terminal styling */
     .bg-dark.rounded {
         border-radius: 0.5rem !important;
@@ -395,13 +404,11 @@
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
-                        <i class="fas fa-list-ul"></i> What's in v{{ version }}
+                        <i class="fas fa-list-ul me-2"></i>What's in v{{ version }}
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div class="release-notes">
-                        <pre>{{ current_changelog }}</pre>
-                    </div>
+                    <div class="changelog-body" data-changelog="{{ current_changelog|escapejs }}"></div>
                 </div>
             </div>
         </div>
@@ -413,27 +420,43 @@
     <div class="row mb-4">
         <div class="col-12">
             <div class="card border-warning">
-                <div class="card-header" style="background-color: var(--warning-yellow); color: #000;">
+                <div class="card-header d-flex justify-content-between align-items-center" style="background-color: var(--warning-yellow); color: #000;">
                     <h5 class="mb-0">
-                        <i class="fas fa-arrow-up"></i> What's New in Available Updates
+                        <i class="fas fa-arrow-up me-2"></i>What's New in Available Updates
+                        <span class="badge bg-dark ms-2">{{ newer_changelogs|length }} version{{ newer_changelogs|length|pluralize }}</span>
                     </h5>
+                    <button class="btn btn-sm btn-outline-dark" onclick="toggleAllVersions(this)">
+                        <i class="fas fa-expand-alt me-1"></i>Expand All
+                    </button>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-0">
                     {% for ver, changelog in newer_changelogs.items %}
-                    <div class="mb-4">
-                        <h6 class="text-primary">
-                            <i class="fas fa-tag"></i> Version {{ ver }}
-                            {% if update_info.release_url %}
-                            <a href="{{ update_info.release_url }}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
-                                <i class="fas fa-external-link-alt"></i> View on GitHub
-                            </a>
-                            {% endif %}
-                        </h6>
-                        <div class="release-notes">
-                            <pre>{{ changelog }}</pre>
-                        </div>
-                    </div>
+                    <details class="version-entry border-bottom" {% if forloop.first %}open{% endif %}>
+                        <summary class="px-3 py-2 d-flex align-items-center gap-2 bg-light">
+                            <i class="fas fa-chevron-right toggle-icon text-muted"></i>
+                            <span class="badge bg-primary">v{{ ver }}</span>
+                            <span class="text-muted small ms-1">
+                                {% if "New Features" in changelog %}
+                                    <span class="badge bg-success me-1"><i class="fas fa-plus me-1"></i>New</span>
+                                {% endif %}
+                                {% if "Bug Fix" in changelog %}
+                                    <span class="badge bg-danger me-1"><i class="fas fa-bug me-1"></i>Fix</span>
+                                {% endif %}
+                                {% if "Improvement" in changelog %}
+                                    <span class="badge bg-info text-dark me-1"><i class="fas fa-arrow-up me-1"></i>Improved</span>
+                                {% endif %}
+                            </span>
+                        </summary>
+                        <div class="px-3 py-2 changelog-body" data-changelog="{{ changelog|escapejs }}"></div>
+                    </details>
                     {% endfor %}
+                </div>
+                <div class="card-footer text-end">
+                    {% if update_info.release_url %}
+                    <a href="{{ update_info.release_url }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-external-link-alt me-1"></i>View on GitHub
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -943,5 +966,39 @@ function applyOsUpdates(securityOnly) {
         osResult('<i class="fas fa-exclamation-triangle"></i> Request failed: ' + err.message, 'danger');
     });
 }
+
+function toggleAllVersions(btn) {
+    const details = btn.closest('.card').querySelectorAll('details.version-entry');
+    const anyOpen = Array.from(details).some(d => !d.open);
+    details.forEach(d => d.open = anyOpen);
+    btn.innerHTML = anyOpen
+        ? '<i class="fas fa-compress-alt me-1"></i>Collapse All'
+        : '<i class="fas fa-expand-alt me-1"></i>Expand All';
+}
+
+// Render changelog markdown in all .changelog-body elements
+(function() {
+    function simpleMarkdown(md) {
+        return md
+            // ### headings
+            .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+            // **bold**
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            // `code`
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            // — em dash bullet detail
+            .replace(/— /g, '— ')
+            // unordered list items
+            .replace(/^\s*[-*] (.+)$/gm, '<li>$1</li>')
+            // wrap consecutive <li> in <ul>
+            .replace(/(<li>.*<\/li>\n?)+/gs, m => '<ul>' + m + '</ul>')
+            // blank lines → paragraph breaks (simple)
+            .replace(/\n{2,}/g, '\n');
+    }
+    document.querySelectorAll('.changelog-body[data-changelog]').forEach(function(el) {
+        el.innerHTML = simpleMarkdown(el.dataset.changelog);
+        delete el.dataset.changelog;
+    });
+})();
 </script>
 {% endblock %}
