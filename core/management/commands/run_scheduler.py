@@ -77,6 +77,8 @@ class Command(BaseCommand):
             self.run_firmware_check()
         elif task.task_type == 'warranty_check':
             self.run_warranty_check()
+        elif task.task_type == 'vault_password_expiry':
+            self.run_vault_password_expiry()
         else:
             raise ValueError(f"Unknown task type: {task.task_type}")
 
@@ -163,6 +165,147 @@ class Command(BaseCommand):
             # TODO: Send email notifications
         else:
             self.stdout.write(f"    No expiring domains found")
+
+    def run_vault_password_expiry(self):
+        """Check for expiring vault passwords and send email notifications."""
+        from vault.models import Password
+        from core.models import SystemSetting
+        from django.utils import timezone
+        from django.db import models
+        from datetime import timedelta
+        from django.contrib.auth import get_user_model
+        from django.core.mail import send_mail, get_connection
+
+        settings = SystemSetting.get_settings()
+        if not settings.notify_on_password_expiry:
+            self.stdout.write('    Vault password expiry notifications disabled — skipping')
+            return
+
+        if not settings.smtp_enabled or not settings.smtp_host:
+            self.stdout.write('    SMTP not configured — skipping vault password expiry emails')
+            return
+
+        warning_days = settings.password_expiry_warning_days
+        now = timezone.now()
+        threshold = now + timedelta(days=warning_days)
+
+        # Passwords expiring within the warning window (not yet notified)
+        expiring = Password.objects.filter(
+            expires_at__isnull=False,
+            expires_at__gte=now,
+            expires_at__lte=threshold,
+            expiry_notification_sent=False,
+        ).select_related('organization')
+
+        # Passwords already expired but not yet notified
+        expired = Password.objects.filter(
+            expires_at__isnull=False,
+            expires_at__lt=now,
+            expiry_notification_sent=False,
+        ).select_related('organization')
+
+        all_due = list(expiring) + list(expired)
+
+        if not all_due:
+            self.stdout.write('    No vault passwords need expiry notifications')
+            return
+
+        self.stdout.write(f'    Found {len(all_due)} vault password(s) needing expiry notification')
+
+        # Get SMTP connection
+        try:
+            from vault.encryption import decrypt
+            smtp_password = decrypt(settings.smtp_password) if settings.smtp_password else ''
+        except Exception:
+            smtp_password = settings.smtp_password or ''
+
+        try:
+            connection = get_connection(
+                backend='django.core.mail.backends.smtp.EmailBackend',
+                host=settings.smtp_host,
+                port=settings.smtp_port,
+                username=settings.smtp_username,
+                password=smtp_password,
+                use_tls=settings.smtp_use_tls,
+                use_ssl=settings.smtp_use_ssl,
+                timeout=15,
+            )
+        except Exception as e:
+            self.stdout.write(f'    SMTP connection failed: {e}')
+            return
+
+        User = get_user_model()
+        site_url = (settings.site_url or '').rstrip('/')
+        from_email = f'{settings.smtp_from_name} <{settings.smtp_from_email}>' if settings.smtp_from_email else settings.smtp_username
+
+        # Group passwords by organisation so we can notify org-specific admins
+        from collections import defaultdict
+        by_org = defaultdict(list)
+        for pw in all_due:
+            by_org[pw.organization_id].append(pw)
+
+        notified_count = 0
+        for org_id, passwords in by_org.items():
+            # Find recipients: superusers + org staff
+            if org_id:
+                recipients = list(
+                    User.objects.filter(
+                        is_active=True, email__gt='',
+                    ).filter(
+                        models.Q(is_superuser=True) | models.Q(organization_memberships__organization_id=org_id, organization_memberships__role__in=['admin', 'owner'])
+                    ).values_list('email', flat=True).distinct()
+                )
+            else:
+                recipients = list(
+                    User.objects.filter(is_active=True, is_superuser=True, email__gt='').values_list('email', flat=True)
+                )
+
+            if not recipients:
+                self.stdout.write(f'    No recipients for org {org_id} — marking as notified anyway')
+                Password.objects.filter(pk__in=[p.pk for p in passwords]).update(expiry_notification_sent=True)
+                continue
+
+            # Build email body
+            lines = []
+            for pw in passwords:
+                if pw.expires_at < now:
+                    status = 'EXPIRED'
+                else:
+                    days = (pw.expires_at - now).days
+                    status = f'expires in {days} day{"s" if days != 1 else ""}'
+                detail_url = f'{site_url}/vault/{pw.pk}/' if site_url else f'/vault/{pw.pk}/'
+                lines.append(f'  • {pw.title} ({status}): {detail_url}')
+
+            org_name = passwords[0].organization.name if passwords[0].organization else 'Global'
+            subject = f'[{settings.custom_company_name or settings.site_name or "Client St0r"}] Vault password expiry alert — {org_name}'
+            body = (
+                f'The following vault password{"s" if len(passwords) > 1 else ""} '
+                f'{"are" if len(passwords) > 1 else "is"} expiring or have expired:\n\n'
+                + '\n'.join(lines)
+                + f'\n\nLog in to review and update: {site_url}/vault/'
+            )
+
+            sent = 0
+            for email in recipients:
+                try:
+                    send_mail(
+                        subject=subject,
+                        message=body,
+                        from_email=from_email,
+                        recipient_list=[email],
+                        connection=connection,
+                        fail_silently=False,
+                    )
+                    sent += 1
+                except Exception as e:
+                    self.stdout.write(f'    Email to {email} failed: {e}')
+
+            if sent > 0:
+                Password.objects.filter(pk__in=[p.pk for p in passwords]).update(expiry_notification_sent=True)
+                notified_count += len(passwords)
+                self.stdout.write(f'    Notified {sent} recipient(s) about {len(passwords)} password(s) for {org_name}')
+
+        self.stdout.write(f'    Vault password expiry check complete — {notified_count} password(s) notified')
 
     def run_update_check(self):
         """Check for system updates from GitHub."""

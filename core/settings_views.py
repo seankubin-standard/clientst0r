@@ -265,8 +265,10 @@ def settings_smtp(request):
         settings.notify_on_user_created = request.POST.get('notify_on_user_created') == 'on'
         settings.notify_on_ssl_expiry = request.POST.get('notify_on_ssl_expiry') == 'on'
         settings.notify_on_domain_expiry = request.POST.get('notify_on_domain_expiry') == 'on'
+        settings.notify_on_password_expiry = request.POST.get('notify_on_password_expiry') == 'on'
         settings.ssl_expiry_warning_days = int(request.POST.get('ssl_expiry_warning_days', settings.ssl_expiry_warning_days))
         settings.domain_expiry_warning_days = int(request.POST.get('domain_expiry_warning_days', settings.domain_expiry_warning_days))
+        settings.password_expiry_warning_days = int(request.POST.get('password_expiry_warning_days', settings.password_expiry_warning_days))
 
         settings.updated_by = request.user
         settings.save()

@@ -137,6 +137,19 @@
                         <div class="form-text">Send warning X days before domain registration expires</div>
                     </div>
 
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="notify_on_password_expiry" name="notify_on_password_expiry" {% if settings.notify_on_password_expiry %}checked{% endif %}>
+                        <label class="form-check-label" for="notify_on_password_expiry">
+                            Send vault password expiration warnings
+                        </label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password_expiry_warning_days" class="form-label">Password Expiry Warning (days)</label>
+                        <input type="number" class="form-control" id="password_expiry_warning_days" name="password_expiry_warning_days" value="{{ settings.password_expiry_warning_days }}" min="1" max="365">
+                        <div class="form-text">Send warning X days before a vault password's expiration date</div>
+                    </div>
+
                     <hr>
 
                     <div class="d-flex justify-content-between align-items-center">

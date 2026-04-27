@@ -496,8 +496,10 @@ class SystemSetting(models.Model):
     notify_on_user_created = models.BooleanField(default=True, help_text='Notify admins when users are created')
     notify_on_ssl_expiry = models.BooleanField(default=True, help_text='Send SSL expiration warnings')
     notify_on_domain_expiry = models.BooleanField(default=True, help_text='Send domain expiration warnings')
+    notify_on_password_expiry = models.BooleanField(default=True, help_text='Send vault password expiration warnings')
     ssl_expiry_warning_days = models.PositiveIntegerField(default=30, help_text='Days before SSL expiry to warn')
     domain_expiry_warning_days = models.PositiveIntegerField(default=60, help_text='Days before domain expiry to warn')
+    password_expiry_warning_days = models.PositiveIntegerField(default=14, help_text='Days before vault password expiry to warn')
 
     # LDAP/Active Directory Settings
     ldap_enabled = models.BooleanField(default=False, help_text='Enable LDAP/Active Directory authentication')
@@ -680,6 +682,7 @@ class ScheduledTask(models.Model):
         ('equipment_catalog_update', 'Equipment Catalog Update'),
         ('firmware_check', 'Firmware Update Check'),
         ('password_breach_scan', 'Password Breach Scanning'),
+        ('vault_password_expiry', 'Vault Password Expiry Notifications'),
         ('psa_sync', 'PSA Synchronization'),
         ('rmm_sync', 'RMM Synchronization'),
         ('scheduling_alerts', 'Scheduled Task Alerts'),
@@ -802,6 +805,12 @@ class ScheduledTask(models.Model):
                 'task_type': 'password_breach_scan',
                 'description': 'Check all passwords against HaveIBeenPwned breach database',
                 'interval_minutes': 1440,  # Once per day (24 hours)
+                'enabled': True,
+            },
+            {
+                'task_type': 'vault_password_expiry',
+                'description': 'Send email notifications for vault passwords nearing or past their expiration date',
+                'interval_minutes': 1440,  # Once per day
                 'enabled': True,
             },
             {

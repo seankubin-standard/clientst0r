@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.68] - 2026-04-27
+
+### New Features
+- **Vault password expiration dates with alerts** — vault items already had an `expires_at` field on the model; this release wires it end-to-end:
+  - **Expiry badges on vault list** — expired passwords show a red "Expired" badge; passwords expiring within 14 days show an amber "Expires in Xd" badge alongside the existing security status badge
+  - **Email notifications** — new scheduled task (`Vault Password Expiry Notifications`, runs daily) checks for passwords expiring within the configured warning window and emails superusers and org admins. Notification flag resets automatically if the expiry date is changed, so alerts re-fire with the new date
+  - **Settings** — new "Send vault password expiration warnings" toggle and "Password Expiry Warning (days)" field in Settings → SMTP & Notifications (default: 14 days)
+  - **Migration** — adds `notify_on_password_expiry` and `password_expiry_warning_days` to `SystemSetting`
+
 ## [3.17.67] - 2026-04-27
 
 ### Bug Fixes

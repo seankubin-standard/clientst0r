@@ -112,6 +112,13 @@ def password_list_datatables(request):
         else:
             security_badge = '<span class="badge bg-success"><i class="fas fa-check-circle"></i> Safe</span>'
 
+        # Expiry badge
+        if password.expires_at:
+            if password.is_expired:
+                security_badge += ' <span class="badge bg-danger"><i class="fas fa-clock"></i> Expired</span>'
+            elif password.days_until_expiration is not None and password.days_until_expiration <= 14:
+                security_badge += f' <span class="badge bg-warning text-dark"><i class="fas fa-clock"></i> Expires in {password.days_until_expiration}d</span>'
+
         # URL icon
         url_html = f'<a href="{password.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i></a>' if password.url else '—'
 
@@ -392,6 +399,9 @@ def password_edit(request, pk):
             try:
                 password = form.save(commit=False)
                 password.last_modified_by = request.user
+                # If the expiry date changed, reset the notification flag so it fires again
+                if 'expires_at' in form.changed_data:
+                    password.expiry_notification_sent = False
                 password.save()
                 form.save_m2m()
                 messages.success(request, f"Password '{password.title}' updated successfully.")
