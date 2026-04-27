@@ -682,6 +682,8 @@ class ScheduledTask(models.Model):
         ('equipment_catalog_update', 'Equipment Catalog Update'),
         ('firmware_check', 'Firmware Update Check'),
         ('password_breach_scan', 'Password Breach Scanning'),
+        ('python_dep_scan', 'Python Dependency Vulnerability Scan'),
+        ('system_warnings_digest', 'System Warnings Digest Email'),
         ('vault_password_expiry', 'Vault Password Expiry Notifications'),
         ('psa_sync', 'PSA Synchronization'),
         ('rmm_sync', 'RMM Synchronization'),
@@ -842,6 +844,18 @@ class ScheduledTask(models.Model):
                 'description': 'Run automated security scan (OS packages + Snyk) and alert superusers if vulnerabilities are found',
                 'interval_minutes': 1440,  # Once per day
                 'enabled': False,  # Opt-in
+            },
+            {
+                'task_type': 'python_dep_scan',
+                'description': 'Scan installed Python packages with pip-audit for known CVEs',
+                'interval_minutes': 1440,  # Once per day
+                'enabled': True,
+            },
+            {
+                'task_type': 'system_warnings_digest',
+                'description': 'Email superusers a digest of unresolved system warnings (OS, Python deps, expiring certs, etc.) at most once per cycle per warning',
+                'interval_minutes': 1440,  # Once per day
+                'enabled': False,  # Opt-in (requires SMTP)
             },
         ]
 
@@ -1608,3 +1622,96 @@ class SystemPackageScan(models.Model):
             return 'danger', 'Medium Risk'
         else:
             return 'danger', 'High Risk'
+
+
+class PythonPackageScan(models.Model):
+    """
+    Store results from Python dependency vulnerability scans (pip-audit).
+    Tracks installed Python packages and known CVEs.
+    """
+    scan_date = models.DateTimeField(auto_now_add=True)
+    total_packages = models.IntegerField(default=0)
+    vulnerable_packages = models.IntegerField(default=0, help_text='Distinct packages with at least one vuln')
+    total_vulnerabilities = models.IntegerField(default=0, help_text='Total vuln findings (a package can have multiple)')
+    critical_count = models.IntegerField(default=0)
+    high_count = models.IntegerField(default=0)
+    medium_count = models.IntegerField(default=0)
+    low_count = models.IntegerField(default=0)
+    unknown_count = models.IntegerField(default=0)
+    scan_succeeded = models.BooleanField(default=True)
+    scan_error = models.TextField(blank=True)
+    scan_data = models.JSONField(
+        default=dict,
+        help_text='Full pip-audit results: list of {name, version, vulns: [{id, fix_versions, severity, summary}]}'
+    )
+
+    class Meta:
+        db_table = 'python_package_scans'
+        ordering = ['-scan_date']
+        indexes = [
+            models.Index(fields=['-scan_date']),
+        ]
+
+    def __str__(self):
+        return f"Python scan {self.scan_date.strftime('%Y-%m-%d %H:%M')} — {self.total_vulnerabilities} vulns"
+
+    @property
+    def has_vulnerabilities(self):
+        return self.total_vulnerabilities > 0
+
+    @property
+    def security_status(self):
+        """Return (severity_class, label) tuple — same shape as SystemPackageScan."""
+        if not self.scan_succeeded:
+            return 'secondary', 'Scan failed'
+        if self.critical_count > 0:
+            return 'danger', 'Critical'
+        if self.high_count > 0:
+            return 'danger', 'High Risk'
+        if self.medium_count > 0:
+            return 'warning', 'Medium Risk'
+        if self.low_count > 0 or self.unknown_count > 0:
+            return 'warning', 'Low Risk'
+        return 'success', 'Secure'
+
+    @property
+    def worst_severity(self):
+        """Return the most severe severity present, or None."""
+        if self.critical_count:
+            return 'critical'
+        if self.high_count:
+            return 'high'
+        if self.medium_count:
+            return 'medium'
+        if self.low_count:
+            return 'low'
+        if self.unknown_count:
+            return 'unknown'
+        return None
+
+
+class SystemWarningNotification(models.Model):
+    """
+    Per-warning notification record. Used by the system_warnings_digest task
+    to avoid emailing the same warning twice. Cleared/superseded when the
+    underlying warning ID rotates (e.g. a new scan ID).
+    """
+    warning_id = models.CharField(
+        max_length=200,
+        unique=True,
+        help_text='Stable warning id from system_warnings.collect_system_warnings()',
+    )
+    severity = models.CharField(max_length=20)
+    title = models.TextField()
+    notified_at = models.DateTimeField(auto_now_add=True)
+    recipients_count = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = 'system_warning_notifications'
+        ordering = ['-notified_at']
+        indexes = [
+            models.Index(fields=['-notified_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.severity}: {self.warning_id}"

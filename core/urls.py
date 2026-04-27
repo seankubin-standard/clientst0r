@@ -79,6 +79,12 @@ urlpatterns = [
     path('security/package-scanner/scan/<int:pk>/', security_views.scan_detail, name='scan_detail'),
     path('api/security/package-scanner/widget/', security_views.get_dashboard_widget_data, name='package_scanner_widget_data'),
 
+    # Python Dependency Scanner (staff only)
+    path('security/python-scanner/', security_views.python_scanner_dashboard, name='python_scanner_dashboard'),
+    path('security/python-scanner/run/', security_views.run_python_scan, name='run_python_scan'),
+    path('security/python-scanner/scan/<int:pk>/', security_views.python_scan_detail, name='python_scan_detail'),
+    path('api/security/python-scanner/widget/', security_views.get_python_scanner_widget_data, name='python_scanner_widget_data'),
+
     # Firewall (superuser only)
     path('settings/firewall/', firewall_views.firewall_settings, name='firewall_settings'),
     path('settings/firewall/ip-rules/', firewall_views.firewall_ip_rules, name='firewall_ip_rules'),

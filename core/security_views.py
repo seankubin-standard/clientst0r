@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.core.management import call_command
 from django.utils import timezone
-from .models import SystemPackageScan
+from .models import SystemPackageScan, PythonPackageScan
 import io
 import json
 
@@ -233,4 +233,136 @@ def get_dashboard_widget_data(request):
         'total_packages': latest_scan.total_packages,
         'scan_date': latest_scan.scan_date.isoformat(),
         'package_manager': latest_scan.package_manager,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Python dependency scanner (pip-audit)
+# ---------------------------------------------------------------------------
+
+@login_required
+def python_scanner_dashboard(request):
+    """Dashboard for Python dependency vulnerability scans (pip-audit)."""
+    if not (request.user.is_superuser or request.user.is_staff):
+        messages.error(request, "You don't have permission to access this feature.")
+        return redirect('core:dashboard')
+
+    latest_scan = PythonPackageScan.objects.first()
+    scan_history = PythonPackageScan.objects.all()[:30]
+
+    stats = {
+        'latest_scan_date': latest_scan.scan_date if latest_scan else None,
+        'total_packages': latest_scan.total_packages if latest_scan else 0,
+        'vulnerable_packages': latest_scan.vulnerable_packages if latest_scan else 0,
+        'total_vulnerabilities': latest_scan.total_vulnerabilities if latest_scan else 0,
+        'critical_count': latest_scan.critical_count if latest_scan else 0,
+        'high_count': latest_scan.high_count if latest_scan else 0,
+        'medium_count': latest_scan.medium_count if latest_scan else 0,
+        'low_count': latest_scan.low_count if latest_scan else 0,
+        'unknown_count': latest_scan.unknown_count if latest_scan else 0,
+        'security_status': latest_scan.security_status if latest_scan else ('secondary', 'No scans yet'),
+        'scan_count': PythonPackageScan.objects.count(),
+    }
+
+    trend_scans = list(scan_history[:7])
+    trend_scans.reverse()
+    trend_data = {
+        'dates': [s.scan_date.strftime('%m/%d') for s in trend_scans],
+        'total_vulnerabilities': [s.total_vulnerabilities for s in trend_scans],
+        'critical_high': [s.critical_count + s.high_count for s in trend_scans],
+    }
+
+    # Vulnerable packages from the latest scan, surfaced for the table
+    vulnerable_pkgs = []
+    if latest_scan and latest_scan.scan_data:
+        for pkg in latest_scan.scan_data.get('packages', []):
+            if pkg.get('vulns'):
+                vulnerable_pkgs.append(pkg)
+
+    return render(request, 'core/python_scanner_dashboard.html', {
+        'latest_scan': latest_scan,
+        'scan_history': scan_history,
+        'stats': stats,
+        'trend_data': trend_data,
+        'vulnerable_packages': vulnerable_pkgs,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def run_python_scan(request):
+    """Run a pip-audit scan via the web interface."""
+    if not (request.user.is_superuser or request.user.is_staff):
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+
+    try:
+        out = io.StringIO()
+        call_command('scan_python_packages', '--save', '--json', stdout=out)
+        try:
+            scan_data = json.loads(out.getvalue())
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Failed to parse scan output',
+            }, status=500)
+
+        return JsonResponse({
+            'success': scan_data.get('succeeded', True),
+            'message': 'Scan completed' if scan_data.get('succeeded') else scan_data.get('error', 'Scan failed'),
+            'scan_data': {
+                'total_packages': scan_data.get('total_packages', 0),
+                'vulnerable_packages': scan_data.get('vulnerable_packages', 0),
+                'total_vulnerabilities': scan_data.get('total_vulnerabilities', 0),
+                'severity_counts': scan_data.get('severity_counts', {}),
+            },
+        })
+    except Exception:
+        return JsonResponse({'success': False, 'error': 'Scan failed'}, status=500)
+
+
+@login_required
+def python_scan_detail(request, pk):
+    """View details of a specific Python scan."""
+    if not (request.user.is_superuser or request.user.is_staff):
+        messages.error(request, "You don't have permission to access this feature.")
+        return redirect('core:dashboard')
+
+    from django.shortcuts import get_object_or_404
+    scan = get_object_or_404(PythonPackageScan, pk=pk)
+    vulnerable_pkgs = [p for p in scan.scan_data.get('packages', []) if p.get('vulns')]
+    return render(request, 'core/python_scan_detail.html', {
+        'scan': scan,
+        'vulnerable_packages': vulnerable_pkgs,
+    })
+
+
+@login_required
+def get_python_scanner_widget_data(request):
+    """JSON widget feed for the Python scanner."""
+    if not (request.user.is_superuser or request.user.is_staff):
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+
+    latest_scan = PythonPackageScan.objects.first()
+    if not latest_scan:
+        return JsonResponse({
+            'status': 'no_data',
+            'message': 'No scans available',
+            'total_vulnerabilities': 0,
+            'vulnerable_packages': 0,
+        })
+
+    status_class, status_label = latest_scan.security_status
+    return JsonResponse({
+        'status': status_class,
+        'status_label': status_label,
+        'total_packages': latest_scan.total_packages,
+        'vulnerable_packages': latest_scan.vulnerable_packages,
+        'total_vulnerabilities': latest_scan.total_vulnerabilities,
+        'critical': latest_scan.critical_count,
+        'high': latest_scan.high_count,
+        'medium': latest_scan.medium_count,
+        'low': latest_scan.low_count,
+        'unknown': latest_scan.unknown_count,
+        'scan_date': latest_scan.scan_date.isoformat(),
+        'scan_succeeded': latest_scan.scan_succeeded,
     })

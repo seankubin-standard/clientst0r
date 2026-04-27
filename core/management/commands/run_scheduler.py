@@ -79,6 +79,10 @@ class Command(BaseCommand):
             self.run_warranty_check()
         elif task.task_type == 'vault_password_expiry':
             self.run_vault_password_expiry()
+        elif task.task_type == 'python_dep_scan':
+            self.run_python_dep_scan()
+        elif task.task_type == 'system_warnings_digest':
+            self.run_system_warnings_digest()
         else:
             raise ValueError(f"Unknown task type: {task.task_type}")
 
@@ -306,6 +310,139 @@ class Command(BaseCommand):
                 self.stdout.write(f'    Notified {sent} recipient(s) about {len(passwords)} password(s) for {org_name}')
 
         self.stdout.write(f'    Vault password expiry check complete — {notified_count} password(s) notified')
+
+    def run_python_dep_scan(self):
+        """Scan installed Python packages for known CVEs (pip-audit)."""
+        from django.core.management import call_command
+        try:
+            call_command('scan_python_packages', '--save', verbosity=0)
+            self.stdout.write('    Python dep scan complete')
+        except Exception as e:
+            self.stdout.write(f"    Python dep scan failed: {e}")
+
+    def run_system_warnings_digest(self):
+        """Email superusers a digest of unresolved system warnings."""
+        from core.models import SystemSetting, SystemWarningNotification
+        from core.system_warnings import collect_system_warnings, severity_summary, worst_severity
+        from django.contrib.auth import get_user_model
+        from django.core.mail import send_mail, get_connection
+
+        settings = SystemSetting.get_settings()
+        if not settings.smtp_enabled or not settings.smtp_host:
+            self.stdout.write('    SMTP not configured — skipping system warnings digest')
+            return
+
+        # Pull all warnings at info+ severity
+        all_warnings = collect_system_warnings(min_severity='info')
+        if not all_warnings:
+            self.stdout.write('    No system warnings — nothing to send')
+            return
+
+        # Filter out warnings already notified (by stable warning_id)
+        already_notified_ids = set(
+            SystemWarningNotification.objects.values_list('warning_id', flat=True)
+        )
+        new_warnings = [w for w in all_warnings if w['id'] not in already_notified_ids]
+        if not new_warnings:
+            self.stdout.write(f'    All {len(all_warnings)} warning(s) already notified — nothing new')
+            return
+
+        # Recipients: active superusers with email
+        User = get_user_model()
+        recipients = list(
+            User.objects.filter(is_active=True, is_superuser=True, email__gt='')
+            .values_list('email', flat=True).distinct()
+        )
+        if not recipients:
+            self.stdout.write('    No superuser recipients — marking warnings as notified anyway')
+            for w in new_warnings:
+                SystemWarningNotification.objects.update_or_create(
+                    warning_id=w['id'],
+                    defaults={'severity': w['severity'], 'title': w['title'], 'recipients_count': 0},
+                )
+            return
+
+        try:
+            from vault.encryption import decrypt
+            smtp_password = decrypt(settings.smtp_password) if settings.smtp_password else ''
+        except Exception:
+            smtp_password = settings.smtp_password or ''
+
+        try:
+            connection = get_connection(
+                backend='django.core.mail.backends.smtp.EmailBackend',
+                host=settings.smtp_host,
+                port=settings.smtp_port,
+                username=settings.smtp_username,
+                password=smtp_password,
+                use_tls=settings.smtp_use_tls,
+                use_ssl=settings.smtp_use_ssl,
+                timeout=15,
+            )
+        except Exception as e:
+            self.stdout.write(f'    SMTP connection failed: {e}')
+            return
+
+        from_email = (
+            f'{settings.smtp_from_name} <{settings.smtp_from_email}>'
+            if settings.smtp_from_email else settings.smtp_username
+        )
+        site_url = (settings.site_url or '').rstrip('/')
+        brand = settings.custom_company_name or settings.site_name or 'Client St0r'
+        worst = worst_severity(new_warnings) or 'info'
+        summary = severity_summary(new_warnings)
+
+        subject = f'[{brand}] System warnings digest — {len(new_warnings)} new ({worst})'
+
+        body_lines = [
+            f'New system warnings detected on {brand}.',
+            '',
+            f'Summary: {summary["critical"]} critical, {summary["high"]} high, '
+            f'{summary["medium"]} medium, {summary["low"]} low, {summary["info"]} info.',
+            '',
+            'Warnings:',
+        ]
+        for w in new_warnings:
+            url = (site_url + w['action_url']) if (site_url and w['action_url']) else w['action_url']
+            body_lines.append(f'  • [{w["severity"].upper()}] {w["title"]}')
+            body_lines.append(f'      {w["detail"]}')
+            if url:
+                body_lines.append(f'      → {url}')
+            body_lines.append('')
+        body_lines.append(f'Review all warnings: {site_url}/core/security/')
+        body = '\n'.join(body_lines)
+
+        sent_to = 0
+        for email in recipients:
+            try:
+                send_mail(
+                    subject=subject,
+                    message=body,
+                    from_email=from_email,
+                    recipient_list=[email],
+                    connection=connection,
+                    fail_silently=False,
+                )
+                sent_to += 1
+            except Exception as e:
+                self.stdout.write(f'    Email to {email} failed: {e}')
+
+        if sent_to > 0:
+            for w in new_warnings:
+                SystemWarningNotification.objects.update_or_create(
+                    warning_id=w['id'],
+                    defaults={
+                        'severity': w['severity'],
+                        'title': w['title'][:500],
+                        'recipients_count': sent_to,
+                    },
+                )
+            self.stdout.write(
+                f'    System warnings digest sent to {sent_to} recipient(s) '
+                f'covering {len(new_warnings)} new warning(s)'
+            )
+        else:
+            self.stdout.write('    Digest not delivered — no recipients accepted the message')
 
     def run_update_check(self):
         """Check for system updates from GitHub."""

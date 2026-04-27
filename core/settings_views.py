@@ -117,6 +117,17 @@ def security_dashboard(request):
         auto_scan_task = None
     context['auto_scan_task'] = auto_scan_task
 
+    # Unified system warnings (OS pkg / Python deps / app version / SSL / domains)
+    from core.system_warnings import collect_system_warnings, severity_summary, worst_severity
+    sys_warnings = collect_system_warnings(min_severity='info')
+    context['system_warnings'] = sys_warnings
+    context['system_warnings_summary'] = severity_summary(sys_warnings)
+    context['system_warnings_worst'] = worst_severity(sys_warnings)
+
+    # Latest Python dep scan (for the right-column tile)
+    from core.models import PythonPackageScan
+    context['python_scan'] = PythonPackageScan.objects.first()
+
     return render(request, 'core/security_dashboard.html', context)
 
 

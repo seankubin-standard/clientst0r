@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}Python Dependency Scanner - {{ system_settings.custom_company_name|default:system_settings.site_name|default:"Client St0r" }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fab fa-python"></i> Python Dependency Scanner</h2>
+    <div>
+        <button type="button" class="btn btn-primary" id="runPyScanBtn">
+            <i class="fas fa-sync"></i> Run Scan Now
+        </button>
+        <a href="{% url 'core:package_scanner_dashboard' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-cubes"></i> OS Packages
+        </a>
+        <a href="{% url 'core:security_dashboard' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Security Dashboard
+        </a>
+    </div>
+</div>
+
+<p class="text-muted small">
+    Scans installed Python packages with <code>pip-audit</code> against the OSV/PyPI advisory database.
+    Severity is reported when the source advisory provides it; otherwise it shows as <em>unknown</em>.
+</p>
+
+<!-- Status cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card {% if stats.security_status.0 == 'success' %}border-success{% elif stats.security_status.0 == 'warning' %}border-warning{% elif stats.security_status.0 == 'danger' %}border-danger{% endif %}">
+            <div class="card-body text-center">
+                <i class="fas fa-shield-virus fa-3x mb-2 text-{{ stats.security_status.0 }}"></i>
+                <h3 class="text-{{ stats.security_status.0 }}">{{ stats.total_vulnerabilities }}</h3>
+                <p class="mb-0">Vulnerabilities</p>
+                <small class="text-muted">{{ stats.security_status.1 }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-box-open fa-3x mb-2 text-warning"></i>
+                <h3 class="text-warning">{{ stats.vulnerable_packages }}</h3>
+                <p class="mb-0">Vulnerable Packages</p>
+                <small class="text-muted">of {{ stats.total_packages }} installed</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-around">
+                    <div><span class="badge bg-danger">{{ stats.critical_count }}</span><br><small>Critical</small></div>
+                    <div><span class="badge bg-danger">{{ stats.high_count }}</span><br><small>High</small></div>
+                    <div><span class="badge bg-warning text-dark">{{ stats.medium_count }}</span><br><small>Med</small></div>
+                    <div><span class="badge bg-info">{{ stats.low_count }}</span><br><small>Low</small></div>
+                    <div><span class="badge bg-secondary">{{ stats.unknown_count }}</span><br><small>?</small></div>
+                </div>
+                <small class="text-muted d-block mt-2">By severity</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-clock fa-3x mb-2 text-secondary"></i>
+                <h3 class="text-secondary">{{ stats.scan_count }}</h3>
+                <p class="mb-0">Scans Recorded</p>
+                {% if stats.latest_scan_date %}
+                <small class="text-muted">Last: {{ stats.latest_scan_date|timesince }} ago</small>
+                {% else %}
+                <small class="text-muted">No scans yet</small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if latest_scan and not latest_scan.scan_succeeded %}
+<div class="alert alert-danger">
+    <strong>Last scan failed:</strong> {{ latest_scan.scan_error|default:"unknown error" }}
+</div>
+{% endif %}
+
+<!-- Vulnerable packages table -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-bug"></i> Vulnerable Packages</h5>
+        {% if latest_scan %}
+        <small class="text-muted">As of {{ latest_scan.scan_date }}</small>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if vulnerable_packages %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Package</th>
+                        <th>Installed</th>
+                        <th>Fix Versions</th>
+                        <th>Advisories</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for pkg in vulnerable_packages %}
+                    <tr>
+                        <td><code>{{ pkg.name }}</code></td>
+                        <td>{{ pkg.version }}</td>
+                        <td>
+                            {% with fixes=pkg.vulns.0.fix_versions %}
+                                {% if fixes %}
+                                    {% for v in pkg.vulns %}
+                                        {% for fv in v.fix_versions %}<span class="badge bg-success">{{ fv }}</span> {% endfor %}
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-muted small">no fix yet</span>
+                                {% endif %}
+                            {% endwith %}
+                        </td>
+                        <td>
+                            {% for v in pkg.vulns %}
+                                <a href="https://github.com/advisories/{{ v.id }}" target="_blank" rel="noopener" class="text-decoration-none">
+                                    <code class="small">{{ v.id }}</code>
+                                </a>
+                                {% if v.severity and v.severity != "unknown" %}
+                                    <span class="badge bg-{% if v.severity == "critical" or v.severity == "high" %}danger{% elif v.severity == "medium" %}warning text-dark{% else %}secondary{% endif %} small">{{ v.severity }}</span>
+                                {% endif %}
+                                <br>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+            {% if latest_scan %}
+                <i class="fas fa-check-circle fa-2x text-success"></i>
+                <p class="mt-2 mb-0">No vulnerabilities found in the last scan.</p>
+            {% else %}
+                <i class="fas fa-info-circle fa-2x"></i>
+                <p class="mt-2 mb-0">No scans have been run yet. Click <strong>Run Scan Now</strong> to start.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Recent scans -->
+{% if scan_history %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-history"></i> Recent Scans</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Total Vulns</th>
+                        <th>Vulnerable Pkgs</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for s in scan_history %}
+                    <tr>
+                        <td>{{ s.scan_date }}</td>
+                        <td>{{ s.total_vulnerabilities }}</td>
+                        <td>{{ s.vulnerable_packages }}</td>
+                        <td>
+                            {% with sec=s.security_status %}
+                                <span class="badge bg-{{ sec.0 }}">{{ sec.1 }}</span>
+                            {% endwith %}
+                        </td>
+                        <td><a href="{% url 'core:python_scan_detail' s.pk %}" class="btn btn-sm btn-outline-primary">Details</a></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+document.getElementById('runPyScanBtn').addEventListener('click', async function() {
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
+    try {
+        const resp = await fetch('{% url "core:run_python_scan" %}', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        });
+        const data = await resp.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Scan failed: ' + (data.error || data.message || 'unknown'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sync"></i> Run Scan Now';
+        }
+    } catch (e) {
+        alert('Scan request failed: ' + e);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sync"></i> Run Scan Now';
+    }
+});
+</script>
+{% endblock %}

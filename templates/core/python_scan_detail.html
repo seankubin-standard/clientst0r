@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Python Scan Detail - {{ system_settings.custom_company_name|default:system_settings.site_name|default:"Client St0r" }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fab fa-python"></i> Scan Detail — {{ scan.scan_date }}</h2>
+    <a href="{% url 'core:python_scanner_dashboard' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Scanner
+    </a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <table class="table table-sm">
+            <tr><th>Scan Date</th><td>{{ scan.scan_date }}</td></tr>
+            <tr><th>Total Packages</th><td>{{ scan.total_packages }}</td></tr>
+            <tr><th>Vulnerable Packages</th><td>{{ scan.vulnerable_packages }}</td></tr>
+            <tr><th>Total Vulnerabilities</th><td>{{ scan.total_vulnerabilities }}</td></tr>
+            <tr><th>By Severity</th>
+                <td>
+                    <span class="badge bg-danger">Critical: {{ scan.critical_count }}</span>
+                    <span class="badge bg-danger">High: {{ scan.high_count }}</span>
+                    <span class="badge bg-warning text-dark">Medium: {{ scan.medium_count }}</span>
+                    <span class="badge bg-info">Low: {{ scan.low_count }}</span>
+                    <span class="badge bg-secondary">Unknown: {{ scan.unknown_count }}</span>
+                </td>
+            </tr>
+            <tr><th>Status</th>
+                <td>
+                    {% if scan.scan_succeeded %}
+                        <span class="badge bg-success">Succeeded</span>
+                    {% else %}
+                        <span class="badge bg-danger">Failed</span>
+                        <code class="small d-block mt-1">{{ scan.scan_error }}</code>
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+{% if vulnerable_packages %}
+<div class="card mb-4">
+    <div class="card-header"><h5 class="mb-0"><i class="fas fa-bug"></i> Vulnerable Packages ({{ vulnerable_packages|length }})</h5></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr><th>Package</th><th>Installed</th><th>Advisory</th><th>Severity</th><th>Fix</th><th>Aliases</th></tr>
+                </thead>
+                <tbody>
+                {% for pkg in vulnerable_packages %}
+                    {% for v in pkg.vulns %}
+                    <tr>
+                        <td><code>{{ pkg.name }}</code></td>
+                        <td>{{ pkg.version }}</td>
+                        <td>
+                            <a href="https://github.com/advisories/{{ v.id }}" target="_blank" rel="noopener">
+                                <code class="small">{{ v.id }}</code>
+                            </a>
+                        </td>
+                        <td>
+                            {% if v.severity == "critical" or v.severity == "high" %}
+                                <span class="badge bg-danger">{{ v.severity }}</span>
+                            {% elif v.severity == "medium" %}
+                                <span class="badge bg-warning text-dark">{{ v.severity }}</span>
+                            {% elif v.severity == "low" %}
+                                <span class="badge bg-info">{{ v.severity }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary">unknown</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if v.fix_versions %}
+                                {% for fv in v.fix_versions %}<span class="badge bg-success">{{ fv }}</span> {% endfor %}
+                            {% else %}
+                                <span class="text-muted small">no fix</span>
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ v.aliases|join:", " }}</small></td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
