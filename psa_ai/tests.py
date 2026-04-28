@@ -607,3 +607,124 @@ class PermissionGateTests(TestCase):
         self.assertNotEqual(self.high_risk.review_state, 'approved')
         from psa_ai.models import AIActionLog
         self.assertEqual(AIActionLog.objects.filter(suggestion=self.high_risk).count(), 0)
+
+
+class RoleTemplateAIPermissionTests(TestCase):
+    """
+    Phase 10c: psa_ai/permissions.py reads granular RoleTemplate booleans
+    when present, with a sane fallback to Membership.can_admin/can_write
+    when the field is absent or unset.
+
+    These tests prove:
+      1. Setting psa_ai_send_low_risk=True on a RoleTemplate gives that
+         user send-low-risk capability even with the simple role of READONLY.
+      2. Disabling psa_ai_apply_high_risk on an Owner-template revokes
+         apply for high-risk actions even though they're otherwise
+         can_admin().
+      3. Migration backfilled the system templates per the role matrix.
+    """
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        _seed()
+        # Ensure system templates exist.
+        RoleTemplate.get_or_create_system_templates()
+        self.org = Organization.objects.create(name='ACME-perms', slug='acme-perms')
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Perm-test',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+
+    def test_role_template_grants_send_low_risk_to_readonly_user(self):
+        from accounts.models import RoleTemplate
+        from psa_ai.permissions import can_send_reply
+        from psa_ai.models import AISuggestion
+
+        user = User.objects.create_user('grant-low', password='pw', email='gl@x.com')
+        template = RoleTemplate.objects.create(
+            name='Custom Helpdesk',
+            organization=self.org,
+            psa_ai_view=True,
+            psa_ai_send_low_risk=True,
+        )
+        Membership.objects.update_or_create(
+            user=user, organization=self.org,
+            defaults={'role': Role.READONLY, 'role_template': template, 'is_active': True},
+        )
+
+        sugg = AISuggestion.objects.create(
+            organization=self.org, native_ticket=self.ticket,
+            kind='reply', risk_level='low', review_state='draft',
+            model_name='m', confidence=Decimal('0.9'),
+            suggested_body='ok', requested_by=user,
+        )
+        self.assertTrue(can_send_reply(user, sugg))
+
+        # Sanity: when we drop the flag, send is denied.
+        template.psa_ai_send_low_risk = False
+        template.save(update_fields=['psa_ai_send_low_risk'])
+        self.assertFalse(can_send_reply(user, sugg))
+
+    def test_role_template_revokes_apply_high_risk(self):
+        """An Editor can ordinarily apply low-risk actions; if their template
+        explicitly sets apply_high_risk=False they cannot apply a high-risk one."""
+        from accounts.models import RoleTemplate
+        from psa_ai.permissions import can_apply_action
+        from psa_ai.models import AISuggestion
+
+        user = User.objects.create_user('revoke-high', password='pw', email='rh@x.com')
+        template = RoleTemplate.objects.get(name='Editor', is_system_template=True,
+                                            organization__isnull=True)
+        Membership.objects.update_or_create(
+            user=user, organization=self.org,
+            defaults={'role': Role.EDITOR, 'role_template': template, 'is_active': True},
+        )
+        sugg = AISuggestion.objects.create(
+            organization=self.org, native_ticket=self.ticket,
+            kind='action', risk_level='high', review_state='draft',
+            model_name='m', confidence=Decimal('0.9'),
+            action_type='escalate', action_payload={'reason': 'x'},
+            suggested_body='escalate', requested_by=user,
+        )
+        # Editor's high_risk default is True per migration; flip it off and
+        # verify the resolver respects the new value.
+        template.psa_ai_apply_high_risk = False
+        template.save(update_fields=['psa_ai_apply_high_risk'])
+        # Editor in our matrix doesn't have approve_action either, but a
+        # system Editor's role flag is can_admin()=False — so the high-risk
+        # branch's admin gate already blocks. Validate the deeper behaviour
+        # by giving them admin role but stripping the flag:
+        Membership.objects.filter(user=user, organization=self.org).update(role=Role.ADMIN)
+        self.assertFalse(can_apply_action(user, sugg))
+
+    def test_system_templates_match_role_matrix(self):
+        """Migration backfilled per the ROADMAP matrix — confirm key rows."""
+        from accounts.models import RoleTemplate
+        owner = RoleTemplate.objects.get(name='Owner', is_system_template=True,
+                                         organization__isnull=True)
+        helpdesk = RoleTemplate.objects.get(name='Help Desk', is_system_template=True,
+                                            organization__isnull=True)
+        readonly = RoleTemplate.objects.get(name='Read-Only', is_system_template=True,
+                                            organization__isnull=True)
+        # Owner has every flag.
+        for f in ('psa_ai_view', 'psa_ai_send_low_risk', 'psa_ai_send_high_risk',
+                  'psa_ai_approve_reply', 'psa_ai_apply_low_risk',
+                  'psa_ai_apply_high_risk', 'psa_ai_approve_action',
+                  'psa_ai_run_script', 'psa_ai_create_workflow',
+                  'psa_ai_billing', 'psa_ai_admin'):
+            self.assertTrue(getattr(owner, f), f'Owner should have {f}')
+        # Help Desk: low-risk only.
+        self.assertTrue(helpdesk.psa_ai_view)
+        self.assertTrue(helpdesk.psa_ai_send_low_risk)
+        self.assertFalse(helpdesk.psa_ai_send_high_risk)
+        self.assertTrue(helpdesk.psa_ai_apply_low_risk)
+        self.assertFalse(helpdesk.psa_ai_apply_high_risk)
+        self.assertFalse(helpdesk.psa_ai_admin)
+        # Read-Only: view only.
+        self.assertTrue(readonly.psa_ai_view)
+        self.assertFalse(readonly.psa_ai_send_low_risk)
+        self.assertFalse(readonly.psa_ai_apply_low_risk)
+        self.assertFalse(readonly.psa_ai_admin)

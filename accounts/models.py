@@ -457,6 +457,32 @@ class RoleTemplate(BaseModel):
     api_access = models.BooleanField(default=False, help_text='Access API endpoints')
     api_keys_manage = models.BooleanField(default=False, help_text='Create/manage API keys')
 
+    # PSA AI Permissions (Workstream 10)
+    # Risk-tiered for replies and actions, plus admin/billing carve-outs.
+    # Permission resolver: psa_ai/permissions.py
+    psa_ai_view = models.BooleanField(default=True,
+        help_text='View AI suggestions and the AI inbox')
+    psa_ai_send_low_risk = models.BooleanField(default=False,
+        help_text='Send low-risk AI replies as public ticket comments')
+    psa_ai_send_high_risk = models.BooleanField(default=False,
+        help_text='Send medium- or high-risk AI replies (requires admin in most orgs)')
+    psa_ai_approve_reply = models.BooleanField(default=False,
+        help_text='Approve another user\'s pending AI reply')
+    psa_ai_apply_low_risk = models.BooleanField(default=False,
+        help_text='Apply low-risk AI actions (e.g. set priority, add internal note)')
+    psa_ai_apply_high_risk = models.BooleanField(default=False,
+        help_text='Apply medium- or high-risk AI actions (state changes, assignment)')
+    psa_ai_approve_action = models.BooleanField(default=False,
+        help_text='Approve another user\'s pending AI action')
+    psa_ai_run_script = models.BooleanField(default=False,
+        help_text='Run an AI-suggested RMM script against an asset')
+    psa_ai_create_workflow = models.BooleanField(default=False,
+        help_text='Create or assign a workflow from an AI suggestion')
+    psa_ai_billing = models.BooleanField(default=False,
+        help_text='Modify financial fields (invoiced amount, contract usage) via AI')
+    psa_ai_admin = models.BooleanField(default=False,
+        help_text='Configure AI (model, threshold, allow/blocklist, voice)')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -509,6 +535,17 @@ class RoleTemplate(BaseModel):
                 'org_manage_settings': True,
                 'api_access': True,
                 'api_keys_manage': True,
+                'psa_ai_view': True,
+                'psa_ai_send_low_risk': True,
+                'psa_ai_send_high_risk': True,
+                'psa_ai_approve_reply': True,
+                'psa_ai_apply_low_risk': True,
+                'psa_ai_apply_high_risk': True,
+                'psa_ai_approve_action': True,
+                'psa_ai_run_script': True,
+                'psa_ai_create_workflow': True,
+                'psa_ai_billing': True,
+                'psa_ai_admin': True,
             },
             {
                 'name': 'Administrator',
@@ -548,6 +585,17 @@ class RoleTemplate(BaseModel):
                 'org_manage_settings': False,
                 'api_access': True,
                 'api_keys_manage': False,
+                'psa_ai_view': True,
+                'psa_ai_send_low_risk': True,
+                'psa_ai_send_high_risk': True,
+                'psa_ai_approve_reply': True,
+                'psa_ai_apply_low_risk': True,
+                'psa_ai_apply_high_risk': True,
+                'psa_ai_approve_action': True,
+                'psa_ai_run_script': True,
+                'psa_ai_create_workflow': True,
+                'psa_ai_billing': True,
+                'psa_ai_admin': False,
             },
             {
                 'name': 'Editor',
@@ -587,6 +635,17 @@ class RoleTemplate(BaseModel):
                 'org_manage_settings': False,
                 'api_access': True,
                 'api_keys_manage': False,
+                'psa_ai_view': True,
+                'psa_ai_send_low_risk': True,
+                'psa_ai_send_high_risk': True,
+                'psa_ai_approve_reply': True,
+                'psa_ai_apply_low_risk': True,
+                'psa_ai_apply_high_risk': True,
+                'psa_ai_approve_action': False,
+                'psa_ai_run_script': True,
+                'psa_ai_create_workflow': True,
+                'psa_ai_billing': False,
+                'psa_ai_admin': False,
             },
             {
                 'name': 'Help Desk',
@@ -626,6 +685,17 @@ class RoleTemplate(BaseModel):
                 'org_manage_settings': False,
                 'api_access': False,
                 'api_keys_manage': False,
+                'psa_ai_view': True,
+                'psa_ai_send_low_risk': True,
+                'psa_ai_send_high_risk': False,
+                'psa_ai_approve_reply': False,
+                'psa_ai_apply_low_risk': True,
+                'psa_ai_apply_high_risk': False,
+                'psa_ai_approve_action': False,
+                'psa_ai_run_script': False,
+                'psa_ai_create_workflow': False,
+                'psa_ai_billing': False,
+                'psa_ai_admin': False,
             },
             {
                 'name': 'IT Manager',
@@ -665,6 +735,17 @@ class RoleTemplate(BaseModel):
                 'org_manage_settings': False,
                 'api_access': True,
                 'api_keys_manage': False,
+                'psa_ai_view': True,
+                'psa_ai_send_low_risk': True,
+                'psa_ai_send_high_risk': True,
+                'psa_ai_approve_reply': True,
+                'psa_ai_apply_low_risk': True,
+                'psa_ai_apply_high_risk': True,
+                'psa_ai_approve_action': False,
+                'psa_ai_run_script': True,
+                'psa_ai_create_workflow': True,
+                'psa_ai_billing': False,
+                'psa_ai_admin': False,
             },
             {
                 'name': 'Documentation Writer',
@@ -704,6 +785,17 @@ class RoleTemplate(BaseModel):
                 'org_manage_settings': False,
                 'api_access': False,
                 'api_keys_manage': False,
+                'psa_ai_view': True,
+                'psa_ai_send_low_risk': False,
+                'psa_ai_send_high_risk': False,
+                'psa_ai_approve_reply': False,
+                'psa_ai_apply_low_risk': False,
+                'psa_ai_apply_high_risk': False,
+                'psa_ai_approve_action': False,
+                'psa_ai_run_script': False,
+                'psa_ai_create_workflow': False,
+                'psa_ai_billing': False,
+                'psa_ai_admin': False,
             },
             {
                 'name': 'Read-Only',
@@ -743,6 +835,17 @@ class RoleTemplate(BaseModel):
                 'org_manage_settings': False,
                 'api_access': False,
                 'api_keys_manage': False,
+                'psa_ai_view': True,
+                'psa_ai_send_low_risk': False,
+                'psa_ai_send_high_risk': False,
+                'psa_ai_approve_reply': False,
+                'psa_ai_apply_low_risk': False,
+                'psa_ai_apply_high_risk': False,
+                'psa_ai_approve_action': False,
+                'psa_ai_run_script': False,
+                'psa_ai_create_workflow': False,
+                'psa_ai_billing': False,
+                'psa_ai_admin': False,
             },
         ]
 
