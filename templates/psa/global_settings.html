@@ -74,6 +74,51 @@
 
                     <hr>
 
+                    <h6 class="text-muted mt-2 mb-3">AI Assist <small>— configure the API key under <a href="{% url 'core:settings_ai' %}">Settings → AI &amp; LLM</a></small></h6>
+
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="psa_ai_enabled" name="psa_ai_enabled" {% if settings.psa_ai_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="psa_ai_enabled">
+                            <strong>Enable AI Suggested Replies + Actions</strong>
+                            <small class="text-muted d-block">Off by default. Requires an Anthropic API key in the AI &amp; LLM settings.</small>
+                        </label>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Voice / tone</label>
+                            <input type="text" class="form-control" name="psa_ai_voice" value="{{ settings.psa_ai_voice|default:'' }}" maxlength="1000" placeholder="Professional, concise, confident.">
+                            <small class="form-text text-muted">Free-form sentence injected into the system prompt.</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Min confidence (0.00–1.00)</label>
+                            <input type="number" class="form-control" name="psa_ai_min_confidence" value="{{ settings.psa_ai_min_confidence }}" min="0" max="1" step="0.05">
+                            <small class="form-text text-muted">Below this, suggestions are shown collapsed.</small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Blocked subject keywords <small class="text-muted">— newline-separated, case-insensitive substring match</small></label>
+                        <textarea class="form-control font-monospace" rows="3" name="psa_ai_blocked_subject_keywords"
+                                  placeholder="e.g.:&#10;wire transfer&#10;social security&#10;ransomware">{{ settings.psa_ai_blocked_subject_keywords|default:'' }}</textarea>
+                        <small class="form-text text-muted">Tickets whose subject matches any line will skip AI generation.</small>
+                    </div>
+
+                    <div class="alert alert-light border small">
+                        <strong><i class="fas fa-shield-alt me-1"></i>Hard-baked AI guardrails (always on):</strong>
+                        <ul class="mb-0 mt-1">
+                            <li>Per-user rate limit ({{ settings.psa_ai_per_user_rate_per_min|default:10 }} generations/min) — prevents abuse.</li>
+                            <li>Per-user daily token cap ({{ settings.psa_ai_per_user_daily_limit|default:50000 }}) AND per-org daily cap ({{ settings.psa_ai_daily_token_limit|default:200000 }}).</li>
+                            <li>Output content filter — rejects suggestions containing API keys, JWTs, AWS/GitHub tokens, private-key headers, or prompt-injection success markers.</li>
+                            <li>Input sanitisation — strips control / zero-width / RTL-override characters before sending to the model.</li>
+                            <li>Prompt-injection envelope — user content is wrapped in markers; model is instructed to ignore any instructions inside.</li>
+                            <li>Vault data is NEVER included in any AI prompt or context. Internal notes are redacted from the model's view too.</li>
+                            <li>Suggestions auto-expire after {{ settings.psa_ai_suggestion_ttl_minutes|default:60 }} minutes.</li>
+                        </ul>
+                    </div>
+
+                    <hr>
+
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save me-1"></i>Save Settings
                     </button>

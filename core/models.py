@@ -596,6 +596,20 @@ class SystemSetting(models.Model):
     psa_desktop_alerts_enabled = models.BooleanField(default=False, help_text='Send desktop / browser alerts to staff')
     psa_external_alert_ingest_enabled = models.BooleanField(default=False, help_text='Accept alerts from external monitoring/RMM webhooks')
 
+    # PSA AI Assist (Workstream 10) — admin-controlled at top level
+    # API keys / provider / model selection live on the existing
+    # /core/settings/ai/ page which writes to .env (ANTHROPIC_API_KEY,
+    # CLAUDE_MODEL). The fields here are PSA-behavior-specific only.
+    psa_ai_enabled = models.BooleanField(default=False, help_text='Enable AI Suggested Replies + Suggested Actions on PSA tickets (off by default)')
+    psa_ai_min_confidence = models.DecimalField(max_digits=4, decimal_places=2, default=0.75, help_text='Suggestions below this confidence (0–1) are shown collapsed and cannot be one-click approved.')
+    psa_ai_suggestion_ttl_minutes = models.PositiveIntegerField(default=60, help_text='Suggestions older than this auto-expire (cannot be applied).')
+    psa_ai_daily_token_limit = models.PositiveIntegerField(default=200000, help_text='Per-organization daily token budget. AI generation stops for the day at this limit.')
+    psa_ai_per_user_daily_limit = models.PositiveIntegerField(default=50000, help_text='Per-user daily token cap (anti-abuse — one user cannot drain the org pool).')
+    psa_ai_per_user_rate_per_min = models.PositiveIntegerField(default=10, help_text='Max AI generations per user per minute (anti-abuse).')
+    psa_ai_max_output_tokens = models.PositiveIntegerField(default=2000, help_text='Hard cap on a single AI response — prevents runaway costs / over-long replies.')
+    psa_ai_voice = models.TextField(blank=True, default='Professional, concise, confident.', help_text='Free-form sentence injected into the system prompt — sets the MSP voice/tone.')
+    psa_ai_blocked_subject_keywords = models.TextField(blank=True, help_text='Newline-separated; suggestions are skipped when the ticket subject matches any of these (case-insensitive substring match).')
+
     # Asset Health Features
     asset_age_warnings_enabled = models.BooleanField(default=False, help_text='Show warnings when assets approach or exceed their age threshold')
     asset_age_warning_years = models.PositiveIntegerField(default=3, help_text='Age (years) at which to show a yellow warning for assets without a lifespan set')

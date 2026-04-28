@@ -181,6 +181,28 @@ def ticket_detail(request, ticket_number):
         for c in canned
     ]
 
+    # Phase 10a — surface AI suggestions on the ticket
+    ai_suggestions = []
+    ai_suggestions_json = []
+    ai_enabled = False
+    try:
+        from core.models import SystemSetting
+        from psa_ai.models import AISuggestion
+        ss = SystemSetting.get_settings()
+        ai_enabled = bool(ss.psa_ai_enabled)
+        if ai_enabled:
+            ai_suggestions = list(
+                AISuggestion.objects
+                .filter(native_ticket=ticket)
+                .order_by('-created_at')[:10]
+            )
+            ai_suggestions_json = [
+                {'id': s.id, 'suggested_body': s.suggested_body}
+                for s in ai_suggestions
+            ]
+    except Exception:
+        ai_enabled = False
+
     return render(request, 'psa/ticket_detail.html', {
         'ticket': ticket,
         'comments': ticket.comments.select_related('author').order_by('created_at'),
@@ -194,6 +216,9 @@ def ticket_detail(request, ticket_number):
         'watchers_count': watchers_count,
         'is_watcher': is_watcher,
         'canned_replies': canned_replies,
+        'ai_enabled': ai_enabled,
+        'ai_suggestions': ai_suggestions,
+        'ai_suggestions_json': ai_suggestions_json,
     })
 
 
@@ -336,7 +361,7 @@ def psa_global_settings_view(request):
                 messages.success(request, f'Removed opt-out for {org_repr}.')
             return redirect('psa:settings')
 
-        # Default: save global per-surface flags
+        # Default: save global per-surface flags + AI behavior knobs
         previous = {
             'psa_portal_enabled': settings.psa_portal_enabled,
             'psa_anonymous_ticket_form_enabled': settings.psa_anonymous_ticket_form_enabled,
@@ -344,6 +369,10 @@ def psa_global_settings_view(request):
             'psa_sms_notifications_enabled': settings.psa_sms_notifications_enabled,
             'psa_desktop_alerts_enabled': settings.psa_desktop_alerts_enabled,
             'psa_external_alert_ingest_enabled': settings.psa_external_alert_ingest_enabled,
+            'psa_ai_enabled': settings.psa_ai_enabled,
+            'psa_ai_voice': settings.psa_ai_voice,
+            'psa_ai_min_confidence': str(settings.psa_ai_min_confidence),
+            'psa_ai_blocked_subject_keywords': settings.psa_ai_blocked_subject_keywords,
         }
         settings.psa_portal_enabled = request.POST.get('psa_portal_enabled') == 'on'
         settings.psa_anonymous_ticket_form_enabled = request.POST.get('psa_anonymous_ticket_form_enabled') == 'on'
@@ -351,6 +380,23 @@ def psa_global_settings_view(request):
         settings.psa_sms_notifications_enabled = request.POST.get('psa_sms_notifications_enabled') == 'on'
         settings.psa_desktop_alerts_enabled = request.POST.get('psa_desktop_alerts_enabled') == 'on'
         settings.psa_external_alert_ingest_enabled = request.POST.get('psa_external_alert_ingest_enabled') == 'on'
+
+        settings.psa_ai_enabled = request.POST.get('psa_ai_enabled') == 'on'
+        settings.psa_ai_voice = (request.POST.get('psa_ai_voice') or '').strip()[:1000]
+        try:
+            from decimal import Decimal as _D
+            v = _D(request.POST.get('psa_ai_min_confidence') or '0.75')
+            if v < 0:
+                v = _D('0')
+            if v > 1:
+                v = _D('1')
+            settings.psa_ai_min_confidence = v
+        except Exception:
+            pass
+        settings.psa_ai_blocked_subject_keywords = (
+            request.POST.get('psa_ai_blocked_subject_keywords') or ''
+        ).strip()[:5000]
+
         settings.updated_by = request.user
         settings.save()
 

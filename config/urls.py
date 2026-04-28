@@ -47,6 +47,7 @@ urlpatterns = [
     path('inventory/', include('inventory.urls')),
     path('scheduling/', include('scheduling.urls')),
     path('psa/', include('psa.urls')),
+    path('psa/ai/', include('psa_ai.urls')),
 
     # API
     path('api/', include('api.urls')),

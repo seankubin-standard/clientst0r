@@ -273,6 +273,90 @@
             </div>
             {% endif %}
         </div>
+
+        {# AI Assist (Phase 10a — read-only generate + view) #}
+        {% if ai_enabled %}
+        <div class="card mt-3 border-primary">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="background: rgba(13,110,253,.08);">
+                <strong><i class="fas fa-wand-magic-sparkles me-1"></i>AI Assist</strong>
+                <form method="post" action="{% url 'psa_ai:generate_reply' ticket.ticket_number %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-primary"
+                            {% if is_closed %}disabled title="Closed tickets do not generate suggestions"{% endif %}>
+                        <i class="fas fa-bolt me-1"></i>Suggest reply
+                    </button>
+                </form>
+            </div>
+            {% if ai_suggestions %}
+            <div class="list-group list-group-flush small">
+                {% for s in ai_suggestions %}
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div class="flex-grow-1">
+                            <span class="badge bg-warning text-dark me-1">AI-Generated</span>
+                            <span class="badge {% if s.review_state == 'draft' %}bg-info{% elif s.review_state == 'rejected' %}bg-secondary{% elif s.review_state == 'blocked' %}bg-danger{% elif s.review_state == 'failed' %}bg-danger{% elif s.review_state == 'approved' %}bg-success{% else %}bg-light text-dark{% endif %}">
+                                {{ s.get_review_state_display }}
+                            </span>
+                            <span class="badge {% if s.risk_level == 'high' %}bg-danger{% elif s.risk_level == 'medium' %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                                risk: {{ s.risk_level }}
+                            </span>
+                            <small class="text-muted ms-1">conf {{ s.confidence|floatformat:2 }} · {{ s.created_at|timesince }} ago</small>
+                        </div>
+                    </div>
+                    {% if s.suggested_body %}
+                    <pre class="mt-2 mb-2 p-2 bg-light rounded" style="white-space: pre-wrap; font-family: inherit;">{{ s.suggested_body }}</pre>
+                    {% else %}
+                    <em class="text-muted d-block mt-2">No body — see audit log for the reason.</em>
+                    {% endif %}
+                    <div class="d-flex gap-2 align-items-center">
+                        {% if s.suggested_body %}
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="psaAiInsert({{ s.id }})">
+                            <i class="fas fa-clipboard me-1"></i>Insert into reply
+                        </button>
+                        {% endif %}
+                        {% if s.review_state == 'draft' or s.review_state == 'pending_review' %}
+                        <form method="post" action="{% url 'psa_ai:suggestion_reject' s.id %}" class="d-inline d-flex gap-1">
+                            {% csrf_token %}
+                            <input type="text" name="reviewer_note" class="form-control form-control-sm" placeholder="Why? (logged as feedback)" maxlength="200" style="width: 240px;">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">Reject</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body small text-muted">
+                <i class="fas fa-info-circle me-1"></i>No AI suggestions yet. Click <em>Suggest reply</em> to generate one. Human review is required before sending.
+            </div>
+            {% endif %}
+            <div class="card-footer small text-muted">
+                Suggestions are AI-generated drafts. Always review before sending. Subject blocklist + content filters are applied; secrets are filtered out.
+            </div>
+        </div>
+        {{ ai_suggestions_json|json_script:"aiSuggestionList" }}
+        <script>
+        (function() {
+            var raw = document.getElementById('aiSuggestionList');
+            if (!raw) return;
+            try {
+                var data = JSON.parse(raw.textContent);
+                window.__aiBodies = {};
+                data.forEach(function(s) { window.__aiBodies[s.id] = s.suggested_body || ''; });
+            } catch (e) { window.__aiBodies = {}; }
+        })();
+        function psaAiInsert(id) {
+            var body = (window.__aiBodies || {})[id] || '';
+            var ta = document.querySelector('textarea[name="body"]');
+            if (ta) {
+                ta.value = body;
+                ta.focus();
+                ta.scrollIntoView({behavior: 'smooth', block: 'center'});
+            }
+        }
+        </script>
+        {% endif %}
     </div>
 </div>
 

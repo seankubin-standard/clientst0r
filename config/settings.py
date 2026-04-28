@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     'inventory.apps.InventoryConfig',
     'scheduling.apps.SchedulingConfig',
     'psa.apps.PsaConfig',
+    'psa_ai.apps.PsaAiConfig',
 ]
 
 # Optional apps - only add if installed (allows updates without dependencies)
