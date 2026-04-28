@@ -334,7 +334,14 @@ SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False' if DEBUG else 'Tr
 # HSTS - Strict Transport Security (31536000 = 1 year in production)
 # Start with shorter duration, increase to 1 year after testing
 SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '0' if DEBUG else '31536000'))
-SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
+# includeSubDomains is OPT-IN — auto-cascading would force HTTPS on every
+# sibling subdomain (e.g. mail.example.com), which is rarely what an admin
+# wants on first enable. Set SECURE_HSTS_INCLUDE_SUBDOMAINS=True only after
+# verifying every public subdomain has a valid TLS cert.
+SECURE_HSTS_INCLUDE_SUBDOMAINS = (
+    SECURE_HSTS_SECONDS > 0
+    and os.getenv('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'False').lower() == 'true'
+)
 SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'False').lower() == 'true'  # Only enable after 1 year+ HSTS
 
 # Proxy SSL Header (for Gunicorn behind nginx/caddy)
