@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.99] - 2026-04-28
+
+### Changed — Invoice form matches the compact quote form
+- Same compact `form-control-sm` density, single-line description, dynamic add/delete line items, live-recompute subtotal/tax/total.
+
+### Added — PDF / Download / Email buttons on the list rows
+- Quote and Invoice list rows now have inline icon buttons: View, Edit, View PDF, Download PDF, Email. The detail-page buttons are still there too; the list rows just save a click for the common cases.
+
 ## [3.17.98] - 2026-04-28
 
 ### Added — Phase 9: PDF + Email for Quotes & Invoices

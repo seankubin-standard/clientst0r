@@ -44,19 +44,23 @@
                     <td>{{ q.total }}</td>
                     <td>{{ q.created_at|date:'Y-m-d' }}</td>
                     <td class="text-nowrap">
-                        <a href="{% url 'psa:quote_edit' q.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        <a href="{% url 'psa:quote_detail' q.pk %}" class="btn btn-sm btn-outline-secondary" title="View"><i class="fas fa-eye"></i></a>
+                        <a href="{% url 'psa:quote_edit' q.pk %}" class="btn btn-sm btn-outline-secondary" title="Edit"><i class="fas fa-pen"></i></a>
+                        <a href="{% url 'psa:quote_pdf' q.pk %}" target="_blank" class="btn btn-sm btn-outline-primary" title="View PDF"><i class="fas fa-file-pdf"></i></a>
+                        <a href="{% url 'psa:quote_pdf' q.pk %}?download=1" class="btn btn-sm btn-outline-primary" title="Download PDF"><i class="fas fa-download"></i></a>
+                        <a href="{% url 'psa:quote_detail' q.pk %}#emailQuoteModal" class="btn btn-sm btn-primary" title="Email"><i class="fas fa-envelope"></i></a>
                         {% if q.customer_token and q.status != 'accepted' and q.status != 'rejected' %}
                         <button class="btn btn-sm btn-outline-info copy-sign-link"
                                 data-link="{{ request.scheme }}://{{ request.get_host }}/portal/quote/{{ q.customer_token }}/sign/"
                                 title="Copy customer e-sign URL">
-                            <i class="fas fa-signature"></i> Sign URL
+                            <i class="fas fa-signature"></i>
                         </button>
                         {% endif %}
                         {% if q.status != 'accepted' and q.status != 'rejected' %}
                         <form method="post" action="{% url 'psa:quote_accept' q.pk %}" class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="create_ticket" value="on">
-                            <button class="btn btn-sm btn-success" onclick="return confirm('Accept this quote and create a ticket?')">Accept</button>
+                            <button class="btn btn-sm btn-success" onclick="return confirm('Accept this quote and create a ticket?')" title="Accept"><i class="fas fa-check"></i></button>
                         </form>
                         {% endif %}
                     </td>
