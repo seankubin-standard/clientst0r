@@ -34,6 +34,7 @@ python-dotenv>=1.2.2,<1.3  # Updated to 1.2.2+ to fix symlink-following arbitrar
 Pillow>=12.2.0,<13.0  # Updated to 12.2.0+ to fix FITS GZIP decompression bomb (was 12.1.* for PSD oob-write)
 markdown>=3.8.1,<4.0  # Updated to 3.8.1+ to fix uncaught-exception DoS
 bleach==6.1.*
+tinycss2>=1.2,<2  # required by bleach.css_sanitizer for #127 progress-bar widths
 pytz==2024.1
 psutil==5.9.*
 packaging==24.1  # Version comparison for auto-updates

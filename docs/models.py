@@ -5,8 +5,13 @@ from django.db import models
 from django.contrib.auth.models import User
 from core.models import Organization, Tag, BaseModel
 from core.utils import OrganizationManager
+import re
 import markdown
 import bleach
+try:
+    from bleach.css_sanitizer import CSSSanitizer
+except Exception:  # bleach < 6 — older API; CSS just gets stripped
+    CSSSanitizer = None
 
 
 class DocumentCategory(BaseModel):
@@ -133,7 +138,22 @@ class Document(BaseModel):
             if name == 'href':
                 return any(value.startswith(p) for p in SAFE_HREF_PROTOCOLS)
             if name == 'style':
-                return False  # Remove style from all tags to prevent CSS injection
+                # Issue #127: AI-generated docs need width: N% on Bootstrap
+                # progress bars. Allow the attribute through; CSSSanitizer
+                # below filters property names, so anything that isn't on
+                # the property allowlist (width / height / max-width /
+                # aspect-ratio) is dropped silently. No CSS injection
+                # vector survives.
+                return True
+            # Allow role + aria-* on tags that drive accessibility for the
+            # progress / table / status patterns AI docs emit.
+            if name == 'role':
+                return value in (
+                    'progressbar', 'status', 'alert', 'note',
+                    'tab', 'tabpanel', 'tablist',
+                )
+            if name.startswith('aria-'):
+                return True
             # Allow class, id, and data-* attributes on all tags
             if name.startswith('data-'):
                 return True
@@ -151,7 +171,17 @@ class Document(BaseModel):
             tag_allowed = allowed.get(tag, [])
             return name in global_allowed or name in tag_allowed
 
-        return bleach.clean(html, tags=allowed_tags, attributes=allowed_attrs_fn, strip=False)
+        # Issue #127: bleach 6+ runs styles through CSSSanitizer separately
+        # from the attribute filter. Without an explicit sanitizer the value
+        # of `style` is emptied even when the attribute is allowed. Restrict
+        # the property allowlist so only the bar-width pattern AI docs need
+        # actually survives.
+        clean_kwargs = dict(tags=allowed_tags, attributes=allowed_attrs_fn, strip=False)
+        if CSSSanitizer is not None:
+            clean_kwargs['css_sanitizer'] = CSSSanitizer(
+                allowed_css_properties=['width', 'height', 'max-width', 'aspect-ratio'],
+            )
+        return bleach.clean(html, **clean_kwargs)
 
     # Backward compatibility
     def render_markdown(self):
