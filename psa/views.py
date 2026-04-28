@@ -2023,11 +2023,15 @@ def quote_form(request, pk=None):
         messages.success(request, f'Saved "{item.quote_number}".')
         return redirect('psa:quote_list')
 
+    from core.models import SystemSetting
+    settings = SystemSetting.get_settings()
+    default_tax_rate = settings.psa_default_tax_rate if not item else item.tax_rate
     return render(request, 'psa/quote_form.html', {
         'item': item,
         'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
         'status_choices': Quote.STATUS_CHOICES,
         'line_items': item.line_items.all() if item else [],
+        'default_tax_rate': default_tax_rate,
     })
 
 
@@ -2465,11 +2469,17 @@ def invoice_form(request, pk=None):
         messages.success(request, f'Saved {item.invoice_number}.')
         return redirect('psa:invoice_detail', pk=item.pk)
 
+    from core.models import SystemSetting
+    settings = SystemSetting.get_settings()
+    default_tax_rate = settings.psa_default_tax_rate if not item else item.tax_rate
+    default_currency = settings.psa_default_currency if not item else item.currency
     return render(request, 'psa/invoice_form.html', {
         'item': item,
         'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
         'status_choices': Invoice.STATUS_CHOICES,
         'line_items': item.line_items.all() if item else [],
+        'default_tax_rate': default_tax_rate,
+        'default_currency': default_currency,
     })
 
 

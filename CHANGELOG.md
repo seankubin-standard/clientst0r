@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.97] - 2026-04-28
+
+### Fixed
+- **Saving a quote or invoice crashed** with `TypeError: can't multiply sequence by non-int of type 'decimal.Decimal'`. The view assigns `tax_rate` from POST as a string; `Decimal × str` was reversing into `str.__rmul__(Decimal)`. Both `Quote.recompute_totals()`, `Invoice.recompute_totals()`, and the line-item `line_total` properties now coerce all numeric inputs to `Decimal` defensively before arithmetic.
+
+### Changed
+- **Quote form is much smaller** — compact `form-control-sm` inputs, smaller labels, single-line description, footer subtotal/tax/total that updates live as you edit. Old form was visually heavy.
+- **Add / remove line items dynamically** on the quote form — `+ Add line` button and a per-row × delete button (refuses to leave fewer than one row, just clears it instead).
+- **Live totals on the quote form** — subtotal, tax, and total all recompute as you type quantity, unit price, or tax rate.
+- **Tax rate now defaults from PSA settings** (`SystemSetting.psa_default_tax_rate`) on new quotes and invoices. Existing rows preserve their saved value.
+- **Default currency** for new invoices comes from `SystemSetting.psa_default_currency`.
+- **PSA dropdown gains a Clients link** pointing to `accounts:organization_list` — clients and organizations are the same thing in the data model, so this is a navigation convenience rather than a duplicate view.
+- **Removed scope-banner nag** from the cross-client list pages (Dispatch, Invoices, Projects, Recurring, Approvals, Contracts, Email Ingestion, Quotes, Workflow Rules). Those views show data across all clients in global view; they don't need the "Pick a client first" prompt.
+
+### Added
+- `SystemSetting.psa_default_tax_rate` (Decimal, default 0) and `psa_default_currency` (CharField, default 'USD').
+
 ## [3.17.96] - 2026-04-28
 
 ### Added — PSA Phase 8: Invoices, Payments, Accounting integrations, Quote e-signature

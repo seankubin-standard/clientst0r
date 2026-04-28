@@ -596,6 +596,17 @@ class SystemSetting(models.Model):
     psa_desktop_alerts_enabled = models.BooleanField(default=False, help_text='Send desktop / browser alerts to staff')
     psa_external_alert_ingest_enabled = models.BooleanField(default=False, help_text='Accept alerts from external monitoring/RMM webhooks')
 
+    # Billing defaults — used by the quote and invoice forms when the
+    # specific row doesn't override.
+    psa_default_tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=4, default=0,
+        help_text='Default tax rate for new quotes / invoices (e.g. 0.0875 for 8.75%). Each quote/invoice can still override.',
+    )
+    psa_default_currency = models.CharField(
+        max_length=8, default='USD',
+        help_text='Default currency for new invoices (ISO 4217 code).',
+    )
+
     # PSA AI Assist (Workstream 10) — admin-controlled at top level
     # API keys / provider / model selection live on the existing
     # /core/settings/ai/ page which writes to .env (ANTHROPIC_API_KEY,

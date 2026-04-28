@@ -1239,10 +1239,14 @@ class Quote(models.Model):
         return f'{prefix}{n + 1:05d}'
 
     def recompute_totals(self):
-        from decimal import Decimal
+        from decimal import Decimal, InvalidOperation
         sub = sum((li.line_total for li in self.line_items.all()), Decimal('0'))
         self.subtotal = sub
-        self.tax_amount = (sub * (self.tax_rate or 0)).quantize(Decimal('0.01'))
+        try:
+            rate = Decimal(str(self.tax_rate or '0'))
+        except (InvalidOperation, ValueError, TypeError):
+            rate = Decimal('0')
+        self.tax_amount = (sub * rate).quantize(Decimal('0.01'))
         self.total = sub + self.tax_amount
         self.save(update_fields=['subtotal', 'tax_amount', 'total'])
 
@@ -1279,8 +1283,13 @@ class QuoteLineItem(models.Model):
 
     @property
     def line_total(self):
-        from decimal import Decimal
-        return (self.quantity * self.unit_price).quantize(Decimal('0.01'))
+        from decimal import Decimal, InvalidOperation
+        try:
+            q = Decimal(str(self.quantity or '0'))
+            p = Decimal(str(self.unit_price or '0'))
+        except (InvalidOperation, ValueError, TypeError):
+            return Decimal('0.00')
+        return (q * p).quantize(Decimal('0.01'))
 
     def __str__(self):
         return f'{self.description} ({self.quantity} × {self.unit_price})'
@@ -1596,13 +1605,17 @@ class Invoice(models.Model):
         return f'{prefix}{n + 1:05d}'
 
     def recompute_totals(self):
-        from decimal import Decimal
+        from decimal import Decimal, InvalidOperation
         sub = sum((li.line_total for li in self.line_items.all()), Decimal('0'))
         self.subtotal = sub
-        self.tax_amount = (sub * (self.tax_rate or 0)).quantize(Decimal('0.01'))
+        try:
+            rate = Decimal(str(self.tax_rate or '0'))
+        except (InvalidOperation, ValueError, TypeError):
+            rate = Decimal('0')
+        self.tax_amount = (sub * rate).quantize(Decimal('0.01'))
         self.total = sub + self.tax_amount
         # Recompute amount_paid from related Payment rows
-        paid = sum((p.amount for p in self.payments.all()), Decimal('0'))
+        paid = sum((Decimal(str(p.amount or '0')) for p in self.payments.all()), Decimal('0'))
         self.amount_paid = paid
         # Auto status update
         if self.status not in ('void', 'draft'):
@@ -1641,8 +1654,13 @@ class InvoiceLineItem(models.Model):
 
     @property
     def line_total(self):
-        from decimal import Decimal
-        return (self.quantity * self.unit_price).quantize(Decimal('0.01'))
+        from decimal import Decimal, InvalidOperation
+        try:
+            q = Decimal(str(self.quantity or '0'))
+            p = Decimal(str(self.unit_price or '0'))
+        except (InvalidOperation, ValueError, TypeError):
+            return Decimal('0.00')
+        return (q * p).quantize(Decimal('0.01'))
 
     def __str__(self):
         return f'{self.description} ({self.quantity} × {self.unit_price})'
