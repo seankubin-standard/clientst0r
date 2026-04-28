@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     'vehicles.apps.VehiclesConfig',
     'inventory.apps.InventoryConfig',
     'scheduling.apps.SchedulingConfig',
+    'psa.apps.PsaConfig',
 ]
 
 # Optional apps - only add if installed (allows updates without dependencies)

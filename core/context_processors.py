@@ -21,10 +21,12 @@ def organization_context(request):
             'vehicles_enabled': settings.vehicles_enabled,
             'inventory_enabled': settings.inventory_enabled,
             'scheduling_enabled': settings.scheduling_enabled,
+            'psa_enabled': settings.psa_enabled,
         }
         system_settings = settings
     except Exception:
         # If settings don't exist or there's an error, default to all enabled
+        # EXCEPT psa_enabled which is opt-in.
         feature_toggles = {
             'monitoring_enabled': True,
             'global_kb_enabled': True,
@@ -32,6 +34,7 @@ def organization_context(request):
             'vehicles_enabled': True,
             'inventory_enabled': True,
             'scheduling_enabled': True,
+            'psa_enabled': False,
         }
         system_settings = None
 

@@ -96,6 +96,19 @@
                             <li><a class="dropdown-item" href="{% url 'locations:floor_plan_import' %}"><i class="fas fa-file-upload"></i> {% trans "Import Floor Plans" %}</a></li>
                         </ul>
                     </li>
+                    {% if psa_enabled %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="psaDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-ticket-alt"></i> {% trans "PSA" %}
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{% url 'psa:ticket_list' %}"><i class="fas fa-list"></i> {% trans "Tickets" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'psa:ticket_create' %}"><i class="fas fa-plus"></i> {% trans "New Ticket" %}</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'psa:client_settings' %}"><i class="fas fa-cog"></i> {% trans "Client Settings" %}</a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
                     {% if workflows_enabled or inventory_enabled or scheduling_enabled or monitoring_enabled or vehicles_enabled %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="opsDropdown" role="button" data-bs-toggle="dropdown">

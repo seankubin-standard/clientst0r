@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}PSA — Client Settings{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Client Settings</li>
+    </ol>
+</nav>
+
+<h2 class="mb-1"><i class="fas fa-cog me-2"></i>PSA Settings — {{ current_organization.name }}</h2>
+<p class="text-muted">All toggles default to <strong>off</strong>. Enable only what this client should have.</p>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="enabled" name="enabled" {% if cps.enabled %}checked{% endif %}>
+            <label class="form-check-label fw-semibold" for="enabled">PSA enabled for this client</label>
+        </div>
+
+        <hr>
+        <h6 class="text-muted">External surfaces (off by default)</h6>
+
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="portal_enabled" name="portal_enabled" {% if cps.portal_enabled %}checked{% endif %}>
+            <label class="form-check-label" for="portal_enabled">Client portal <small class="text-muted">— customer self-service</small></label>
+        </div>
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="anonymous_ticket_form_enabled" name="anonymous_ticket_form_enabled" {% if cps.anonymous_ticket_form_enabled %}checked{% endif %}>
+            <label class="form-check-label" for="anonymous_ticket_form_enabled">Anonymous ticket form <small class="text-muted">— public submissions</small></label>
+        </div>
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="email_to_ticket_enabled" name="email_to_ticket_enabled" {% if cps.email_to_ticket_enabled %}checked{% endif %}>
+            <label class="form-check-label" for="email_to_ticket_enabled">Email-to-ticket <small class="text-muted">— inbound mailbox parsing</small></label>
+        </div>
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="sms_notifications_enabled" name="sms_notifications_enabled" {% if cps.sms_notifications_enabled %}checked{% endif %}>
+            <label class="form-check-label" for="sms_notifications_enabled">SMS notifications to staff <small class="text-muted">— never includes secrets</small></label>
+        </div>
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="desktop_alerts_enabled" name="desktop_alerts_enabled" {% if cps.desktop_alerts_enabled %}checked{% endif %}>
+            <label class="form-check-label" for="desktop_alerts_enabled">Desktop / browser alerts <small class="text-muted">— per-user opt-in</small></label>
+        </div>
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="external_alert_ingest_enabled" name="external_alert_ingest_enabled" {% if cps.external_alert_ingest_enabled %}checked{% endif %}>
+            <label class="form-check-label" for="external_alert_ingest_enabled">External alert / RMM ingestion <small class="text-muted">— monitoring webhooks → tickets</small></label>
+        </div>
+    </div>
+    <div class="card-footer text-end">
+        <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+</form>
+{% endblock %}

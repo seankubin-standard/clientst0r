@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}PSA — {{ ticket.ticket_number }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">{{ ticket.ticket_number }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h2 class="mb-1">{{ ticket.subject }}</h2>
+        <small class="text-muted">
+            <code>{{ ticket.ticket_number }}</code> ·
+            {{ ticket.organization.name }} ·
+            opened {{ ticket.created_at|timesince }} ago
+            {% if ticket.created_by %} by {{ ticket.created_by.username }}{% endif %}
+        </small>
+    </div>
+    <div>
+        <span class="badge bg-secondary">{{ ticket.priority.code }} {{ ticket.priority.name }}</span>
+        <span class="badge bg-info text-dark">{{ ticket.status.name }}</span>
+        <span class="badge bg-light text-dark border">{{ ticket.queue.name }}</span>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card mb-3">
+            <div class="card-header"><strong>Description</strong></div>
+            <div class="card-body">
+                {% if ticket.description %}
+                    <pre class="mb-0" style="white-space: pre-wrap;">{{ ticket.description }}</pre>
+                {% else %}
+                    <em class="text-muted">No description.</em>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>Activity</strong>
+                <small class="text-muted">{{ comments|length }} entr{{ comments|length|pluralize:"y,ies" }}</small>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for c in comments %}
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>{{ c.author.username|default:"system" }}</strong>
+                            {% if c.is_internal %}<span class="badge bg-warning text-dark ms-1">internal</span>{% endif %}
+                            {% if c.is_system %}<span class="badge bg-secondary ms-1">system</span>{% endif %}
+                            <small class="text-muted ms-2">{{ c.created_at }}</small>
+                        </div>
+                    </div>
+                    <pre class="mt-2 mb-0" style="white-space: pre-wrap;">{{ c.body }}</pre>
+                </div>
+                {% empty %}
+                <div class="list-group-item text-center text-muted">No activity yet.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header"><strong>Details</strong></div>
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-5">Type</dt><dd class="col-7">{{ ticket.ticket_type.name }}</dd>
+                    <dt class="col-5">Source</dt><dd class="col-7">{{ ticket.get_source_display }}</dd>
+                    <dt class="col-5">Visibility</dt><dd class="col-7">{{ ticket.get_visibility_display }}</dd>
+                    <dt class="col-5">Impact</dt><dd class="col-7">{{ ticket.get_impact_display }}</dd>
+                    <dt class="col-5">Urgency</dt><dd class="col-7">{{ ticket.get_urgency_display }}</dd>
+                    <dt class="col-5">Assignee</dt><dd class="col-7">{{ ticket.assigned_to.username|default:"—" }}</dd>
+                    <dt class="col-5">Contact</dt><dd class="col-7">{{ ticket.contact|default:"—" }}</dd>
+                    <dt class="col-5">Asset</dt><dd class="col-7">{{ ticket.related_asset|default:"—" }}</dd>
+                    <dt class="col-5">Doc</dt><dd class="col-7">{{ ticket.related_documentation|default:"—" }}</dd>
+                    <dt class="col-5">KB</dt><dd class="col-7">{{ ticket.related_kb_article|default:"—" }}</dd>
+                    <dt class="col-5">Calendar</dt><dd class="col-7">{{ ticket.related_calendar_event|default:"—" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}PSA — Tickets{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="mb-0"><i class="fas fa-ticket-alt me-2"></i>Tickets</h2>
+        {% if current_organization %}<small class="text-muted">{{ current_organization.name }}</small>{% else %}<small class="text-muted">All clients</small>{% endif %}
+    </div>
+    <div>
+        <a href="{% url 'psa:ticket_create' %}" class="btn btn-primary"><i class="fas fa-plus me-1"></i>New Ticket</a>
+        <a href="{% url 'psa:client_settings' %}" class="btn btn-outline-secondary"><i class="fas fa-cog me-1"></i>Client Settings</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if tickets %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Number</th>
+                        <th>Client</th>
+                        <th>Subject</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Queue</th>
+                        <th>Assignee</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in tickets %}
+                    <tr>
+                        <td><a href="{% url 'psa:ticket_detail' t.ticket_number %}"><code>{{ t.ticket_number }}</code></a></td>
+                        <td><small>{{ t.organization.name|default:"—" }}</small></td>
+                        <td>{{ t.subject|truncatechars:60 }}</td>
+                        <td><span class="badge bg-secondary">{{ t.priority.code }}</span></td>
+                        <td><span class="badge bg-info text-dark">{{ t.status.name }}</span></td>
+                        <td><small>{{ t.queue.name }}</small></td>
+                        <td><small>{{ t.assigned_to.username|default:"—" }}</small></td>
+                        <td><small class="text-muted">{{ t.created_at|timesince }} ago</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-inbox fa-3x mb-3 d-block"></i>
+            <p class="mb-2">No tickets yet.</p>
+            <a href="{% url 'psa:ticket_create' %}" class="btn btn-sm btn-primary">Create the first ticket</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

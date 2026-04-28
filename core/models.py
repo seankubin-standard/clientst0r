@@ -588,6 +588,7 @@ class SystemSetting(models.Model):
     vehicles_enabled = models.BooleanField(default=True, help_text='Enable service vehicle fleet management features')
     inventory_enabled = models.BooleanField(default=True, help_text='Enable Inventory management')
     scheduling_enabled = models.BooleanField(default=True, help_text='Enable Scheduling and Task Management')
+    psa_enabled = models.BooleanField(default=False, help_text='Enable native PSA / Service Desk feature (off by default)')
 
     # Asset Health Features
     asset_age_warnings_enabled = models.BooleanField(default=False, help_text='Show warnings when assets approach or exceed their age threshold')
