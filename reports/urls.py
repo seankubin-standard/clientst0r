@@ -39,4 +39,8 @@ urlpatterns = [
     # Analytics
     path('analytics/', views.analytics_overview, name='analytics_overview'),
     path('analytics/events/', views.analytics_events, name='analytics_events'),
+
+    # PSA reports (Workstream 6)
+    path('psa/', views.psa_reports_list, name='psa_reports_list'),
+    path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

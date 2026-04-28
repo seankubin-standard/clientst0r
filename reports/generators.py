@@ -283,6 +283,276 @@ class OrganizationMetricsReport(ReportGenerator):
         }
 
 
+# ---------------------------------------------------------------------------
+# PSA reports (Workstream 6)
+# ---------------------------------------------------------------------------
+
+def _psa_imports():
+    """Lazy import so reports/ doesn't fail when psa/ isn't installed."""
+    try:
+        from psa.models import Ticket, TicketTimeEntry
+        return Ticket, TicketTimeEntry
+    except Exception:
+        return None, None
+
+
+def _psa_window(parameters):
+    """Common 'last N days' window helper."""
+    days = int(parameters.get('days', 30) or 30)
+    cutoff = timezone.now() - timedelta(days=days)
+    return days, cutoff
+
+
+class PSAOpenTicketsByClientReport(ReportGenerator):
+    """Open (non-terminal) tickets grouped by client. Single ORM call."""
+
+    def generate(self):
+        Ticket, _ = _psa_imports()
+        if Ticket is None:
+            return {'error': 'PSA app not installed'}
+        qs = Ticket.objects.filter(status__is_terminal=False)
+        if self.organization is not None:
+            qs = qs.filter(organization=self.organization)
+        rows = list(
+            qs.values('organization__name')
+              .annotate(count=Count('id'))
+              .order_by('-count')
+        )
+        return {
+            'rows': rows,
+            'total_open': sum(r['count'] for r in rows),
+            'generated_at': timezone.now().isoformat(),
+            'scope': 'this client' if self.organization else 'all clients',
+        }
+
+
+class PSASLABreachesReport(ReportGenerator):
+    """Tickets with SLA breaches in the last N days."""
+
+    def generate(self):
+        Ticket, _ = _psa_imports()
+        if Ticket is None:
+            return {'error': 'PSA app not installed'}
+        days, cutoff = _psa_window(self.parameters)
+        qs = Ticket.objects.filter(
+            created_at__gte=cutoff,
+        ).filter(Q(sla_breached_response=True) | Q(sla_breached_resolution=True))
+        if self.organization is not None:
+            qs = qs.filter(organization=self.organization)
+        rows = []
+        for t in qs.select_related('organization', 'priority', 'status', 'assigned_to')[:500]:
+            rows.append({
+                'ticket_number': t.ticket_number,
+                'client': t.organization.name if t.organization_id else '',
+                'priority': t.priority.code if t.priority_id else '',
+                'status': t.status.name if t.status_id else '',
+                'subject': t.subject[:120],
+                'response_breached': t.sla_breached_response,
+                'resolution_breached': t.sla_breached_resolution,
+                'assigned_to': t.assigned_to.username if t.assigned_to_id else '',
+                'created_at': t.created_at.isoformat() if t.created_at else '',
+            })
+        return {
+            'rows': rows,
+            'window_days': days,
+            'total': len(rows),
+            'generated_at': timezone.now().isoformat(),
+        }
+
+
+class PSAResponseTimeByTechReport(ReportGenerator):
+    """Avg minutes from ticket-create to first-response, grouped by assignee."""
+
+    def generate(self):
+        from django.db.models import F, ExpressionWrapper, FloatField
+        Ticket, _ = _psa_imports()
+        if Ticket is None:
+            return {'error': 'PSA app not installed'}
+        days, cutoff = _psa_window(self.parameters)
+        qs = Ticket.objects.filter(
+            created_at__gte=cutoff,
+            first_response_at__isnull=False,
+            assigned_to__isnull=False,
+        )
+        if self.organization is not None:
+            qs = qs.filter(organization=self.organization)
+        rows = list(
+            qs.annotate(
+                resp_seconds=ExpressionWrapper(
+                    F('first_response_at') - F('created_at'),
+                    output_field=FloatField(),
+                ),
+            ).values('assigned_to__username').annotate(
+                avg_seconds=Avg('resp_seconds'),
+                ticket_count=Count('id'),
+            ).order_by('avg_seconds')
+        )
+        # Convert timedelta avg → minutes for display.
+        for r in rows:
+            secs = r.pop('avg_seconds') or 0
+            try:
+                r['avg_minutes'] = round(float(secs.total_seconds()) / 60, 1)
+            except AttributeError:
+                # On some DBs the avg comes back as a number of seconds already.
+                r['avg_minutes'] = round(float(secs) / 60, 1) if secs else 0
+        return {
+            'rows': rows,
+            'window_days': days,
+            'generated_at': timezone.now().isoformat(),
+        }
+
+
+class PSAResolutionTimeByClientReport(ReportGenerator):
+    """Avg hours from create to resolved, grouped by client."""
+
+    def generate(self):
+        from django.db.models import F, ExpressionWrapper, FloatField
+        Ticket, _ = _psa_imports()
+        if Ticket is None:
+            return {'error': 'PSA app not installed'}
+        days, cutoff = _psa_window(self.parameters)
+        qs = Ticket.objects.filter(
+            created_at__gte=cutoff, resolved_at__isnull=False,
+        )
+        if self.organization is not None:
+            qs = qs.filter(organization=self.organization)
+        rows = list(
+            qs.annotate(
+                res_seconds=ExpressionWrapper(
+                    F('resolved_at') - F('created_at'),
+                    output_field=FloatField(),
+                ),
+            ).values('organization__name').annotate(
+                avg_seconds=Avg('res_seconds'),
+                ticket_count=Count('id'),
+            ).order_by('avg_seconds')
+        )
+        for r in rows:
+            secs = r.pop('avg_seconds') or 0
+            try:
+                r['avg_hours'] = round(float(secs.total_seconds()) / 3600, 1)
+            except AttributeError:
+                r['avg_hours'] = round(float(secs) / 3600, 1) if secs else 0
+        return {
+            'rows': rows,
+            'window_days': days,
+            'generated_at': timezone.now().isoformat(),
+        }
+
+
+class PSATicketsByDimensionReport(ReportGenerator):
+    """Ticket counts grouped by queue, type, priority. Three rollups in one report."""
+
+    def generate(self):
+        Ticket, _ = _psa_imports()
+        if Ticket is None:
+            return {'error': 'PSA app not installed'}
+        days, cutoff = _psa_window(self.parameters)
+        qs = Ticket.objects.filter(created_at__gte=cutoff)
+        if self.organization is not None:
+            qs = qs.filter(organization=self.organization)
+        return {
+            'by_queue': list(qs.values('queue__name').annotate(count=Count('id')).order_by('-count')),
+            'by_type': list(qs.values('ticket_type__name').annotate(count=Count('id')).order_by('-count')),
+            'by_priority': list(qs.values('priority__code', 'priority__name').annotate(count=Count('id')).order_by('priority__sort_order')),
+            'window_days': days,
+            'total': qs.count(),
+            'generated_at': timezone.now().isoformat(),
+        }
+
+
+class PSABillableHoursByClientReport(ReportGenerator):
+    """Sum of billable TicketTimeEntry minutes grouped by client."""
+
+    def generate(self):
+        Ticket, TimeEntry = _psa_imports()
+        if TimeEntry is None:
+            return {'error': 'PSA app not installed'}
+        days, cutoff = _psa_window(self.parameters)
+        qs = TimeEntry.objects.filter(
+            started_at__gte=cutoff, ended_at__isnull=False,
+        )
+        if self.organization is not None:
+            qs = qs.filter(ticket__organization=self.organization)
+        rows = list(
+            qs.values('ticket__organization__name').annotate(
+                total_minutes=Sum('duration_minutes', filter=Q(is_billable=True)),
+                non_billable_minutes=Sum('duration_minutes', filter=Q(is_billable=False)),
+            ).order_by('-total_minutes')
+        )
+        for r in rows:
+            r['total_hours'] = round((r.pop('total_minutes') or 0) / 60.0, 2)
+            r['non_billable_hours'] = round((r.pop('non_billable_minutes') or 0) / 60.0, 2)
+        return {
+            'rows': rows,
+            'window_days': days,
+            'grand_total_hours': round(sum(r['total_hours'] for r in rows), 2),
+            'generated_at': timezone.now().isoformat(),
+        }
+
+
+class PSARecurringIssuesReport(ReportGenerator):
+    """Assets with multiple tickets — likely "noisy" assets needing attention."""
+
+    def generate(self):
+        Ticket, _ = _psa_imports()
+        if Ticket is None:
+            return {'error': 'PSA app not installed'}
+        days, cutoff = _psa_window(self.parameters)
+        qs = Ticket.objects.filter(
+            created_at__gte=cutoff, related_asset__isnull=False,
+        )
+        if self.organization is not None:
+            qs = qs.filter(organization=self.organization)
+        rows = list(
+            qs.values('related_asset__name', 'organization__name')
+              .annotate(count=Count('id'))
+              .filter(count__gte=2)
+              .order_by('-count')
+        )
+        return {
+            'rows': rows,
+            'window_days': days,
+            'noisy_count': len(rows),
+            'generated_at': timezone.now().isoformat(),
+        }
+
+
+class PSATicketsByAssigneeReport(ReportGenerator):
+    """Open ticket count + total tickets last N days, grouped by assignee."""
+
+    def generate(self):
+        Ticket, _ = _psa_imports()
+        if Ticket is None:
+            return {'error': 'PSA app not installed'}
+        days, cutoff = _psa_window(self.parameters)
+        base = Ticket.objects
+        if self.organization is not None:
+            base = base.filter(organization=self.organization)
+
+        # Open tickets per assignee (right now)
+        open_rows = list(
+            base.filter(status__is_terminal=False, assigned_to__isnull=False)
+                .values('assigned_to__username')
+                .annotate(open_count=Count('id'))
+                .order_by('-open_count')
+        )
+        # Closed tickets in the window per assignee
+        closed_rows = {
+            r['assigned_to__username']: r['closed_count']
+            for r in base.filter(
+                resolved_at__gte=cutoff, assigned_to__isnull=False,
+            ).values('assigned_to__username').annotate(closed_count=Count('id'))
+        }
+        for r in open_rows:
+            r['closed_in_window'] = closed_rows.get(r['assigned_to__username'], 0)
+        return {
+            'rows': open_rows,
+            'window_days': days,
+            'generated_at': timezone.now().isoformat(),
+        }
+
+
 # Report generator registry
 REPORT_GENERATORS = {
     'asset_summary': AssetSummaryReport,
@@ -292,7 +562,75 @@ REPORT_GENERATORS = {
     'monitor_uptime': MonitorUptimeReport,
     'expiration_forecast': ExpirationForecastReport,
     'organization_metrics': OrganizationMetricsReport,
+    # PSA — Workstream 6
+    'psa_open_tickets_by_client': PSAOpenTicketsByClientReport,
+    'psa_sla_breaches': PSASLABreachesReport,
+    'psa_response_time_by_tech': PSAResponseTimeByTechReport,
+    'psa_resolution_time_by_client': PSAResolutionTimeByClientReport,
+    'psa_tickets_by_dimension': PSATicketsByDimensionReport,
+    'psa_billable_hours_by_client': PSABillableHoursByClientReport,
+    'psa_recurring_issues': PSARecurringIssuesReport,
+    'psa_tickets_by_assignee': PSATicketsByAssigneeReport,
 }
+
+
+PSA_REPORT_DEFINITIONS = [
+    {
+        'type': 'psa_open_tickets_by_client',
+        'name': 'Open Tickets by Client',
+        'icon': 'fas fa-list',
+        'description': 'Currently-open ticket count grouped by client.',
+    },
+    {
+        'type': 'psa_sla_breaches',
+        'name': 'SLA Breaches',
+        'icon': 'fas fa-triangle-exclamation',
+        'description': 'Tickets that breached response or resolution SLA in the last N days.',
+        'param_help': 'days (default 30)',
+    },
+    {
+        'type': 'psa_response_time_by_tech',
+        'name': 'Response Time by Tech',
+        'icon': 'fas fa-stopwatch',
+        'description': 'Average first-response time per assignee, last N days.',
+        'param_help': 'days (default 30)',
+    },
+    {
+        'type': 'psa_resolution_time_by_client',
+        'name': 'Resolution Time by Client',
+        'icon': 'fas fa-clock',
+        'description': 'Average resolution hours per client, last N days.',
+        'param_help': 'days (default 30)',
+    },
+    {
+        'type': 'psa_tickets_by_dimension',
+        'name': 'Tickets by Queue / Type / Priority',
+        'icon': 'fas fa-th-large',
+        'description': 'Three breakdowns of ticket volume in one report.',
+        'param_help': 'days (default 30)',
+    },
+    {
+        'type': 'psa_billable_hours_by_client',
+        'name': 'Billable Hours by Client',
+        'icon': 'fas fa-dollar-sign',
+        'description': 'Sum of billable + non-billable hours from time entries, by client.',
+        'param_help': 'days (default 30)',
+    },
+    {
+        'type': 'psa_recurring_issues',
+        'name': 'Noisy Assets / Recurring Issues',
+        'icon': 'fas fa-redo',
+        'description': 'Assets with 2+ tickets in the window — likely candidates for proactive work.',
+        'param_help': 'days (default 30)',
+    },
+    {
+        'type': 'psa_tickets_by_assignee',
+        'name': 'Tickets by Assignee',
+        'icon': 'fas fa-users',
+        'description': 'Open ticket load + closed-in-window per technician.',
+        'param_help': 'days (default 30)',
+    },
+]
 
 
 def get_report_generator(report_type):

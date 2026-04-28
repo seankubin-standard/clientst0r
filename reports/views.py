@@ -649,3 +649,100 @@ def analytics_events(request):
     }
 
     return render(request, 'reports/analytics_events.html', context)
+
+
+# ---------------------------------------------------------------------------
+# PSA reports — Workstream 6
+# ---------------------------------------------------------------------------
+
+@login_required
+def psa_reports_list(request):
+    """Catalog of PSA reports — click one to run it ad-hoc against the
+    user's accessible orgs (or a specific picked client)."""
+    from .generators import PSA_REPORT_DEFINITIONS
+    return render(request, 'reports/psa_list.html', {
+        'definitions': PSA_REPORT_DEFINITIONS,
+    })
+
+
+@login_required
+def psa_report_run(request, report_type):
+    """Run an ad-hoc PSA report. URL params:
+       ?days=<n>&client=<org_id>
+    Renders the result inline. CSV export via &format=csv."""
+    from .generators import get_report_generator, PSA_REPORT_DEFINITIONS
+    cls = get_report_generator(report_type)
+    if cls is None or not report_type.startswith('psa_'):
+        messages.error(request, 'Unknown PSA report.')
+        return redirect('reports:psa_reports_list')
+
+    # Tenant scope
+    from core.models import Organization
+    client_id = request.GET.get('client') or ''
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        clients = Organization.objects.filter(is_active=True).order_by('name')
+    else:
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True).values_list('organization_id', flat=True))
+        clients = Organization.objects.filter(id__in=ids, is_active=True).order_by('name')
+
+    org = None
+    if client_id:
+        org = clients.filter(pk=client_id).first()
+        if org is None:
+            messages.error(request, "You don't have access to that client.")
+            return redirect('reports:psa_reports_list')
+
+    parameters = {'days': request.GET.get('days', 30)}
+    generator = cls(organization=org, parameters=parameters)
+    data = generator.generate()
+
+    definition = next((d for d in PSA_REPORT_DEFINITIONS if d['type'] == report_type), None)
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        return _psa_report_csv(report_type, data)
+
+    return render(request, 'reports/psa_run.html', {
+        'definition': definition,
+        'data': data,
+        'clients': clients,
+        'selected_org': org,
+        'days': parameters['days'],
+        'report_type': report_type,
+    })
+
+
+def _psa_report_csv(report_type, data):
+    """Stream a CSV of the rows. Column set per report."""
+    import csv as _csv
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{report_type}.csv"'
+    writer = _csv.writer(response)
+
+    if 'rows' in data and isinstance(data['rows'], list):
+        rows = data['rows']
+        if not rows:
+            writer.writerow(['(no data)'])
+            return response
+        keys = list(rows[0].keys())
+        writer.writerow(keys)
+        for r in rows:
+            writer.writerow([r.get(k, '') for k in keys])
+        return response
+
+    if 'by_queue' in data:  # PSATicketsByDimensionReport
+        writer.writerow(['Dimension', 'Bucket', 'Count'])
+        for r in data.get('by_queue', []):
+            writer.writerow(['queue', r.get('queue__name'), r.get('count')])
+        for r in data.get('by_type', []):
+            writer.writerow(['type', r.get('ticket_type__name'), r.get('count')])
+        for r in data.get('by_priority', []):
+            writer.writerow(['priority', f"{r.get('priority__code', '')} {r.get('priority__name', '')}", r.get('count')])
+        return response
+
+    writer.writerow(['key', 'value'])
+    for k, v in data.items():
+        writer.writerow([k, v])
+    return response

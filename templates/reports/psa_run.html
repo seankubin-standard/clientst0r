@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}PSA Report — {{ definition.name }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'reports:psa_reports_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">{{ definition.name }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="mb-0"><i class="{{ definition.icon }} me-2"></i>{{ definition.name }}</h2>
+        <small class="text-muted">{{ definition.description }}</small>
+    </div>
+    <a href="?{% if days %}days={{ days }}&{% endif %}{% if selected_org %}client={{ selected_org.id }}&{% endif %}format=csv" class="btn btn-outline-secondary">
+        <i class="fas fa-file-csv me-1"></i>Download CSV
+    </a>
+</div>
+
+<form method="get" class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small mb-1">Client</label>
+                <select name="client" class="form-select form-select-sm">
+                    <option value="">All accessible</option>
+                    {% for c in clients %}
+                    <option value="{{ c.id }}" {% if selected_org and selected_org.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Window (days)</label>
+                <input type="number" name="days" class="form-control form-control-sm" value="{{ days }}" min="1" max="3650">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-primary w-100">Run</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% if data.error %}
+<div class="alert alert-warning">{{ data.error }}</div>
+{% else %}
+<div class="card">
+    <div class="card-body p-0">
+        {% if data.rows %}
+        <table class="table table-hover mb-0 small">
+            <thead class="table-light">
+                <tr>
+                    {% for k in data.rows.0.keys %}<th>{{ k }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data.rows %}
+                <tr>
+                    {% for v in row.values %}<td>{{ v }}</td>{% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% elif data.by_queue or data.by_type or data.by_priority %}
+        <div class="row g-3 p-3">
+            <div class="col-md-4">
+                <h6 class="text-muted">By queue</h6>
+                <table class="table table-sm">
+                    <thead><tr><th>Queue</th><th>Count</th></tr></thead>
+                    <tbody>
+                    {% for r in data.by_queue %}<tr><td>{{ r.queue__name|default:"—" }}</td><td>{{ r.count }}</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="col-md-4">
+                <h6 class="text-muted">By type</h6>
+                <table class="table table-sm">
+                    <thead><tr><th>Type</th><th>Count</th></tr></thead>
+                    <tbody>
+                    {% for r in data.by_type %}<tr><td>{{ r.ticket_type__name|default:"—" }}</td><td>{{ r.count }}</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="col-md-4">
+                <h6 class="text-muted">By priority</h6>
+                <table class="table table-sm">
+                    <thead><tr><th>Priority</th><th>Count</th></tr></thead>
+                    <tbody>
+                    {% for r in data.by_priority %}<tr><td>{{ r.priority__code|default:"—" }} {{ r.priority__name|default:"" }}</td><td>{{ r.count }}</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-info-circle fa-2x mb-3 d-block"></i>
+            <p class="mb-0">No data for this window.</p>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-footer small text-muted d-flex flex-wrap gap-3">
+        {% if data.window_days %}<span><i class="fas fa-calendar me-1"></i>last {{ data.window_days }} days</span>{% endif %}
+        {% if data.total %}<span><i class="fas fa-list me-1"></i>{{ data.total }} rows</span>{% endif %}
+        {% if data.total_open %}<span><i class="fas fa-ticket me-1"></i>{{ data.total_open }} open total</span>{% endif %}
+        {% if data.grand_total_hours %}<span><i class="fas fa-stopwatch me-1"></i>{{ data.grand_total_hours }} billable hours</span>{% endif %}
+        {% if data.noisy_count %}<span><i class="fas fa-redo me-1"></i>{{ data.noisy_count }} noisy assets</span>{% endif %}
+        <span class="ms-auto">{{ data.generated_at }}</span>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}PSA Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">PSA</li>
+    </ol>
+</nav>
+
+<h2 class="mb-1"><i class="fas fa-chart-bar me-2"></i>PSA Reports</h2>
+<p class="text-muted">Operational reports built from native PSA tickets, time entries, and SLA data. Click a tile to run.</p>
+
+<div class="row g-3">
+    {% for d in definitions %}
+    <div class="col-md-6 col-lg-4">
+        <a href="{% url 'reports:psa_report_run' d.type %}" class="card h-100 text-decoration-none text-body" style="cursor: pointer;">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="{{ d.icon }} fa-lg text-primary"></i>
+                    <strong>{{ d.name }}</strong>
+                </div>
+                <p class="small text-muted mb-2">{{ d.description }}</p>
+                {% if d.param_help %}<small class="text-muted">Params: {{ d.param_help }}</small>{% endif %}
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
