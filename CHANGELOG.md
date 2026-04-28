@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.92] - 2026-04-28
+
+### Added — PSA Phase 5: Quotes / Estimates + Expenses
+- **Quotes** (`psa.Quote` + `QuoteLineItem`) — auto-numbered `Q-YYYY-NNNNN`, draft → sent → accepted/rejected/expired lifecycle, tax rate + auto-computed subtotal/tax/total, line items, and **convert-to-ticket on acceptance**. PSA dropdown gains a Quotes entry.
+- **Expenses** (`psa.TicketExpense`) — per-ticket reimbursable / billable expense rows with category (mileage, parts, software, subcontractor, shipping, other), amount + currency, optional receipt file upload, audit-logged on add. Expenses can be tied to a `PSAApproval` for manager sign-off.
+
+### Tests
++5 in `psa.tests.Phase5QuotesExpensesTests` covering auto-quote-numbering, line-item math + tax, accept→ticket conversion, accept-without-ticket, and expense creation.
+
 ## [3.17.91] - 2026-04-28
 
 ### Added — PSA Phase 4: Customer Portal + Email-to-Ticket + Contracts

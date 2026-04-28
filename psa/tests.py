@@ -1561,3 +1561,93 @@ class CustomerPortalTests(TestCase):
         new_ticket = Ticket.objects.filter(organization=self.org).order_by('-created_at').first()
         self.assertEqual(new_ticket.source, 'portal')
         self.assertTrue(new_ticket.client_can_view)
+
+
+class Phase5QuotesExpensesTests(TestCase):
+    """Phase 5: Quotes (with line items + accept→ticket) and Expenses."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ACME P5', slug='acme-p5')
+        self.client_org = Organization.objects.create(name='Client P5', slug='client-p5')
+        self.user = User.objects.create_user('p5-tech', password='pw', email='p5@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status = TicketStatus.objects.filter(slug='new').first()
+
+    def test_quote_number_auto_assigned(self):
+        from psa.models import Quote
+        q = Quote.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Network upgrade',
+        )
+        from datetime import date
+        self.assertTrue(q.quote_number.startswith(f'Q-{date.today().year}-'))
+
+    def test_quote_recompute_totals_with_line_items(self):
+        from psa.models import Quote, QuoteLineItem
+        from decimal import Decimal
+        q = Quote.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Setup', tax_rate=Decimal('0.10'),
+        )
+        QuoteLineItem.objects.create(quote=q, description='Switch', quantity=2, unit_price=500)
+        QuoteLineItem.objects.create(quote=q, description='Labor', quantity=4, unit_price=100)
+        q.recompute_totals()
+        self.assertEqual(q.subtotal, Decimal('1400.00'))
+        self.assertEqual(q.tax_amount, Decimal('140.00'))
+        self.assertEqual(q.total, Decimal('1540.00'))
+
+    def test_quote_accept_creates_ticket(self):
+        from psa.models import Quote, Ticket
+        q = Quote.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Project Z', description='Big project',
+        )
+        before = Ticket.objects.filter(organization=self.client_org).count()
+        q.mark_accepted(user=self.user, create_ticket=True,
+                        queue=self.queue, priority=self.priority,
+                        ticket_type=self.ttype, status=self.status)
+        after = Ticket.objects.filter(organization=self.client_org).count()
+        self.assertEqual(after, before + 1)
+        self.assertEqual(q.status, 'accepted')
+        self.assertIsNotNone(q.accepted_at)
+        self.assertIsNotNone(q.converted_ticket)
+
+    def test_quote_accept_without_ticket_creation(self):
+        from psa.models import Quote, Ticket
+        q = Quote.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='No-ticket quote',
+        )
+        before = Ticket.objects.filter(organization=self.client_org).count()
+        q.mark_accepted(user=self.user, create_ticket=False)
+        after = Ticket.objects.filter(organization=self.client_org).count()
+        self.assertEqual(after, before)
+        self.assertIsNone(q.converted_ticket)
+
+    def test_expense_creation_and_billable_flag(self):
+        from psa.models import Ticket, TicketExpense
+        t = Ticket.objects.create(
+            organization=self.org, subject='Onsite',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        from datetime import date
+        e = TicketExpense.objects.create(
+            ticket=t, user=self.user,
+            category='mileage', description='Drive to client site',
+            amount=42.50, currency='USD',
+            incurred_on=date.today(),
+            is_billable=True, is_reimbursable=True,
+        )
+        self.assertEqual(t.expenses.count(), 1)
+        self.assertTrue(e.is_billable)
+        self.assertEqual(float(e.amount), 42.50)

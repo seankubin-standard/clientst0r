@@ -33,11 +33,14 @@ from .models import (
     Project,
     PSAApproval,
     Queue,
+    Quote,
+    QuoteLineItem,
     RecurringTicketSchedule,
     ServiceCatalogItem,
     Ticket,
     TicketAttachment,
     TicketComment,
+    TicketExpense,
     TicketKBLink,
     TicketPriority,
     TicketStatus,
@@ -1895,3 +1898,173 @@ def email_config_form(request, pk=None):
         'item': item,
         'queues': queues, 'priorities': priorities, 'types': types,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — Quotes + Expenses
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_psa_enabled
+def quote_list(request):
+    org = get_request_organization(request)
+    qs = Quote.objects.select_related('client_org', 'created_by')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    status = request.GET.get('status')
+    if status in {'draft', 'sent', 'accepted', 'rejected', 'expired'}:
+        qs = qs.filter(status=status)
+    return render(request, 'psa/quote_list.html', {
+        'quotes': qs.order_by('-created_at')[:200],
+        'status_filter': status or '',
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def quote_form(request, pk=None):
+    org = get_request_organization(request)
+    if org is None:
+        messages.error(request, 'Pick a client first.')
+        return redirect('psa:quote_list')
+    item = get_object_or_404(Quote, pk=pk, organization=org) if pk else None
+
+    from core.models import Organization
+
+    if request.method == 'POST':
+        title = (request.POST.get('title') or '').strip()
+        client_org_id = request.POST.get('client_org')
+        if not title or not client_org_id:
+            messages.error(request, 'Title and client are required.')
+            return redirect(request.path)
+        try:
+            client_org = Organization.objects.get(pk=client_org_id)
+        except Organization.DoesNotExist:
+            messages.error(request, 'Client not found.')
+            return redirect(request.path)
+
+        if item is None:
+            item = Quote(organization=org, client_org=client_org, title=title,
+                         created_by=request.user)
+        else:
+            item.client_org = client_org
+            item.title = title
+        item.description = (request.POST.get('description') or '').strip()
+        item.status = request.POST.get('status') or 'draft'
+        item.valid_until = request.POST.get('valid_until') or None
+        try:
+            item.tax_rate = request.POST.get('tax_rate') or 0
+        except (TypeError, ValueError):
+            item.tax_rate = 0
+        item.save()
+
+        # Replace line items if posted
+        line_descs = request.POST.getlist('li_description')
+        line_qtys = request.POST.getlist('li_quantity')
+        line_prices = request.POST.getlist('li_unit_price')
+        if line_descs:
+            item.line_items.all().delete()
+            for i, (d, q, p) in enumerate(zip(line_descs, line_qtys, line_prices)):
+                if not (d or '').strip():
+                    continue
+                try:
+                    qf = float(q or 1)
+                    pf = float(p or 0)
+                except ValueError:
+                    qf, pf = 1, 0
+                QuoteLineItem.objects.create(
+                    quote=item, sort_order=i,
+                    description=d.strip()[:300], quantity=qf, unit_price=pf,
+                )
+        item.recompute_totals()
+
+        messages.success(request, f'Saved "{item.quote_number}".')
+        return redirect('psa:quote_list')
+
+    return render(request, 'psa/quote_form.html', {
+        'item': item,
+        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
+        'status_choices': Quote.STATUS_CHOICES,
+        'line_items': item.line_items.all() if item else [],
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def quote_accept(request, pk):
+    org = get_request_organization(request)
+    qs = Quote.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    create = request.POST.get('create_ticket') == 'on'
+    queue = Queue.objects.filter(is_active=True).first()
+    priority = TicketPriority.objects.first()
+    ttype = TicketType.objects.first()
+    status = TicketStatus.objects.filter(slug='new').first()
+    item.mark_accepted(user=request.user, create_ticket=create,
+                       queue=queue, priority=priority,
+                       ticket_type=ttype, status=status)
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=org or item.organization,
+        object_type='psa.Quote', object_id=item.pk,
+        object_repr=item.quote_number,
+        description=f'Accepted quote {item.quote_number}; ticket={item.converted_ticket_id or "—"}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    if item.converted_ticket:
+        messages.success(request, f'Accepted. Ticket {item.converted_ticket.ticket_number} created.')
+        return redirect('psa:ticket_detail', ticket_number=item.converted_ticket.ticket_number)
+    messages.success(request, 'Quote accepted.')
+    return redirect('psa:quote_list')
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def ticket_expense_add(request, ticket_number):
+    org = get_request_organization(request)
+    qs = Ticket.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    ticket = get_object_or_404(qs, ticket_number=ticket_number)
+
+    description = (request.POST.get('description') or '').strip()
+    if not description:
+        messages.error(request, 'Description required.')
+        return redirect('psa:ticket_detail', ticket_number=ticket_number)
+    try:
+        amount = float(request.POST.get('amount') or 0)
+    except (TypeError, ValueError):
+        amount = 0
+
+    expense = TicketExpense.objects.create(
+        ticket=ticket, user=request.user,
+        category=request.POST.get('category') or 'other',
+        description=description[:300],
+        amount=amount,
+        currency=(request.POST.get('currency') or 'USD')[:8],
+        incurred_on=request.POST.get('incurred_on') or timezone.now().date(),
+        is_billable=request.POST.get('is_billable') == 'on',
+        is_reimbursable=request.POST.get('is_reimbursable') == 'on',
+        receipt_file=request.FILES.get('receipt_file'),
+    )
+    AuditLog.log(
+        user=request.user, action='create',
+        organization=ticket.organization,
+        object_type='psa.TicketExpense', object_id=expense.pk,
+        object_repr=expense.description,
+        description=f'Added {expense.amount} {expense.currency} expense to {ticket.ticket_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Expense added: {amount:.2f} {expense.currency}.')
+    return redirect('psa:ticket_detail', ticket_number=ticket_number)

@@ -1139,3 +1139,198 @@ class EmailIngestionConfig(models.Model):
 
 # This is attached as a Django signal in psa/apps.py to keep models.py
 # free of side effects on import.
+
+
+# ---------------------------------------------------------------------------
+# Quotes / Estimates (Workstream 5 — sales pipeline)
+# ---------------------------------------------------------------------------
+
+class Quote(models.Model):
+    """
+    Sales quote / estimate. Goes through draft → sent → accepted/rejected,
+    and on acceptance optionally converts into a Ticket. Line items are
+    stored on QuoteLineItem.
+
+    The `quote_number` is auto-assigned `Q-YYYY-NNNNN` per year.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('sent', 'Sent'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+        ('expired', 'Expired'),
+    ]
+
+    quote_number = models.CharField(max_length=32, unique=True, db_index=True, blank=True)
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_quotes',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_client_quotes',
+    )
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    valid_until = models.DateField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True)
+
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=4, default=0,
+        help_text='e.g. 0.0875 for 8.75%')
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    converted_ticket = models.ForeignKey(
+        Ticket, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='source_quotes',
+        help_text='Set when the quote was converted to a ticket on acceptance',
+    )
+    converted_project = models.ForeignKey(
+        'Project', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='source_quotes',
+    )
+
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_psa_quotes',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_quotes'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'status', '-created_at']),
+            models.Index(fields=['client_org', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.quote_number} — {self.title}'
+
+    def save(self, *args, **kwargs):
+        if not self.quote_number:
+            self.quote_number = self._next_number()
+        super().save(*args, **kwargs)
+
+    def _next_number(self) -> str:
+        year = timezone.now().year
+        prefix = f'Q-{year}-'
+        last = Quote.objects.filter(quote_number__startswith=prefix).order_by('-quote_number').first()
+        if last and last.quote_number:
+            try:
+                n = int(last.quote_number.rsplit('-', 1)[-1])
+            except ValueError:
+                n = 0
+        else:
+            n = 0
+        return f'{prefix}{n + 1:05d}'
+
+    def recompute_totals(self):
+        from decimal import Decimal
+        sub = sum((li.line_total for li in self.line_items.all()), Decimal('0'))
+        self.subtotal = sub
+        self.tax_amount = (sub * (self.tax_rate or 0)).quantize(Decimal('0.01'))
+        self.total = sub + self.tax_amount
+        self.save(update_fields=['subtotal', 'tax_amount', 'total'])
+
+    def mark_accepted(self, *, user=None, create_ticket: bool = True,
+                      queue=None, priority=None, ticket_type=None,
+                      status=None):
+        self.status = 'accepted'
+        self.accepted_at = timezone.now()
+        if create_ticket and not self.converted_ticket and queue and priority and ticket_type and status:
+            self.converted_ticket = Ticket.objects.create(
+                organization=self.client_org,
+                subject=f'Q {self.quote_number}: {self.title}',
+                description=self.description or '',
+                queue=queue, priority=priority,
+                ticket_type=ticket_type, status=status,
+                source='manual',
+                created_by=user,
+            )
+        self.save()
+
+
+class QuoteLineItem(models.Model):
+    quote = models.ForeignKey(Quote, on_delete=models.CASCADE, related_name='line_items')
+    sort_order = models.PositiveIntegerField(default=0)
+
+    description = models.CharField(max_length=300)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    is_taxable = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'psa_quote_line_items'
+        ordering = ['sort_order', 'pk']
+
+    @property
+    def line_total(self):
+        from decimal import Decimal
+        return (self.quantity * self.unit_price).quantize(Decimal('0.01'))
+
+    def __str__(self):
+        return f'{self.description} ({self.quantity} × {self.unit_price})'
+
+
+# ---------------------------------------------------------------------------
+# Expenses (Workstream 2 expansion)
+# ---------------------------------------------------------------------------
+
+def expense_receipt_upload_to(instance, filename):
+    return f'psa/expenses/{instance.ticket.organization_id}/{instance.ticket_id}/{filename}'
+
+
+class TicketExpense(models.Model):
+    """
+    Reimbursable / billable expenses tracked against a ticket. Optional
+    receipt file upload. Approvals integrate with PSAApproval.
+    """
+    CATEGORY_CHOICES = [
+        ('mileage', 'Mileage / Travel'),
+        ('parts', 'Parts'),
+        ('software', 'Software / License'),
+        ('subcontractor', 'Subcontractor'),
+        ('shipping', 'Shipping'),
+        ('other', 'Other'),
+    ]
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='expenses')
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_expenses',
+    )
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other')
+    description = models.CharField(max_length=300)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=8, default='USD')
+    incurred_on = models.DateField()
+    is_billable = models.BooleanField(default=True)
+    is_reimbursable = models.BooleanField(default=True)
+    receipt_file = models.FileField(upload_to=expense_receipt_upload_to, blank=True, null=True)
+
+    approval = models.ForeignKey(
+        'PSAApproval', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='expenses',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_ticket_expenses'
+        ordering = ['-incurred_on', '-created_at']
+        indexes = [
+            models.Index(fields=['ticket', '-incurred_on']),
+            models.Index(fields=['user', '-incurred_on']),
+        ]
+
+    def __str__(self):
+        return f'{self.description} — {self.amount} {self.currency}'

@@ -54,4 +54,11 @@ urlpatterns = [
     path('email-configs/', views.email_config_list, name='email_config_list'),
     path('email-configs/new/', views.email_config_form, name='email_config_create'),
     path('email-configs/<int:pk>/edit/', views.email_config_form, name='email_config_edit'),
+    # Quotes / Estimates
+    path('quotes/', views.quote_list, name='quote_list'),
+    path('quotes/new/', views.quote_form, name='quote_create'),
+    path('quotes/<int:pk>/edit/', views.quote_form, name='quote_edit'),
+    path('quotes/<int:pk>/accept/', views.quote_accept, name='quote_accept'),
+    # Expenses (per-ticket)
+    path('t/<str:ticket_number>/expense/add/', views.ticket_expense_add, name='ticket_expense_add'),
 ]
