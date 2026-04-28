@@ -508,9 +508,11 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.FormParser',
         'rest_framework.parsers.MultiPartParser',
     ],
-    # Disable schema generation in production (not needed without browsable API)
-    # In dev, use OpenAPI schema (modern, no coreapi dependency)
-    'DEFAULT_SCHEMA_CLASS': None if not DEBUG else 'rest_framework.schemas.openapi.AutoSchema',
+    # Use the modern OpenAPI schema in both DEBUG and production. Setting
+    # this to None makes DRF's coreapi import path call issubclass(None, ...)
+    # which raises TypeError; setting to coreapi.AutoSchema would re-introduce
+    # the deprecated coreapi dependency.
+    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.openapi.AutoSchema',
 }
 
 # Encryption settings
