@@ -64,4 +64,11 @@ urlpatterns = [
     path('quotes/<int:pk>/accept/', views.quote_accept, name='quote_accept'),
     # Expenses (per-ticket)
     path('t/<str:ticket_number>/expense/add/', views.ticket_expense_add, name='ticket_expense_add'),
+    # Workflow rules (Workstream 9)
+    path('rules/', views.workflow_rule_list, name='workflow_rule_list'),
+    path('rules/new/', views.workflow_rule_form, name='workflow_rule_create'),
+    path('rules/<int:pk>/edit/', views.workflow_rule_form, name='workflow_rule_edit'),
+    path('rules/<int:pk>/delete/', views.workflow_rule_delete, name='workflow_rule_delete'),
+    # Dispatch board
+    path('dispatch/', views.dispatch_board, name='dispatch_board'),
 ]

@@ -99,6 +99,7 @@
                         <th>Installed</th>
                         <th>Fix Versions</th>
                         <th>Advisories</th>
+                        {% if request.user.is_superuser %}<th>Remediate</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -128,11 +129,111 @@
                                 <br>
                             {% endfor %}
                         </td>
+                        {% if request.user.is_superuser %}
+                        <td>
+                            {% with all_fixes=pkg.vulns.0.fix_versions %}
+                            {% if all_fixes %}
+                            <button class="btn btn-sm btn-warning remediate-btn"
+                                    data-pkg="{{ pkg.name }}"
+                                    data-versions="{% for v in pkg.vulns %}{% for fv in v.fix_versions %}{{ fv }} {% endfor %}{% endfor %}">
+                                <i class="fas fa-wrench"></i> Upgrade
+                            </button>
+                            {% else %}
+                            <span class="text-muted small">—</span>
+                            {% endif %}
+                            {% endwith %}
+                        </td>
+                        {% endif %}
                     </tr>
                 {% endfor %}
                 </tbody>
             </table>
         </div>
+
+        {% if request.user.is_superuser %}
+        {# Remediate modal #}
+        <div class="modal fade" id="remediateModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Upgrade vulnerable package</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>This runs <code>pip install --upgrade &lt;package&gt;==&lt;version&gt;</code> on the live server.
+                           After the upgrade you must update <code>requirements.txt</code> and restart gunicorn.</p>
+                        <div class="alert alert-warning small mb-3">
+                            <strong>Heads-up:</strong> the running web process is not auto-restarted —
+                            in-flight requests keep the old version loaded until you run
+                            <code>sudo systemctl restart huduglue-gunicorn.service</code>.
+                        </div>
+                        <form id="remediate-form">
+                            {% csrf_token %}
+                            <div class="mb-2">
+                                <label class="form-label">Package</label>
+                                <input type="text" class="form-control font-monospace" id="remediate-pkg" name="package" readonly>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label">Target version (pick one of the fixes)</label>
+                                <select class="form-select" id="remediate-version" name="version" required></select>
+                            </div>
+                        </form>
+                        <pre id="remediate-output" class="bg-dark text-light p-2 small d-none" style="max-height:300px; overflow:auto;"></pre>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button class="btn btn-warning" id="remediate-go"><i class="fas fa-wrench me-1"></i>Run upgrade</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+        (function() {
+            const modalEl = document.getElementById('remediateModal');
+            const modal = new bootstrap.Modal(modalEl);
+            const pkgInput = document.getElementById('remediate-pkg');
+            const verSelect = document.getElementById('remediate-version');
+            const outputEl = document.getElementById('remediate-output');
+            document.querySelectorAll('.remediate-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    pkgInput.value = btn.dataset.pkg;
+                    verSelect.innerHTML = '';
+                    btn.dataset.versions.trim().split(/\s+/).filter(Boolean).forEach(v => {
+                        const opt = document.createElement('option');
+                        opt.value = v; opt.textContent = v;
+                        verSelect.appendChild(opt);
+                    });
+                    outputEl.classList.add('d-none'); outputEl.textContent = '';
+                    modal.show();
+                });
+            });
+            document.getElementById('remediate-go').addEventListener('click', () => {
+                const fd = new FormData(document.getElementById('remediate-form'));
+                outputEl.classList.remove('d-none');
+                outputEl.textContent = `Running pip install --upgrade ${fd.get('package')}==${fd.get('version')} ...`;
+                fetch('{% url "core:remediate_python_package" %}', {
+                    method: 'POST',
+                    body: fd,
+                    headers: {'X-CSRFToken': fd.get('csrfmiddlewaretoken')},
+                })
+                .then(r => r.json())
+                .then(data => {
+                    let msg = '';
+                    if (data.success) {
+                        msg = '✓ Upgrade succeeded.\n\nNext steps:\n';
+                        (data.next_steps || []).forEach(s => msg += '  - ' + s + '\n');
+                        msg += '\n--- pip stdout (tail) ---\n' + (data.stdout || '');
+                    } else {
+                        msg = '✗ Upgrade failed: ' + (data.error || 'unknown') + '\n';
+                        if (data.stderr) msg += '\n--- pip stderr (tail) ---\n' + data.stderr;
+                    }
+                    outputEl.textContent = msg;
+                })
+                .catch(e => { outputEl.textContent = 'Network error: ' + e; });
+            });
+        })();
+        </script>
+        {% endif %}
         {% else %}
         <div class="text-center text-muted py-4">
             {% if latest_scan %}

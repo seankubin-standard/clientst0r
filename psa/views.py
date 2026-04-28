@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from audit.models import AuditLog
-from core.decorators import require_write
+from core.decorators import require_admin, require_write
 from core.middleware import get_request_organization
 from vault.models import Password
 
@@ -1812,6 +1812,27 @@ def contract_form(request, pk=None):
         except (TypeError, ValueError):
             pass
         item.notes = (request.POST.get('notes') or '').strip()
+
+        # SLA matrix — POST keys are sla_<code>_response and sla_<code>_resolution.
+        # Empty string = "use priority default" (omit from matrix).
+        matrix = {}
+        for p in TicketPriority.objects.all():
+            r_raw = request.POST.get(f'sla_{p.code}_response') or ''
+            x_raw = request.POST.get(f'sla_{p.code}_resolution') or ''
+            entry = {}
+            if r_raw.strip():
+                try:
+                    entry['response_minutes'] = max(0, int(r_raw))
+                except ValueError:
+                    pass
+            if x_raw.strip():
+                try:
+                    entry['resolution_minutes'] = max(0, int(x_raw))
+                except ValueError:
+                    pass
+            if entry:
+                matrix[p.code] = entry
+        item.sla_matrix = matrix
         item.save()
 
         AuditLog.log(
@@ -1830,6 +1851,7 @@ def contract_form(request, pk=None):
         'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
         'contract_types': Contract.CONTRACT_TYPES,
         'status_choices': Contract.STATUS_CHOICES,
+        'priorities': TicketPriority.objects.all().order_by('sort_order'),
     })
 
 
@@ -2156,3 +2178,176 @@ def project_task_delete(request, task_pk):
     task.delete()
     messages.success(request, f'Deleted "{title}".')
     return redirect('psa:project_detail', pk=project_pk)
+
+
+# ---------------------------------------------------------------------------
+# Workflow Rules (Workstream 9)
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_psa_enabled
+def workflow_rule_list(request):
+    from .models import WorkflowRule
+    org = get_request_organization(request)
+    qs = WorkflowRule.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    return render(request, 'psa/workflow_rule_list.html', {
+        'rules': qs.order_by('sort_order', 'name')[:200],
+    })
+
+
+@login_required
+@require_admin
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def workflow_rule_form(request, pk=None):
+    from .models import WorkflowRule
+    import json as _json
+    org = get_request_organization(request)
+    if org is None:
+        messages.error(request, 'Pick a client first.')
+        return redirect('psa:workflow_rule_list')
+    item = get_object_or_404(WorkflowRule, pk=pk, organization=org) if pk else None
+
+    if request.method == 'POST':
+        name = (request.POST.get('name') or '').strip()
+        trigger = request.POST.get('trigger') or ''
+        if not name or trigger not in {c[0] for c in WorkflowRule.TRIGGER_CHOICES}:
+            messages.error(request, 'Name and a valid trigger are required.')
+            return redirect(request.path)
+        try:
+            conditions = _json.loads(request.POST.get('conditions') or '{}')
+        except _json.JSONDecodeError:
+            messages.error(request, 'Conditions must be valid JSON.')
+            return redirect(request.path)
+        try:
+            actions = _json.loads(request.POST.get('actions') or '[]')
+        except _json.JSONDecodeError:
+            messages.error(request, 'Actions must be valid JSON.')
+            return redirect(request.path)
+        if not isinstance(conditions, dict):
+            messages.error(request, 'Conditions must be a JSON object.')
+            return redirect(request.path)
+        if not isinstance(actions, list):
+            messages.error(request, 'Actions must be a JSON list.')
+            return redirect(request.path)
+
+        if item is None:
+            item = WorkflowRule(organization=org, name=name, trigger=trigger,
+                                created_by=request.user)
+        else:
+            item.name = name
+            item.trigger = trigger
+        item.description = (request.POST.get('description') or '').strip()
+        item.conditions = conditions
+        item.actions = actions
+        item.is_active = request.POST.get('is_active') == 'on'
+        try:
+            item.sort_order = max(0, int(request.POST.get('sort_order') or 0))
+        except ValueError:
+            item.sort_order = 0
+        item.save()
+        messages.success(request, f'Saved rule "{item.name}".')
+        return redirect('psa:workflow_rule_list')
+
+    return render(request, 'psa/workflow_rule_form.html', {
+        'item': item,
+        'trigger_choices': WorkflowRule.TRIGGER_CHOICES,
+        'conditions_pretty': _json.dumps(item.conditions if item else {}, indent=2),
+        'actions_pretty': _json.dumps(item.actions if item else [], indent=2),
+    })
+
+
+@login_required
+@require_admin
+@require_psa_enabled
+@require_http_methods(['POST'])
+def workflow_rule_delete(request, pk):
+    from .models import WorkflowRule
+    org = get_request_organization(request)
+    qs = WorkflowRule.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    name = item.name
+    item.delete()
+    messages.success(request, f'Deleted "{name}".')
+    return redirect('psa:workflow_rule_list')
+
+
+# ---------------------------------------------------------------------------
+# Dispatch board — weekly grid of assigned tickets per tech
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_psa_enabled
+def dispatch_board(request):
+    """
+    Simple dispatch board: 7-day grid (today + 6 days), columns = days,
+    rows = techs (users with any assigned active ticket OR recent assignment).
+    Each cell shows tickets assigned to that tech with due_at in that day.
+    Unassigned tickets are listed in a separate row at the top.
+    """
+    from datetime import date, timedelta
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+
+    org = get_request_organization(request)
+    qs = Ticket.objects.select_related('assigned_to', 'priority', 'status', 'organization')
+    if org is not None:
+        qs = qs.filter(organization=org)
+
+    # Open tickets only
+    qs = qs.filter(status__is_terminal=False)
+
+    days = []
+    today = date.today()
+    for i in range(7):
+        d = today + timedelta(days=i)
+        days.append(d)
+
+    # Bucket tickets: (assignee_id_or_None, day) -> list[ticket]
+    cells = {}
+    techs = {}  # user_id -> User (only those with any open assigned ticket)
+    unassigned_by_day = {d: [] for d in days}
+    overdue = []
+
+    for t in qs[:500]:
+        due = t.resolution_due_at or t.first_response_due_at
+        if not due:
+            # No due date — bucket onto today for the assignee
+            d = today
+        else:
+            d_local = timezone.localtime(due).date() if hasattr(due, 'date') else due
+            if d_local < today:
+                overdue.append(t)
+                continue
+            if d_local > today + timedelta(days=6):
+                continue
+            d = d_local
+        if t.assigned_to_id:
+            techs[t.assigned_to_id] = t.assigned_to
+            cells.setdefault((t.assigned_to_id, d), []).append(t)
+        else:
+            unassigned_by_day[d].append(t)
+
+    # Build a list of (tech, [tickets_per_day]) preserving insertion order
+    techs_sorted = sorted(techs.values(), key=lambda u: (u.username or '').lower())
+    rows = []
+    for u in techs_sorted:
+        rows.append({
+            'tech': u,
+            'cells': [cells.get((u.id, d), []) for d in days],
+        })
+
+    return render(request, 'psa/dispatch_board.html', {
+        'days': days,
+        'rows': rows,
+        'unassigned_by_day': [unassigned_by_day[d] for d in days],
+        'overdue': overdue,
+    })

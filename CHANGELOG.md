@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.94] - 2026-04-28
+
+### Added — PSA Phase 7: SLA matrix UI + Workflow Rules + Dispatch Board
+
+- **SLA matrix editor** on the contract form — a P1–P5 grid where each cell holds an optional response/resolution override in minutes. The SLA engine (`psa.sla.compute_due_dates`) checks the active contract's matrix before falling back to the priority's defaults, so premium clients can have tighter SLAs than the global queue defaults.
+- **Workflow Rules engine** (`psa.WorkflowRule`) — JSON-DSL rule engine fired from PSA signals on `ticket_created` / `ticket_updated` / `status_changed` / `comment_added`. Conditions support `priority`, `queue`, `status`, `subject_contains`, `is_unassigned`, `is_paused`, `__in` / `__not` operators, plus `all` / `any` combinators. Actions: `set_priority`, `set_queue`, `assign_to`, `add_watcher`, `add_internal_note`, `add_tag`. Misconfigured rules capture `last_error` on the row instead of blocking ticket save.
+- **Sample workflow installer** — `psa_seed_sample_workflows` management command installs 7 starter rules per organization (P1 escalation, sales-inquiry follow-up, new-user onboarding, termination security routing, outage keyword detection, unassigned triage, client-reply tagging). Tenant-scoped + idempotent.
+- **Dispatch Board** at `/psa/dispatch/` — 7-day grid of open tickets bucketed by due date with one row per tech, an unassigned row at the top, and an overdue panel above the grid.
+
+### Added — Python Dependency Scanner remediation
+- New superuser-only **Upgrade** button on the Python scanner dashboard. Clicking it opens a modal with the package name + a dropdown limited to the `fix_versions` from the most recent scan.
+- New `/core/security/python-scanner/remediate/` POST endpoint runs `pip install --upgrade <name>==<version>` in a controlled subprocess (300 s timeout, package + version regex-validated, version must be in the published fix list to prevent stale-dashboard exploitation). Audit-logged success and failure with stdout/stderr tails.
+- The modal explicitly tells the admin to (a) update `requirements.txt` and (b) restart gunicorn — we don't auto-restart since the request is in-process.
+
+### Tests
++7 in `psa.tests.Phase7WorkflowTests` covering SLA matrix override math, set_priority on subject match, condition false → no-op, add_tag action, inactive rule no-op, error-capture for bogus action types, and sample-workflow seeding.
+
 ## [3.17.93] - 2026-04-28
 
 ### Added — PSA Phase 6: project tasks + ticket-detail polish

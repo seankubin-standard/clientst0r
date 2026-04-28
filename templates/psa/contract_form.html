@@ -67,6 +67,56 @@
                 <label class="form-label">Notes</label>
                 <textarea name="notes" rows="3" class="form-control">{{ item.notes|default:'' }}</textarea>
             </div>
+
+            <div class="col-12">
+                <hr>
+                <h5>SLA matrix</h5>
+                <p class="text-muted small mb-2">Per-priority overrides for this contract. Leave blank to use the priority's default. Times are in minutes from ticket creation.</p>
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Priority</th>
+                            <th>Default response</th>
+                            <th>Override response (min)</th>
+                            <th>Default resolution</th>
+                            <th>Override resolution (min)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in priorities %}
+                        <tr>
+                            <td><strong>{{ p.code }}</strong> {{ p.name }}</td>
+                            <td><small class="text-muted">{{ p.response_target_minutes }}</small></td>
+                            <td>
+                                <input type="number" min="0" name="sla_{{ p.code }}_response"
+                                       class="form-control form-control-sm"
+                                       data-prio="{{ p.code }}" data-kind="response">
+                            </td>
+                            <td><small class="text-muted">{{ p.resolution_target_minutes }}</small></td>
+                            <td>
+                                <input type="number" min="0" name="sla_{{ p.code }}_resolution"
+                                       class="form-control form-control-sm"
+                                       data-prio="{{ p.code }}" data-kind="resolution">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if item and item.sla_matrix %}
+                <script>
+                {# Pre-fill the override inputs from the saved sla_matrix JSON. #}
+                const matrix = {{ item.sla_matrix|safe }};
+                document.querySelectorAll('input[data-prio]').forEach(inp => {
+                    const code = inp.dataset.prio;
+                    const kind = inp.dataset.kind;
+                    if (matrix[code]) {
+                        const v = matrix[code][kind + '_minutes'];
+                        if (v != null) inp.value = v;
+                    }
+                });
+                </script>
+                {% endif %}
+            </div>
             {% if item %}
             <div class="col-12">
                 <p class="text-muted mb-0">Hours used so far: <strong>{{ item.hours_used }}</strong>{% if item.hours_remaining is not None %} ({{ item.hours_remaining }} remaining){% endif %}.</p>

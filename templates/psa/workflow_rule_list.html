@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}PSA — Workflow Rules{% endblock %}
+{% block content %}
+{% include "psa/_scope_banner.html" %}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Workflow Rules</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="mb-0"><i class="fas fa-bolt me-2"></i>Workflow Rules</h2>
+        <small class="text-muted">When a ticket event fires, evaluate conditions and run actions automatically.</small>
+    </div>
+    <a href="{% url 'psa:workflow_rule_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> New Rule</a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light"><tr><th>Order</th><th>Name</th><th>Trigger</th><th>Active</th><th>Fired</th><th>Last fired</th><th></th></tr></thead>
+            <tbody>
+                {% for r in rules %}
+                <tr {% if r.last_error %}class="table-danger"{% endif %}>
+                    <td>{{ r.sort_order }}</td>
+                    <td>
+                        <strong>{{ r.name }}</strong>
+                        {% if r.description %}<small class="d-block text-muted">{{ r.description|truncatechars:80 }}</small>{% endif %}
+                        {% if r.last_error %}<small class="d-block text-danger">{{ r.last_error|truncatechars:120 }}</small>{% endif %}
+                    </td>
+                    <td><span class="badge text-bg-info">{{ r.get_trigger_display }}</span></td>
+                    <td>{% if r.is_active %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
+                    <td>{{ r.fire_count|default:0 }}</td>
+                    <td>{% if r.last_fired_at %}<span data-utc="{{ r.last_fired_at|date:'c' }}">{{ r.last_fired_at|date:'Y-m-d H:i' }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td class="text-nowrap">
+                        <a href="{% url 'psa:workflow_rule_edit' r.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        <form method="post" action="{% url 'psa:workflow_rule_delete' r.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete rule?')">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-4">No rules yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

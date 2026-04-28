@@ -1701,3 +1701,150 @@ class Phase6PolishTests(TestCase):
         t = ProjectTask.objects.create(project=p, title='Go-live', is_milestone=True)
         t.refresh_from_db()
         self.assertTrue(t.is_milestone)
+
+
+class Phase7WorkflowTests(TestCase):
+    """Phase 7: SLA matrix override + WorkflowRule engine + sample workflows."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ACME P7', slug='acme-p7')
+        self.user = User.objects.create_user('p7', password='pw', email='p7@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.filter(code='P1').first() or TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status = TicketStatus.objects.filter(slug='new').first()
+
+    def test_sla_matrix_overrides_priority_default(self):
+        from psa.models import Contract, Ticket
+        from psa.sla import compute_due_dates
+        from datetime import date, timedelta
+        # Contract pegs P1 response to 30 minutes (priority default is 240).
+        Contract.objects.create(
+            organization=self.org, client_org=self.org,
+            name='Premium', start_date=date.today() - timedelta(days=1),
+            status='active',
+            sla_matrix={self.priority.code: {'response_minutes': 30, 'resolution_minutes': 120}},
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='SLA test',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        fr, res = compute_due_dates(t)
+        # Response should be 30 min after creation, not 240.
+        delta = (fr - t.created_at).total_seconds() / 60
+        self.assertAlmostEqual(delta, 30, delta=1)
+        delta_res = (res - t.created_at).total_seconds() / 60
+        self.assertAlmostEqual(delta_res, 120, delta=1)
+
+    def test_workflow_rule_set_priority_on_create(self):
+        from psa.models import Ticket, TicketPriority, WorkflowRule
+        p2 = TicketPriority.objects.filter(code='P2').first()
+        WorkflowRule.objects.create(
+            organization=self.org,
+            name='Outage → P1',
+            trigger='ticket_created',
+            conditions={'subject_contains': 'outage'},
+            actions=[{'type': 'set_priority', 'code': 'P1'}],
+            is_active=True,
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='Email outage',
+            queue=self.queue, priority=p2,
+            ticket_type=self.ttype, status=self.status,
+        )
+        t.refresh_from_db()
+        self.assertEqual(t.priority.code, 'P1')
+
+    def test_workflow_rule_skips_when_condition_false(self):
+        from psa.models import Ticket, TicketPriority, WorkflowRule
+        p3 = TicketPriority.objects.filter(code='P3').first()
+        WorkflowRule.objects.create(
+            organization=self.org,
+            name='Outage → P1',
+            trigger='ticket_created',
+            conditions={'subject_contains': 'outage'},
+            actions=[{'type': 'set_priority', 'code': 'P1'}],
+            is_active=True,
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='Friendly hello',
+            queue=self.queue, priority=p3,
+            ticket_type=self.ttype, status=self.status,
+        )
+        t.refresh_from_db()
+        # Condition was false — priority unchanged.
+        self.assertEqual(t.priority.code, 'P3')
+
+    def test_workflow_rule_add_tag_action(self):
+        from psa.models import Ticket, WorkflowRule
+        WorkflowRule.objects.create(
+            organization=self.org,
+            name='Tag VIP',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'add_tag', 'tag': 'vip'}],
+            is_active=True,
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='Anything',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        t.refresh_from_db()
+        self.assertIn('vip', t.tags or [])
+
+    def test_workflow_rule_inactive_does_not_fire(self):
+        from psa.models import Ticket, WorkflowRule
+        rule = WorkflowRule.objects.create(
+            organization=self.org,
+            name='Tag Inactive',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'add_tag', 'tag': 'should-not-appear'}],
+            is_active=False,
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='Test',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        t.refresh_from_db()
+        self.assertNotIn('should-not-appear', t.tags or [])
+        rule.refresh_from_db()
+        self.assertEqual(rule.fire_count, 0)
+
+    def test_workflow_rule_bad_action_recorded_on_rule(self):
+        """A misconfigured action shouldn't break ticket save — error is
+        captured on the rule row instead."""
+        from psa.models import Ticket, WorkflowRule
+        rule = WorkflowRule.objects.create(
+            organization=self.org,
+            name='Broken rule',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'bogus_action'}],
+            is_active=True,
+        )
+        Ticket.objects.create(
+            organization=self.org, subject='x',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        rule.refresh_from_db()
+        self.assertIn('bogus_action', rule.last_error)
+
+    def test_sample_workflows_seed_command(self):
+        from psa.models import WorkflowRule
+        from django.core.management import call_command
+        before = WorkflowRule.objects.filter(organization=self.org).count()
+        call_command('psa_seed_sample_workflows', '--org-id', str(self.org.id), verbosity=0)
+        after = WorkflowRule.objects.filter(organization=self.org).count()
+        self.assertGreater(after, before)

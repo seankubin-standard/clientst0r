@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{% if item %}Edit{% else %}New{% endif %} Workflow Rule — PSA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:workflow_rule_list' %}">Workflow Rules</a></li>
+        <li class="breadcrumb-item active">{% if item %}{{ item.name }}{% else %}New{% endif %}</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3">{% if item %}Edit Rule{% else %}New Rule{% endif %}</h2>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" class="form-control" required value="{{ item.name|default:'' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Trigger</label>
+                <select name="trigger" class="form-select" required>
+                    {% for code, label in trigger_choices %}
+                    <option value="{{ code }}" {% if item.trigger == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Order</label>
+                <input type="number" min="0" name="sort_order" class="form-control" value="{{ item.sort_order|default:0 }}">
+            </div>
+            <div class="col-md-1 form-check ms-3 mt-4">
+                <input type="checkbox" id="is_active" name="is_active" class="form-check-input"
+                       {% if not item or item.is_active %}checked{% endif %}>
+                <label class="form-check-label" for="is_active">Active</label>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Description</label>
+                <input type="text" name="description" class="form-control" value="{{ item.description|default:'' }}">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Conditions (JSON)</label>
+                <textarea name="conditions" rows="8" class="form-control font-monospace small">{{ conditions_pretty }}</textarea>
+                <small class="text-muted d-block">Examples:
+                    <code>{}</code> (always), <code>{"priority": "P1"}</code>,
+                    <code>{"priority__in": ["P1","P2"]}</code>,
+                    <code>{"subject_contains": "outage"}</code>,
+                    <code>{"is_unassigned": true}</code>,
+                    <code>{"all": [{"priority":"P1"}, {"queue":"Helpdesk"}]}</code>.
+                </small>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Actions (JSON list)</label>
+                <textarea name="actions" rows="8" class="form-control font-monospace small">{{ actions_pretty }}</textarea>
+                <small class="text-muted d-block">Action types:
+                    <code>set_priority</code> (<code>code</code>),
+                    <code>set_queue</code> (<code>name</code>),
+                    <code>assign_to</code> (<code>username</code>),
+                    <code>add_watcher</code> (<code>username</code>),
+                    <code>add_internal_note</code> (<code>body</code>),
+                    <code>add_tag</code> (<code>tag</code>).
+                </small>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{% url 'psa:workflow_rule_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

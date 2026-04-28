@@ -366,3 +366,136 @@ def get_python_scanner_widget_data(request):
         'scan_date': latest_scan.scan_date.isoformat(),
         'scan_succeeded': latest_scan.scan_succeeded,
     })
+
+
+# ---------------------------------------------------------------------------
+# Python dependency remediation (pip-audit findings → pip install upgrade)
+# ---------------------------------------------------------------------------
+
+import re as _re_remediate
+import subprocess as _subprocess
+import sys as _sys
+
+
+_PACKAGE_NAME_RE = _re_remediate.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
+_VERSION_RE = _re_remediate.compile(r'^\d+(\.\d+)*([a-z0-9.+-]*)?$')
+
+
+def _safe_package_and_version(name: str, version: str):
+    """Validate that name + version are safe to pass to subprocess.
+
+    Returns (clean_name, clean_version) or raises ValueError. We do NOT
+    shell-quote and pass through `shell=True` — instead we hand the args
+    list to subprocess and double-check both fields match strict regex
+    so an attacker who somehow controls the POST can't inject flags.
+    """
+    if not name or not _PACKAGE_NAME_RE.match(name):
+        raise ValueError('Invalid package name')
+    if not version or not _VERSION_RE.match(version):
+        raise ValueError('Invalid version string')
+    return name, version
+
+
+def _vulnerable_pkg_index(latest_scan):
+    """Return a {package_name: set(fix_versions)} index from the latest scan."""
+    out = {}
+    if not latest_scan or not latest_scan.scan_data:
+        return out
+    for pkg in latest_scan.scan_data.get('packages', []):
+        if not pkg.get('vulns'):
+            continue
+        fix_versions = set()
+        for v in pkg['vulns']:
+            for fv in (v.get('fix_versions') or []):
+                fix_versions.add(fv)
+        out[pkg['name']] = fix_versions
+    return out
+
+
+@login_required
+@require_http_methods(['POST'])
+def remediate_python_package(request):
+    """
+    Run `pip install --upgrade <name>==<version>` for a single vulnerable
+    package, where <version> MUST be one of the pip-audit fix_versions
+    from the most recent scan. Superuser only.
+
+    Returns JSON with stdout/stderr/exit code. Audit-logged either way.
+    On success, the admin is reminded to (a) update requirements.txt and
+    (b) restart gunicorn manually — we don't auto-restart because the
+    request is in-process and a restart would kill it.
+    """
+    if not request.user.is_superuser:
+        return JsonResponse({'error': 'Superuser required'}, status=403)
+
+    name = (request.POST.get('package') or '').strip()
+    version = (request.POST.get('version') or '').strip()
+
+    try:
+        name, version = _safe_package_and_version(name, version)
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+
+    # Verify the requested version is a published fix from the latest scan.
+    # This prevents a privileged user from being tricked into upgrading to
+    # an attacker-chosen version via a stale dashboard.
+    latest_scan = PythonPackageScan.objects.first()
+    index = _vulnerable_pkg_index(latest_scan)
+    valid_versions = index.get(name, set())
+    if version not in valid_versions:
+        return JsonResponse({
+            'error': f'{version} is not in the published fix list for {name}.',
+            'valid_versions': sorted(valid_versions),
+        }, status=400)
+
+    cmd = [_sys.executable, '-m', 'pip', 'install', '--upgrade',
+           f'{name}=={version}']
+    try:
+        result = _subprocess.run(
+            cmd, capture_output=True, text=True, timeout=300,
+        )
+    except _subprocess.TimeoutExpired:
+        return JsonResponse({'error': 'pip install timed out'}, status=504)
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=500)
+
+    success = result.returncode == 0
+
+    # Audit log every attempt (success and failure)
+    try:
+        from audit.models import AuditLog
+        AuditLog.log(
+            user=request.user,
+            action='update',
+            object_type='core.PythonPackageScan',
+            object_id=latest_scan.pk if latest_scan else 0,
+            object_repr=f'pip upgrade {name}=={version}',
+            description=(
+                f'pip install --upgrade {name}=={version} '
+                f'{"succeeded" if success else "FAILED rc=" + str(result.returncode)}'
+            ),
+            path=request.path,
+            extra_data={
+                'package': name,
+                'target_version': version,
+                'returncode': result.returncode,
+                'stdout_tail': (result.stdout or '')[-500:],
+                'stderr_tail': (result.stderr or '')[-500:],
+            },
+        )
+    except Exception:
+        pass  # never fail the response on logging
+
+    return JsonResponse({
+        'success': success,
+        'package': name,
+        'version': version,
+        'returncode': result.returncode,
+        'stdout': (result.stdout or '')[-2000:],
+        'stderr': (result.stderr or '')[-2000:],
+        'next_steps': [
+            f'Update requirements.txt: pin {name}=={version}',
+            'Restart gunicorn: sudo systemctl restart huduglue-gunicorn.service',
+            'Re-run the scan to confirm the vulnerability is gone',
+        ] if success else [],
+    })

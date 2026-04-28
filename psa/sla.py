@@ -22,12 +22,39 @@ from django.utils import timezone
 
 def compute_due_dates(ticket):
     """Return (first_response_due_at, resolution_due_at) — both UTC dt
-    or None if priority has no targets."""
+    or None if priority has no targets.
+
+    The contract's per-priority SLA matrix overrides the priority's
+    default targets when the ticket's client has an active contract.
+    Schema: contract.sla_matrix = {"<priority_code_or_slug>": {
+        "response_minutes": int, "resolution_minutes": int}, ...}.
+    """
     if ticket.priority_id is None:
         return None, None
     base = ticket.created_at or timezone.now()
     rt = int(getattr(ticket.priority, 'response_target_minutes', 0) or 0)
     res = int(getattr(ticket.priority, 'resolution_target_minutes', 0) or 0)
+
+    # Contract override — only when an active contract exists for the
+    # ticket's client AND the matrix has an entry for this priority.
+    try:
+        from .models import Contract
+        contract = Contract.for_ticket(ticket)
+    except Exception:
+        contract = None
+    if contract and isinstance(contract.sla_matrix, dict):
+        prio_key = (
+            getattr(ticket.priority, 'code', None)
+            or getattr(ticket.priority, 'slug', None)
+            or ''
+        )
+        entry = contract.sla_matrix.get(prio_key) or contract.sla_matrix.get(prio_key.lower())
+        if isinstance(entry, dict):
+            try:
+                rt = int(entry.get('response_minutes', rt) or rt)
+                res = int(entry.get('resolution_minutes', res) or res)
+            except (TypeError, ValueError):
+                pass
     return (
         base + timedelta(minutes=rt) if rt else None,
         base + timedelta(minutes=res) if res else None,

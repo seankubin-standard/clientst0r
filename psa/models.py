@@ -1405,3 +1405,83 @@ class ProjectTask(models.Model):
         elif self.status not in ('done', 'cancelled') and self.completed_at:
             self.completed_at = None
         super().save(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Workflow Rules (Workstream 9 — PSA-specific automations)
+# ---------------------------------------------------------------------------
+#
+# Distinct from `processes/` (which orchestrates multi-step procedures).
+# A WorkflowRule is a simple "when X event happens AND conditions match,
+# run these actions" trigger fired from PSA signal handlers.
+
+class WorkflowRule(models.Model):
+    """
+    A simple rule engine: trigger + condition expression + actions JSON.
+
+    Trigger events fire in psa/signals.py:
+      * ticket_created    — Ticket post_save with created=True
+      * ticket_updated    — Ticket post_save with created=False
+      * status_changed    — Ticket.status changed
+      * comment_added     — TicketComment post_save
+
+    Condition is a small JSON DSL evaluated against the ticket:
+      {"priority": "P1"}                 → priority.code == "P1"
+      {"priority__in": ["P1","P2"]}      → priority.code in [...]
+      {"queue": "Helpdesk"}              → queue.name == "Helpdesk"
+      {"subject_contains": "outage"}     → "outage" in subject (case-insensitive)
+      {"is_unassigned": true}            → assigned_to is None
+      {"any": [{...}, {...}]}            → OR
+      {"all": [{...}, {...}]}            → AND
+    Empty / missing condition = always true.
+
+    Actions (list of dicts, executed in order):
+      {"type": "set_priority", "code": "P1"}
+      {"type": "assign_to", "username": "tech1"}
+      {"type": "add_watcher", "username": "manager"}
+      {"type": "add_internal_note", "body": "auto-flagged"}
+      {"type": "set_queue", "name": "Escalations"}
+      {"type": "add_tag", "tag": "vip"}
+    """
+    TRIGGER_CHOICES = [
+        ('ticket_created', 'Ticket created'),
+        ('ticket_updated', 'Ticket updated'),
+        ('status_changed', 'Status changed'),
+        ('comment_added', 'Comment added'),
+    ]
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_workflow_rules',
+        help_text='MSP tenant; rules apply only to tickets within this tenant',
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    trigger = models.CharField(max_length=30, choices=TRIGGER_CHOICES)
+    conditions = models.JSONField(default=dict, blank=True)
+    actions = models.JSONField(default=list, blank=True)
+
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0,
+        help_text='Lower runs first when multiple rules match')
+
+    last_fired_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+    fire_count = models.PositiveIntegerField(default=0)
+
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_psa_workflow_rules',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_workflow_rules'
+        ordering = ['sort_order', 'name']
+        indexes = [
+            models.Index(fields=['organization', 'trigger', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.get_trigger_display()})'

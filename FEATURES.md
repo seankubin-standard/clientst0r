@@ -407,6 +407,102 @@ Complete feature documentation for Client St0r - Self-hosted IT documentation pl
 - **Import Preview** - Review discovered devices before importing
 - **Connection Testing** - Verify controller connectivity before saving
 
+## 🎫 Native PSA / Service Desk
+
+A complete in-house ticketing system, separate from the PSA *integrations* below (which mirror data from third-party PSAs).
+
+### Ticketing & Service Desk
+- **Tickets** - Auto-numbered `PSA-YYYY-NNNNNN`, queues, statuses (with `is_terminal` and `pauses_sla` flags), 5-tier priority (P1–P5), ticket types, impact × urgency
+- **Comments** - Public + internal-only with audit; @mention parser auto-adds the user as a watcher and emails them
+- **Attachments** - Per-ticket file uploads with internal-only flag
+- **Watchers** - Per-user, per-ticket subscriptions for status/comment notifications
+- **Canned Replies** - Reusable comment templates with variable substitution; tenant-scoped
+- **Ticket merge** - Move comments + attachments to a target ticket and auto-close source as duplicate
+- **Similar tickets** - Same-asset + Jaccard token-overlap detection on subject for recurring-issue spotting
+- **Vault context** - Ticket detail surfaces the client's vault entries and lets staff jump to passwords inline
+
+### SLA Engine
+- **Per-priority response + resolution targets** in minutes from ticket creation
+- **Per-contract SLA matrix override** — premium clients get tighter response/resolution targets per priority
+- **Pause logic** - Statuses flagged `pauses_sla=True` (Waiting on Client / Vendor) suppress breach badges
+- **Hygiene checks** - Pre-close warnings for missing resolution summary, time entries, etc.
+
+### Time & Expenses
+- **Timer + manual entries** - Start/stop on a ticket, billable flag, notes, auto-computed duration
+- **Per-ticket expenses** - Reimbursable / billable expense rows with category (mileage, parts, software, subcontractor, shipping), receipt file upload, currency, billable total
+- **Auto-tracked contract hours** - Time entries automatically increment `Contract.hours_used_minutes` on stop transitions
+
+### Service Catalog
+- **Templated tickets** - Pre-defined service requests (Password Reset, MFA Reset, New User, Termination, etc.) with structured fields
+- **Field types** - text, email, date, number, textarea, select, checkbox; `{{key}}` substitution into subject/body
+- **CRUD UI** - Admins create/edit catalog items inline
+
+### Projects & Tasks
+- **Projects** - Group tickets under a delivery effort; status (planning/active/on_hold/completed/cancelled), owner, billable flag, estimated hours, optional client_org
+- **Project tasks/milestones** - Task breakdown with status, assignee, due date, milestone flag, parent-task hierarchy
+
+### Recurring Tickets (Preventive Maintenance)
+- **Schedules** - Daily/weekly/monthly/quarterly/yearly × interval, template subject + body, default queue/priority/type/assignee
+- **Cron runner** - `psa_run_recurring_tickets` creates tickets and rolls `next_run_at` forward; catch-up cap of 50 prevents runaway after downtime
+
+### Knowledge Base
+- **Browse + search** - `/psa/kb/` searches `docs.Document` filtered to global KB articles
+- **Per-ticket linking** - Many KB articles can be attached to one ticket via `TicketKBLink`
+
+### Approvals
+- **Generic manager-approval gate** for time / expense / quote / order / AI-action / change requests
+- **Decide UI** - Approve/deny with comment; status + decided_at + decided_by atomically recorded
+
+### Contracts
+- **Types** - Block hours, retainer, managed services, per-incident
+- **Allowance tracking** - `total_hours`, `hours_used_minutes` (auto-incremented), `hours_remaining`, hourly rate + overage rate
+- **SLA matrix override** - Per-priority response/resolution overrides on a per-contract basis
+- **Active-contract banner** on ticket detail showing usage + warnings when allowance is depleted
+
+### Quotes / Estimates
+- **Auto-numbered** - `Q-YYYY-NNNNN`, draft → sent → accepted/rejected/expired lifecycle
+- **Line items** - Quantity × unit price, tax rate, auto-computed subtotal/tax/total
+- **Convert-to-ticket on accept** - Optionally creates a ticket on the client's organization scoped to the quote
+
+### Customer Portal
+- **Stripped client-facing site** at `/portal/` — clients log in and see only their org's tickets where `client_can_view=True`
+- **Submit + reply** - Clients post replies as public comments and can submit new tickets
+- **Internal-only filtering** - Internal comments and staff-only attachments are filtered at the queryset layer
+- **Per-org opt-in** via `ClientPSASettings.portal_enabled`
+
+### Email-to-Ticket
+- **IMAP poller** - `psa_poll_email` management command (cron every 5 min)
+- **Reply threading** - Subject regex captures ticket number (`PSA-YYYY-NNNNNN`); inbound emails on existing tickets append as public comments instead of creating new tickets
+- **Encrypted password storage** - Same vault-encryption as RMM/integration credentials
+- **Marks UNSEEN as Seen** to avoid double-processing
+
+### Workflow Rules Engine
+- **Trigger events** - `ticket_created`, `ticket_updated`, `status_changed`, `comment_added`
+- **Condition DSL** - JSON: `{"priority": "P1"}`, `{"subject_contains": "outage"}`, `{"is_unassigned": true}`, `{"all": [...]}`, `{"any": [...]}`, `__in` / `__not` operators
+- **Actions** - `set_priority`, `set_queue`, `assign_to`, `add_watcher`, `add_internal_note`, `add_tag`
+- **Per-rule audit** - `last_fired_at`, `fire_count`, `last_error` so misconfigured rules surface visibly without blocking ticket save
+- **Sample workflows** - `psa_seed_sample_workflows` installs starter rules (P1 escalation, sales-inquiry follow-up, new-user onboarding, termination security routing, outage keyword detection, unassigned triage, client-reply tagging)
+
+### Dispatch Board
+- **7-day grid** - Columns = days, rows = techs; tickets bucketed by their due date
+- **Overdue panel** - Surfaces overdue open tickets at the top regardless of date
+- **Unassigned row** - Visible at the top so unassigned work isn't missed
+
+### Distributor Integrations (Workstream 8)
+- **Ingram Micro Xvantage** - OAuth2 client-credentials, catalog, price + availability, order placement (gated by `sync_enabled`), HMAC-SHA256 webhook verification (`X-Ingram-Signature`)
+- **Pax8** - SaaS / cloud-software distributor; OAuth2, `/v1/products` catalog, product pricing (price bands), order placement, HMAC webhook (`X-Pax8-Signature`)
+- **TD Synnex** - Stellr API; OAuth2, price-and-availability, order placement, HMAC webhook (`X-TDS-Signature`)
+- **Reserved choices** - D&H, ScanSource, QBS, Westcoast (provider types ready for future adapters)
+- **Per-connection encrypted credentials + webhook secret**, opaque webhook URL token, ad-hoc pricing lookup UI, connection test endpoint
+- **`sync_distributors`** management command for cron health probes
+
+### AI-Assisted Service Desk (Workstream 10)
+- **Suggested replies** - Generates a draft reply, surfaced for human approval
+- **Suggested actions** - Risk-tiered actions (low / medium / high) with separate approve-and-apply flow
+- **Guardrails** - Subject blocklist, per-user rate limit, daily token quotas, NFKC + control-char/ZWJ input sanitization, prompt-injection envelope, output content filter, action allowlist
+- **Granular RoleTemplate permissions** - 11 booleans (view, send_low_risk, send_high_risk, approve_reply, apply_low_risk, apply_high_risk, approve_action, run_script, create_workflow, billing, admin)
+- **Tenant isolation** - No vault secrets ever reach the model context; queryset/view/service-layer enforcement; "no-secrets-leak" test plants a sentinel and asserts it never appears in any AI artifact
+
 ## 🔌 PSA Integrations
 
 ### Supported PSA Platforms
