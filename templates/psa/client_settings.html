@@ -42,20 +42,35 @@
 </div>
 {% endif %}
 
-{# OVERRIDE form — only needed when admin wants to change the auto-decision #}
+{% if has_external_psa %}
+<div class="alert alert-warning mt-3">
+    <i class="fas fa-info-circle me-1"></i>
+    Native PSA cannot be enabled for this client while an external PSA connection is active.
+    To use the native PSA here, first deactivate or remove the external PSA connection under
+    <a href="/integrations/" class="alert-link">Integrations</a>.
+</div>
+{% endif %}
+
+{# OVERRIDE form — only needed when admin wants to change the auto-decision.
+   With an external PSA active the master "enabled" toggle is forced off
+   and disabled (the auto-opt-out is a hard rule). Per-surface flags are
+   still adjustable for record-keeping but have no effect when the master
+   is off. #}
 <div class="card mt-3">
     <div class="card-header">
         <strong>Override</strong>
-        <small class="text-muted ms-2">Optional — only set if you want to change the auto-detected behaviour above.</small>
+        <small class="text-muted ms-2">Optional — only set if you want to opt this client OUT of native PSA.</small>
     </div>
     <form method="post">
         {% csrf_token %}
         <div class="card-body">
             <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" id="enabled" name="enabled" {% if cps.enabled %}checked{% endif %}>
+                <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
+                       {% if cps.enabled and not has_external_psa %}checked{% endif %}
+                       {% if has_external_psa %}disabled{% endif %}>
                 <label class="form-check-label fw-semibold" for="enabled">
-                    Force native PSA on for this client
-                    {% if has_external_psa %}<small class="text-warning d-block">⚠ This client has an external PSA — only check this if you genuinely want both running.</small>{% endif %}
+                    Native PSA enabled for this client
+                    {% if has_external_psa %}<small class="text-muted d-block">Locked OFF — external PSA detected.</small>{% endif %}
                 </label>
             </div>
 

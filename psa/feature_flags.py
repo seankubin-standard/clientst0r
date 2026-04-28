@@ -74,13 +74,18 @@ def is_psa_enabled_for_client(organization):
     """
     Decide whether the native PSA is active for `organization`.
 
+    Hard product rule: the native PSA exists only for clients who do NOT
+    already have another PSA. An active external PSAConnection is an
+    absolute opt-out — there is no admin override path that re-enables
+    native PSA in the presence of one. To use native PSA for a client,
+    deactivate or remove their external PSAConnection first.
+
     Resolution order (first match wins):
       1. Global flag off                         → False
       2. No organization                         → False
-      3. Explicit ClientPSASettings row exists   → return its `enabled` field
-         (admin override — beats everything else)
-      4. Active external PSAConnection exists    → False (auto opt-out;
-         this client is managed by another PSA)
+      3. Active external PSAConnection exists    → False (HARD opt-out)
+      4. Explicit ClientPSASettings row exists   → return its `enabled` field
+         (admin can still opt OUT a no-external-PSA client)
       5. Otherwise                               → True (cascade default)
 
     Per-surface flags (portal, SMS, desktop alerts, anonymous form,
@@ -91,19 +96,16 @@ def is_psa_enabled_for_client(organization):
         return False
     if organization is None:
         return False
+    # HARD RULE: external PSA always wins.
+    if client_has_external_psa(organization):
+        return False
     try:
         from psa.models import ClientPSASettings
         cps = ClientPSASettings.objects.filter(organization=organization).first()
     except Exception:
         return False
     if cps is not None:
-        # Admin made an explicit choice — respect it absolutely. This is how
-        # an admin force-enables native PSA even for a client that also has
-        # an external PSA connection (rare, but supported).
         return bool(cps.enabled)
-    # No row → auto. Skip if the client is already on an external PSA.
-    if client_has_external_psa(organization):
-        return False
     return True
 
 

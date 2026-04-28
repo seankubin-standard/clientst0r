@@ -140,9 +140,11 @@ class FeatureFlagDefaultsTests(TestCase):
         )
         self.assertTrue(is_psa_enabled_for_client(org), 'inactive external PSA must not block native')
 
-    def test_explicit_override_beats_external_psa_detection(self):
-        """If admin explicitly enabled native PSA for an org that ALSO has
-        an external PSA, the explicit choice wins."""
+    def test_external_psa_overrides_explicit_enable(self):
+        """Hard product rule: native PSA is ONLY for clients without
+        another PSA. Even an explicit ClientPSASettings.enabled=True
+        cannot re-enable native if the client has an active external
+        PSAConnection. To use native, deactivate the external first."""
         from integrations.models import PSAConnection
         org = Organization.objects.create(name='ACME', slug='acme')
         _enable_psa_global()
@@ -156,9 +158,23 @@ class FeatureFlagDefaultsTests(TestCase):
         )
         # Without override: auto-opt-out
         self.assertFalse(is_psa_enabled_for_client(org))
-        # With explicit enable=True override: respected
+        # With explicit enable=True row: STILL opted out — external PSA wins.
         ClientPSASettings.objects.create(organization=org, enabled=True)
+        self.assertFalse(is_psa_enabled_for_client(org))
+        # Sanity: deactivating the external PSA re-enables native.
+        PSAConnection.objects.filter(organization=org).update(is_active=False)
         self.assertTrue(is_psa_enabled_for_client(org))
+
+    def test_admin_can_still_opt_out_no_external_client(self):
+        """Admin opt-out via cps.enabled=False still works when there's
+        no external PSA — that's how a no-PSA client gets disabled."""
+        org = Organization.objects.create(name='ACME', slug='acme')
+        _enable_psa_global()
+        # No external PSA, default auto = enabled
+        self.assertTrue(is_psa_enabled_for_client(org))
+        # Admin disables explicitly
+        ClientPSASettings.objects.create(organization=org, enabled=False)
+        self.assertFalse(is_psa_enabled_for_client(org))
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
