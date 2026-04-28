@@ -96,10 +96,29 @@ def ticket_detail(request, ticket_number):
 
 @login_required
 @require_write
-@require_client_psa_enabled
+@require_psa_enabled
 @require_http_methods(['GET', 'POST'])
 def ticket_create(request):
     org = get_request_organization(request)
+    # In global view, refuse to create a ticket without an org context but
+    # show a friendly "pick a client" page instead of a 404. The scope
+    # banner partial handles the picker UI.
+    if org is None:
+        messages.info(request, 'Pick a client first — tickets are scoped per client.')
+        return render(request, 'psa/ticket_create.html', {
+            'queues': [], 'statuses': [], 'priorities': [], 'types': [],
+            'current_organization': None,
+            'requires_client': True,
+        })
+    # Per-client PSA gate (auto-opt-out for clients with external PSA).
+    from psa.feature_flags import is_psa_enabled_for_client
+    if not is_psa_enabled_for_client(org):
+        messages.warning(
+            request,
+            f'Native PSA is not active for {org.name} (likely an external PSA is connected). '
+            'Switch clients via the banner or change this in /psa/settings/client/.'
+        )
+        return redirect(reverse('psa:ticket_list'))
     queues = Queue.objects.filter(is_active=True)
     statuses = TicketStatus.objects.all()
     priorities = TicketPriority.objects.all()

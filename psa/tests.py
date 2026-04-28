@@ -199,17 +199,19 @@ class RouteGatingTests(TestCase):
         self.assertEqual(self.client.get('/psa/new/').status_code, 404)
         self.assertEqual(self.client.get('/psa/t/PSA-2026-000001/').status_code, 404)
 
-    def test_create_404_when_client_explicitly_disabled(self):
-        """Cascade UX: enabling globally auto-enables clients. To block
-        a client, an admin must explicitly opt them out."""
+    def test_create_redirects_when_client_explicitly_disabled(self):
+        """When the active client is opted out, the create view redirects
+        back to the list (with a flash message) instead of 404. The 404
+        was hostile UX — the user has no way to recover."""
         _enable_psa_global()
         _setup_seed()
-        # Explicitly opt out the client.
         ClientPSASettings.objects.update_or_create(
             organization=self.org,
             defaults={'enabled': False},
         )
-        self.assertEqual(self.client.get('/psa/new/').status_code, 404)
+        resp = self.client.get('/psa/new/')
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/psa/', resp['Location'])
 
     def test_create_loads_when_globally_on_with_no_client_row(self):
         """No ClientPSASettings row + global on → client inherits enabled."""
