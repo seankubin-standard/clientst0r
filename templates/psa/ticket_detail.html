@@ -105,6 +105,32 @@
 </div>
 {% endif %}
 
+{# Similar / recurring tickets — flagged when token-overlap or same-asset hits exist #}
+{% if similar_tickets %}
+<div class="alert alert-light border-info mb-3">
+    <strong><i class="fas fa-redo me-1"></i>Similar tickets for this client</strong>
+    <small class="d-block text-muted">Likely recurring issue. Consider merging or linking.</small>
+    <ul class="mb-0 mt-1 small">
+        {% for t, score in similar_tickets %}
+        <li>
+            <a href="{% url 'psa:ticket_detail' t.ticket_number %}"><code>{{ t.ticket_number }}</code></a>
+            — {{ t.subject|truncatechars:80 }}
+            <span class="badge bg-secondary ms-1">match {{ score }}</span>
+            <small class="text-muted ms-1">{{ t.created_at|timesince }} ago · {{ t.status.name }}</small>
+            <form method="post" action="{% url 'psa:ticket_merge' ticket.ticket_number %}" class="d-inline ms-1">
+                {% csrf_token %}
+                <input type="hidden" name="target" value="{{ t.ticket_number }}">
+                <button type="submit" class="btn btn-sm btn-link p-0"
+                        onclick="return confirm('Merge {{ ticket.ticket_number }} INTO {{ t.ticket_number }}? All comments/attachments move there. This ticket gets closed as duplicate.');">
+                    merge into this
+                </button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 {# Hygiene flags — surface things to fix before close #}
 {% if hygiene and not is_closed %}
 <div class="alert alert-light border-warning mb-3">

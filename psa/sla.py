@@ -125,3 +125,53 @@ def hygiene_flags(ticket):
     if ticket.first_response_due_at and not ticket.first_response_at and not is_paused(ticket):
         flags.append({'key': 'no_first_response', 'message': 'No first response yet'})
     return flags
+
+
+# ---------------------------------------------------------------------------
+# Recurring-issue detection (Phase 2c)
+# ---------------------------------------------------------------------------
+
+def find_similar_tickets(ticket, *, window_days=90, limit=5):
+    """
+    Cheap similarity match: same client + same asset (if set) + token
+    overlap on subject. Returns list of (ticket, score) tuples sorted by
+    score desc. Does not pull pgvector or external services — Phase 4
+    can swap in something fancier.
+    """
+    from datetime import timedelta
+    from django.db.models import Q
+    from django.utils import timezone as _tz
+    from psa.models import Ticket
+
+    cutoff = _tz.now() - timedelta(days=window_days)
+    qs = Ticket.objects.filter(
+        organization=ticket.organization,
+        created_at__gte=cutoff,
+    ).exclude(pk=ticket.pk).order_by('-created_at')
+
+    if ticket.related_asset_id:
+        # Same-asset hits are strong signals — check those first.
+        same_asset = list(qs.filter(related_asset_id=ticket.related_asset_id)[:limit])
+    else:
+        same_asset = []
+
+    # Token overlap on subject — keep tokens >= 4 chars to drop noise words
+    subject_tokens = {t.lower() for t in (ticket.subject or '').split() if len(t) >= 4}
+    candidates = list(qs.exclude(pk__in=[t.pk for t in same_asset])[:200])
+
+    scored = []
+    for cand in candidates:
+        cand_tokens = {t.lower() for t in (cand.subject or '').split() if len(t) >= 4}
+        if not cand_tokens or not subject_tokens:
+            continue
+        overlap = len(subject_tokens & cand_tokens)
+        if overlap == 0:
+            continue
+        # Jaccard-ish score
+        score = overlap / float(len(subject_tokens | cand_tokens))
+        if score >= 0.3:
+            scored.append((cand, round(score, 2)))
+
+    scored.sort(key=lambda pair: pair[1], reverse=True)
+    out = [(t, 1.0) for t in same_asset] + scored
+    return out[:limit]

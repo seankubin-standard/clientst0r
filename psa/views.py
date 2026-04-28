@@ -170,13 +170,16 @@ def ticket_detail(request, ticket_number):
     watchers_count = ticket.watchers.count()
     is_watcher = ticket.watchers.filter(user=request.user).exists()
 
-    # Phase 2c — SLA + time + hygiene
+    # Phase 2c — SLA + time + hygiene + similar tickets (recurring detect)
     sla = status_chip(ticket)
     hygiene = hygiene_flags(ticket)
     time_entries = list(ticket.time_entries.select_related('user').order_by('-started_at')[:30])
     running_timer = ticket.time_entries.filter(user=request.user, ended_at__isnull=True).first()
     total_minutes = sum(te.duration_minutes for te in time_entries)
     billable_minutes = sum(te.duration_minutes for te in time_entries if te.is_billable)
+
+    from psa.sla import find_similar_tickets
+    similar = find_similar_tickets(ticket)
 
     # Canned replies visible for this ticket: global ones + ones scoped to the
     # ticket's client. Pre-render each so the template can drop the result
@@ -236,6 +239,7 @@ def ticket_detail(request, ticket_number):
         'running_timer': running_timer,
         'total_minutes': total_minutes,
         'billable_minutes': billable_minutes,
+        'similar_tickets': similar,
     })
 
 
@@ -579,8 +583,204 @@ def ticket_post_comment(request, ticket_number):
     )
     # Notify watchers (best-effort; SMTP failures don't block the request).
     _notify_watchers(ticket, comment, request.user)
+    # Parse @mentions, auto-add as watcher + notify.
+    _process_mentions(ticket, comment, request.user)
     messages.success(request, 'Comment added.')
     return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+
+
+# ---------------------------------------------------------------------------
+# Phase 2c — @mentions
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+# Match @username — letters, digits, underscore, dot, hyphen. Anchor on
+# whitespace or start-of-string so we don't grab `email@domain.com`.
+_MENTION_RE = _re.compile(r'(?:^|\s)@([A-Za-z0-9_.\-]{2,150})\b')
+
+
+def _extract_mentions(body: str):
+    if not body:
+        return []
+    # Dedupe while preserving order.
+    seen = set()
+    out = []
+    for m in _MENTION_RE.finditer(body):
+        u = m.group(1)
+        if u.lower() not in seen:
+            seen.add(u.lower())
+            out.append(u)
+    return out
+
+
+def _process_mentions(ticket, comment, actor):
+    """Resolve @username mentions, add each mentioned user as a watcher,
+    and (best-effort) email them. Mentions only fire on staff-side
+    comments — internal AND external both notify, since we treat all
+    mentioned users as staff. Phase 3 portal will gate this."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    usernames = _extract_mentions(comment.body or '')
+    if not usernames:
+        return 0
+    qs = User.objects.filter(username__in=usernames, is_active=True)
+    notified = 0
+    for u in qs:
+        # Tenant-scope: only staff/superuser can be mentioned cross-tenant;
+        # everyone else must be a member of the ticket's org.
+        if not (u.is_superuser or _user_is_org_member(u, ticket.organization_id)):
+            continue
+        TicketWatcher.objects.get_or_create(ticket=ticket, user=u)
+        if u.email and u != actor:
+            _send_mention_email(ticket, comment, actor, u)
+        notified += 1
+    if notified:
+        AuditLog.log(
+            user=actor, action='create', organization=ticket.organization,
+            object_type='psa.TicketComment', object_id=comment.pk,
+            object_repr=f'mentions on {ticket.ticket_number}',
+            description=f'Mentioned {notified} user(s) in {ticket.ticket_number}',
+            extra_data={'usernames': [u.username for u in qs]},
+        )
+    return notified
+
+
+def _user_is_org_member(user, org_id):
+    if not hasattr(user, 'memberships'):
+        return False
+    return user.memberships.filter(organization_id=org_id, is_active=True).exists()
+
+
+def _send_mention_email(ticket, comment, actor, recipient):
+    try:
+        from core.models import SystemSetting
+        from django.core.mail import send_mail, get_connection
+    except Exception:
+        return
+    s = SystemSetting.get_settings()
+    if not s.smtp_enabled or not s.smtp_host:
+        return
+    try:
+        from vault.encryption import decrypt
+        smtp_password = decrypt(s.smtp_password) if s.smtp_password else ''
+    except Exception:
+        smtp_password = s.smtp_password or ''
+    try:
+        connection = get_connection(
+            backend='django.core.mail.backends.smtp.EmailBackend',
+            host=s.smtp_host, port=s.smtp_port,
+            username=s.smtp_username, password=smtp_password,
+            use_tls=s.smtp_use_tls, use_ssl=s.smtp_use_ssl, timeout=15,
+        )
+    except Exception:
+        return
+    site_url = (s.site_url or '').rstrip('/')
+    brand = s.custom_company_name or s.site_name or 'Client St0r'
+    subject = f'[{brand}] {ticket.ticket_number}: you were mentioned'
+    body = (
+        f'{actor.username} mentioned you in {ticket.ticket_number} '
+        f'({ticket.organization.name}):\n\n'
+        f'{comment.body[:1500]}\n\n'
+        f'View ticket: {site_url}/psa/t/{ticket.ticket_number}/\n'
+    )
+    from_email = (
+        f'{s.smtp_from_name} <{s.smtp_from_email}>'
+        if s.smtp_from_email else s.smtp_username
+    )
+    try:
+        send_mail(subject=subject, message=body, from_email=from_email,
+                  recipient_list=[recipient.email], connection=connection,
+                  fail_silently=True)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Phase 2c — Ticket merge
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def ticket_merge(request, ticket_number):
+    """
+    Merge `ticket_number` (source) INTO the `target` ticket (POST param).
+    Both must be in the same organization. Operations:
+      * Move all source comments + attachments to target (preserve
+        ordering by created_at).
+      * Add a system internal-note on the target referencing the source.
+      * Mark the source as `closed` with a system comment + closure
+        category 'duplicate' + duplicate_of=target.
+      * Audit-log both sides.
+    """
+    source = _scoped_ticket_for_write(request, ticket_number)
+    target_number = (request.POST.get('target') or '').strip()
+    if not target_number or target_number == source.ticket_number:
+        messages.error(request, 'Pick a different target ticket to merge into.')
+        return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': source.ticket_number}))
+
+    target = (
+        _scoped_ticket_qs(request)
+        .filter(ticket_number=target_number, organization=source.organization)
+        .first()
+    )
+    if target is None:
+        messages.error(request, 'Target ticket not found in this client.')
+        return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': source.ticket_number}))
+    if target.closed_at or (target.status_id and target.status.is_terminal):
+        messages.error(request, 'Cannot merge into a closed ticket.')
+        return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': source.ticket_number}))
+
+    # Move comments + attachments
+    moved_comments = source.comments.update(ticket=target)
+    moved_attachments = source.attachments.update(ticket=target)
+
+    # System note on target
+    TicketComment.objects.create(
+        ticket=target, author=request.user, is_internal=True, is_system=True,
+        body=(f'[merge] {source.ticket_number} merged into {target.ticket_number} '
+              f'by {request.user.username}. Moved {moved_comments} comment(s) and '
+              f'{moved_attachments} attachment(s).'),
+    )
+
+    # Close the source
+    closed_status = (
+        TicketStatus.objects.filter(slug='closed').first()
+        or TicketStatus.objects.filter(is_terminal=True).order_by('sort_order').first()
+    )
+    source.duplicate_of = target
+    source.closure_category = 'duplicate'
+    source.resolution_summary = f'Merged into {target.ticket_number}'
+    source.closed_at = timezone.now()
+    source.resolved_at = source.resolved_at or source.closed_at
+    if closed_status:
+        source.status = closed_status
+    source.updated_by = request.user
+    source.save(update_fields=[
+        'duplicate_of', 'closure_category', 'resolution_summary',
+        'closed_at', 'resolved_at', 'status', 'updated_by', 'updated_at',
+    ])
+    TicketComment.objects.create(
+        ticket=source, author=request.user, is_internal=True, is_system=True,
+        body=f'[merge] Closed as duplicate of {target.ticket_number}.',
+    )
+
+    AuditLog.log(
+        user=request.user, action='update', organization=source.organization,
+        object_type='psa.Ticket', object_id=source.pk,
+        object_repr=source.ticket_number,
+        description=f'Merged {source.ticket_number} → {target.ticket_number}',
+        ip_address=_client_ip(request), path=request.path,
+        extra_data={'target': target.ticket_number,
+                    'comments_moved': moved_comments,
+                    'attachments_moved': moved_attachments},
+    )
+    messages.success(request,
+        f'Merged {source.ticket_number} into {target.ticket_number} '
+        f'({moved_comments} comment(s), {moved_attachments} attachment(s) moved).')
+    return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': target.ticket_number}))
 
 
 @login_required

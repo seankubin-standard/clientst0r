@@ -1133,3 +1133,104 @@ class CatalogCRUDTests(TestCase):
         resp = c.post(f'/psa/catalog/{item.pk}/edit/', {'delete': '1'})
         self.assertEqual(resp.status_code, 302)
         self.assertFalse(ServiceCatalogItem.objects.filter(pk=item.pk).exists())
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class Phase2cRemainderTests(TestCase):
+    """Recurring detection + @mentions + ticket merge."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ACME', slug='acme')
+        self.alice = User.objects.create_user('alice', password='pw', email='a@x.com')
+        self.bob = User.objects.create_user('bob', password='pw', email='b@x.com')
+        Membership.objects.update_or_create(
+            user=self.alice, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        Membership.objects.update_or_create(
+            user=self.bob, organization=self.org,
+            defaults={'role': Role.EDITOR, 'is_active': True},
+        )
+        self.client = Client()
+        self.client.force_login(self.alice)
+        sess = self.client.session; sess['current_organization_id'] = self.org.id; sess.save()
+
+        kw = dict(
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+        self.t1 = Ticket.objects.create(organization=self.org, subject='Printer offline ground floor', **kw)
+        self.t2 = Ticket.objects.create(organization=self.org, subject='Printer offline second floor', **kw)
+        self.t3 = Ticket.objects.create(organization=self.org, subject='Email password reset', **kw)
+
+    # -- Recurring detection --
+    def test_find_similar_token_overlap(self):
+        from psa.sla import find_similar_tickets
+        hits = find_similar_tickets(self.t1)
+        # t2 shares "printer" + "offline" with t1 — should match
+        ticket_pks = {t.pk for t, _ in hits}
+        self.assertIn(self.t2.pk, ticket_pks)
+        self.assertNotIn(self.t3.pk, ticket_pks)
+
+    def test_find_similar_excludes_self(self):
+        from psa.sla import find_similar_tickets
+        hits = find_similar_tickets(self.t1)
+        for t, _ in hits:
+            self.assertNotEqual(t.pk, self.t1.pk)
+
+    # -- @mentions --
+    def test_extract_mentions_handles_email_and_at(self):
+        from psa.views import _extract_mentions
+        body = 'Hey @bob, can you look at this with help from sysadmin@example.com?'
+        out = _extract_mentions(body)
+        self.assertEqual(out, ['bob'])  # email-style @ should not match
+
+    def test_mention_adds_watcher(self):
+        from psa.models import TicketWatcher
+        resp = self.client.post(f'/psa/t/{self.t1.ticket_number}/comment/',
+                                {'body': 'Hi @bob, take a look.'})
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(TicketWatcher.objects.filter(ticket=self.t1, user=self.bob).exists())
+
+    def test_mention_to_non_member_is_ignored(self):
+        from psa.models import TicketWatcher
+        outsider = User.objects.create_user('outsider', password='pw', email='o@x.com')
+        Membership.objects.filter(user=outsider).delete()
+        self.client.post(f'/psa/t/{self.t1.ticket_number}/comment/',
+                         {'body': 'Hi @outsider, look at this.'})
+        self.assertFalse(TicketWatcher.objects.filter(ticket=self.t1, user=outsider).exists())
+
+    # -- Merge --
+    def test_merge_moves_comments_and_closes_source(self):
+        from psa.models import TicketComment
+        # Add comments + an attachment-less marker comment to t1
+        TicketComment.objects.create(ticket=self.t1, author=self.alice, body='source comment 1')
+        TicketComment.objects.create(ticket=self.t1, author=self.alice, body='source comment 2')
+        before_t2 = self.t2.comments.count()
+        before_t1 = self.t1.comments.count()
+        self.assertGreaterEqual(before_t1, 2)
+
+        resp = self.client.post(f'/psa/t/{self.t1.ticket_number}/merge/',
+                                {'target': self.t2.ticket_number})
+        self.assertEqual(resp.status_code, 302)
+        self.t1.refresh_from_db()
+        self.t2.refresh_from_db()
+        # Source comments moved to target (plus 1 system note added on each side)
+        self.assertEqual(self.t1.comments.count(), 1)  # only the [merge] system note remains
+        self.assertGreaterEqual(self.t2.comments.count(), before_t2 + 2 + 1)
+        # Source closed as duplicate, pointing at target
+        self.assertEqual(self.t1.duplicate_of_id, self.t2.id)
+        self.assertEqual(self.t1.closure_category, 'duplicate')
+        self.assertIsNotNone(self.t1.closed_at)
+
+    def test_merge_into_self_blocked(self):
+        before = self.t1.duplicate_of_id
+        resp = self.client.post(f'/psa/t/{self.t1.ticket_number}/merge/',
+                                {'target': self.t1.ticket_number})
+        self.assertEqual(resp.status_code, 302)
+        self.t1.refresh_from_db()
+        self.assertEqual(self.t1.duplicate_of_id, before)  # unchanged
