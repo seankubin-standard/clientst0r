@@ -29,14 +29,17 @@ from .models import (
     CannedReply,
     ClientPSASettings,
     Queue,
+    ServiceCatalogItem,
     Ticket,
     TicketAttachment,
     TicketComment,
     TicketPriority,
     TicketStatus,
+    TicketTimeEntry,
     TicketType,
     TicketWatcher,
 )
+from .sla import apply_due_dates, hygiene_flags, status_chip
 
 
 # Phase 2a constants
@@ -167,6 +170,14 @@ def ticket_detail(request, ticket_number):
     watchers_count = ticket.watchers.count()
     is_watcher = ticket.watchers.filter(user=request.user).exists()
 
+    # Phase 2c — SLA + time + hygiene
+    sla = status_chip(ticket)
+    hygiene = hygiene_flags(ticket)
+    time_entries = list(ticket.time_entries.select_related('user').order_by('-started_at')[:30])
+    running_timer = ticket.time_entries.filter(user=request.user, ended_at__isnull=True).first()
+    total_minutes = sum(te.duration_minutes for te in time_entries)
+    billable_minutes = sum(te.duration_minutes for te in time_entries if te.is_billable)
+
     # Canned replies visible for this ticket: global ones + ones scoped to the
     # ticket's client. Pre-render each so the template can drop the result
     # into the textarea on click without a round-trip.
@@ -219,6 +230,12 @@ def ticket_detail(request, ticket_number):
         'ai_enabled': ai_enabled,
         'ai_suggestions': ai_suggestions,
         'ai_suggestions_json': ai_suggestions_json,
+        'sla': sla,
+        'hygiene': hygiene,
+        'time_entries': time_entries,
+        'running_timer': running_timer,
+        'total_minutes': total_minutes,
+        'billable_minutes': billable_minutes,
     })
 
 
@@ -288,6 +305,8 @@ def ticket_create(request):
             created_by=request.user,
             updated_by=request.user,
         )
+        # Compute SLA due-dates from the priority's targets
+        apply_due_dates(ticket)
 
         AuditLog.log(
             user=request.user,
@@ -308,6 +327,13 @@ def ticket_create(request):
     preselected = get_request_organization(request)
     preselected_id = preselected.id if preselected and eligible_clients.filter(id=preselected.id).exists() else None
 
+    # If invoked via /psa/new/?from_catalog=<slug>, pre-fill from the
+    # service-catalog template
+    catalog_slug = request.GET.get('from_catalog') or ''
+    catalog_item = None
+    if catalog_slug:
+        catalog_item = ServiceCatalogItem.objects.filter(slug=catalog_slug, is_active=True).first()
+
     return render(request, 'psa/ticket_create.html', {
         'queues': queues,
         'statuses': statuses,
@@ -316,6 +342,7 @@ def ticket_create(request):
         'eligible_clients': eligible_clients,
         'preselected_client_id': preselected_id,
         'no_eligible_clients': False,
+        'catalog_item': catalog_item,
     })
 
 
@@ -924,3 +951,112 @@ def canned_reply_edit(request, pk):
         'eligible_clients': eligible_clients,
         'can_create_global': can_create_global,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 2c — time tracking endpoints + service catalog
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def timer_start(request, ticket_number):
+    """Start a running timer for the current user on this ticket. Idempotent
+    — if a running timer already exists, it's returned unchanged."""
+    ticket = _scoped_ticket_for_write(request, ticket_number)
+    existing = TicketTimeEntry.objects.filter(
+        ticket=ticket, user=request.user, ended_at__isnull=True,
+    ).first()
+    if existing:
+        messages.info(request, 'Timer already running.')
+        return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+    is_billable = (request.POST.get('is_billable') or '').lower() in ('1', 'true', 'on', 'yes')
+    entry = TicketTimeEntry.objects.create(
+        ticket=ticket, user=request.user,
+        started_at=timezone.now(), is_billable=is_billable,
+    )
+    AuditLog.log(
+        user=request.user, action='create', organization=ticket.organization,
+        object_type='psa.TicketTimeEntry', object_id=entry.pk,
+        object_repr=f'timer started on {ticket.ticket_number}',
+        description=f'Started timer on {ticket.ticket_number} (billable={is_billable})',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, 'Timer started.')
+    return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def timer_stop(request, ticket_number):
+    """Stop the user's running timer on this ticket and finalise duration."""
+    ticket = _scoped_ticket_for_write(request, ticket_number)
+    entry = TicketTimeEntry.objects.filter(
+        ticket=ticket, user=request.user, ended_at__isnull=True,
+    ).first()
+    if entry is None:
+        messages.info(request, 'No running timer to stop.')
+        return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+    entry.ended_at = timezone.now()
+    entry.notes = (request.POST.get('notes') or entry.notes or '').strip()[:2000]
+    entry.save()  # save() computes duration_minutes
+    AuditLog.log(
+        user=request.user, action='update', organization=ticket.organization,
+        object_type='psa.TicketTimeEntry', object_id=entry.pk,
+        object_repr=f'timer stopped on {ticket.ticket_number}',
+        description=f'Stopped timer on {ticket.ticket_number} ({entry.duration_minutes}m, billable={entry.is_billable})',
+        ip_address=_client_ip(request), path=request.path,
+        extra_data={'minutes': entry.duration_minutes, 'billable': entry.is_billable},
+    )
+    messages.success(request, f'Timer stopped — {entry.duration_minutes}m logged.')
+    return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def time_entry_manual(request, ticket_number):
+    """Add a manual time entry (e.g. for offline work). POST: minutes, is_billable, notes."""
+    ticket = _scoped_ticket_for_write(request, ticket_number)
+    try:
+        minutes = int(request.POST.get('minutes') or 0)
+    except ValueError:
+        minutes = 0
+    if minutes <= 0 or minutes > 24 * 60:
+        messages.error(request, 'Minutes must be between 1 and 1440.')
+        return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+    is_billable = (request.POST.get('is_billable') or '').lower() in ('1', 'true', 'on', 'yes')
+    notes = (request.POST.get('notes') or '').strip()[:2000]
+    now = timezone.now()
+    entry = TicketTimeEntry.objects.create(
+        ticket=ticket, user=request.user,
+        started_at=now - timezone.timedelta(minutes=minutes),
+        ended_at=now, duration_minutes=minutes,
+        is_billable=is_billable, notes=notes,
+    )
+    AuditLog.log(
+        user=request.user, action='create', organization=ticket.organization,
+        object_type='psa.TicketTimeEntry', object_id=entry.pk,
+        object_repr=f'manual time entry on {ticket.ticket_number}',
+        description=f'Logged {minutes}m on {ticket.ticket_number} (billable={is_billable})',
+        ip_address=_client_ip(request), path=request.path,
+        extra_data={'minutes': minutes, 'billable': is_billable},
+    )
+    messages.success(request, f'Logged {minutes}m.')
+    return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+
+
+# Service catalog ---------------------------------------------------------
+
+@login_required
+@require_psa_enabled
+def service_catalog(request):
+    """Browse-the-catalog grid. Click a tile → /psa/new/?from_catalog=<slug>."""
+    items = ServiceCatalogItem.objects.filter(is_active=True).select_related(
+        'default_priority', 'default_queue', 'default_type',
+    ).order_by('sort_order', 'name')
+    return render(request, 'psa/service_catalog.html', {'items': items})

@@ -42,17 +42,18 @@
 
         <div class="mb-3">
             <label class="form-label">Subject <span class="text-danger">*</span></label>
-            <input type="text" name="subject" class="form-control" required maxlength="300">
+            <input type="text" name="subject" class="form-control" required maxlength="300"
+                   value="{% if catalog_item %}{{ catalog_item.default_subject }}{% endif %}">
         </div>
         <div class="mb-3">
             <label class="form-label">Description</label>
-            <textarea name="description" class="form-control" rows="6"></textarea>
+            <textarea name="description" class="form-control" rows="6">{% if catalog_item %}{{ catalog_item.default_body }}{% endif %}</textarea>
         </div>
         <div class="row g-3">
             <div class="col-md-6 col-lg-3">
                 <label class="form-label">Queue</label>
                 <select name="queue" class="form-select">
-                    {% for q in queues %}<option value="{{ q.pk }}">{{ q.name }}</option>{% endfor %}
+                    {% for q in queues %}<option value="{{ q.pk }}" {% if catalog_item and catalog_item.default_queue_id == q.pk %}selected{% endif %}>{{ q.name }}</option>{% endfor %}
                 </select>
             </div>
             <div class="col-md-6 col-lg-3">
@@ -64,13 +65,13 @@
             <div class="col-md-6 col-lg-3">
                 <label class="form-label">Priority</label>
                 <select name="priority" class="form-select">
-                    {% for p in priorities %}<option value="{{ p.pk }}">{{ p.code }} — {{ p.name }}</option>{% endfor %}
+                    {% for p in priorities %}<option value="{{ p.pk }}" {% if catalog_item and catalog_item.default_priority_id == p.pk %}selected{% endif %}>{{ p.code }} — {{ p.name }}</option>{% endfor %}
                 </select>
             </div>
             <div class="col-md-6 col-lg-3">
                 <label class="form-label">Type</label>
                 <select name="ticket_type" class="form-select">
-                    {% for t in types %}<option value="{{ t.pk }}">{{ t.name }}</option>{% endfor %}
+                    {% for t in types %}<option value="{{ t.pk }}" {% if catalog_item and catalog_item.default_type_id == t.pk %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
                 </select>
             </div>
         </div>

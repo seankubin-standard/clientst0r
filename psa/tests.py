@@ -11,10 +11,13 @@ These verify the load-bearing safety properties:
 
 Phase 2+ will add deeper RBAC, internal-note isolation, portal tests, etc.
 """
+from datetime import timedelta
+
 from django.conf import settings as django_settings
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
 
 # Tests bypass the project-wide 2FA enforcement middleware so we can exercise
@@ -770,3 +773,200 @@ class Phase2bTests(TestCase):
         })
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(CannedReply.objects.filter(name='My reply').count(), 1)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2c — SLA + time tracking + service catalog tests
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class SLATests(TestCase):
+    """SLA computation + breach detection."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='ACME', slug='acme')
+        self.user = User.objects.create_user('tech', password='pw', email='t@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+
+    def _ticket(self, priority_code='P3'):
+        from psa.models import Ticket
+        from psa.sla import apply_due_dates
+        t = Ticket.objects.create(
+            organization=self.org, subject='SLA test',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            priority=TicketPriority.objects.get(code=priority_code),
+            ticket_type=TicketType.objects.first(),
+        )
+        apply_due_dates(t)
+        return t
+
+    def test_due_dates_set_from_priority_targets(self):
+        t = self._ticket(priority_code='P1')
+        self.assertIsNotNone(t.first_response_due_at)
+        self.assertIsNotNone(t.resolution_due_at)
+        # P1 = 15min response, 240min resolution. Window from created_at.
+        self.assertGreater(t.resolution_due_at, t.first_response_due_at)
+
+    def test_response_breach_when_overdue_and_no_response(self):
+        from datetime import timedelta
+        from psa.sla import response_breached
+        t = self._ticket(priority_code='P1')
+        # Force created_at into the past so the 15-min target has elapsed
+        from psa.models import Ticket
+        Ticket.objects.filter(pk=t.pk).update(
+            created_at=timezone.now() - timedelta(minutes=30),
+            first_response_due_at=timezone.now() - timedelta(minutes=15),
+        )
+        t.refresh_from_db()
+        self.assertTrue(response_breached(t))
+
+    def test_paused_status_suppresses_breach(self):
+        from datetime import timedelta
+        from psa.sla import response_breached, status_chip
+        t = self._ticket(priority_code='P1')
+        from psa.models import Ticket
+        # Push due-date into the past
+        paused = TicketStatus.objects.filter(slug='waiting-on-client').first()
+        Ticket.objects.filter(pk=t.pk).update(
+            first_response_due_at=timezone.now() - timedelta(minutes=15),
+            status=paused,
+        )
+        t.refresh_from_db()
+        self.assertFalse(response_breached(t))
+        chip = status_chip(t)
+        self.assertEqual(chip['kind'], 'paused')
+
+    def test_resolved_ticket_chip(self):
+        from psa.sla import status_chip
+        t = self._ticket()
+        terminal = TicketStatus.objects.filter(is_terminal=True).first()
+        t.status = terminal
+        t.resolved_at = timezone.now()
+        t.save()
+        chip = status_chip(t)
+        self.assertEqual(chip['kind'], 'resolved')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class TimeTrackingTests(TestCase):
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='ACME', slug='acme')
+        self.user = User.objects.create_user('tech', password='pw', email='t@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+        s = self.client.session; s['current_organization_id'] = self.org.id; s.save()
+        from psa.models import Ticket
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Time test',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+        # Enable PSA globally so the gate decorators allow through
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+
+    def test_timer_start_creates_running_entry(self):
+        from psa.models import TicketTimeEntry
+        resp = self.client.post(f'/psa/t/{self.ticket.ticket_number}/timer/start/',
+                                {'is_billable': '1'})
+        self.assertEqual(resp.status_code, 302)
+        e = TicketTimeEntry.objects.filter(ticket=self.ticket, user=self.user).first()
+        self.assertIsNotNone(e)
+        self.assertTrue(e.is_running)
+        self.assertTrue(e.is_billable)
+
+    def test_timer_stop_finalises_duration(self):
+        from datetime import timedelta
+        from psa.models import TicketTimeEntry
+        # Create a running timer that started 7 minutes ago
+        e = TicketTimeEntry.objects.create(
+            ticket=self.ticket, user=self.user,
+            started_at=timezone.now() - timedelta(minutes=7),
+        )
+        resp = self.client.post(f'/psa/t/{self.ticket.ticket_number}/timer/stop/',
+                                {'notes': 'fixed it'})
+        self.assertEqual(resp.status_code, 302)
+        e.refresh_from_db()
+        self.assertFalse(e.is_running)
+        self.assertGreaterEqual(e.duration_minutes, 6)
+        self.assertEqual(e.notes, 'fixed it')
+
+    def test_one_running_timer_per_user_per_ticket(self):
+        # Start one timer
+        self.client.post(f'/psa/t/{self.ticket.ticket_number}/timer/start/')
+        # Try to start another — should be a no-op
+        from psa.models import TicketTimeEntry
+        before = TicketTimeEntry.objects.filter(ticket=self.ticket, user=self.user).count()
+        self.client.post(f'/psa/t/{self.ticket.ticket_number}/timer/start/')
+        after = TicketTimeEntry.objects.filter(ticket=self.ticket, user=self.user).count()
+        self.assertEqual(before, after)
+
+    def test_manual_time_entry_within_bounds(self):
+        from psa.models import TicketTimeEntry
+        resp = self.client.post(f'/psa/t/{self.ticket.ticket_number}/time/manual/',
+                                {'minutes': '30', 'notes': 'phone call', 'is_billable': '1'})
+        self.assertEqual(resp.status_code, 302)
+        e = TicketTimeEntry.objects.filter(ticket=self.ticket).first()
+        self.assertEqual(e.duration_minutes, 30)
+        self.assertEqual(e.notes, 'phone call')
+        self.assertTrue(e.is_billable)
+
+    def test_manual_time_entry_rejects_zero(self):
+        from psa.models import TicketTimeEntry
+        before = TicketTimeEntry.objects.count()
+        self.client.post(f'/psa/t/{self.ticket.ticket_number}/time/manual/',
+                        {'minutes': '0', 'notes': ''})
+        self.assertEqual(TicketTimeEntry.objects.count(), before)
+
+    def test_manual_time_entry_rejects_excessive(self):
+        from psa.models import TicketTimeEntry
+        before = TicketTimeEntry.objects.count()
+        self.client.post(f'/psa/t/{self.ticket.ticket_number}/time/manual/',
+                        {'minutes': '99999'})
+        self.assertEqual(TicketTimeEntry.objects.count(), before)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ServiceCatalogTests(TestCase):
+
+    def setUp(self):
+        _setup_seed()
+        self.user = User.objects.create_user('tech', password='pw', email='t@x.com')
+        self.client = Client()
+        self.client.force_login(self.user)
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+
+    def test_catalog_seeded(self):
+        from psa.models import ServiceCatalogItem
+        self.assertGreaterEqual(ServiceCatalogItem.objects.count(), 14)
+
+    def test_catalog_page_renders(self):
+        resp = self.client.get('/psa/catalog/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'Service Catalog', resp.content)
+        self.assertIn(b'Password Reset', resp.content)
+
+    def test_create_from_catalog_prefills(self):
+        # Need an org membership to be able to load /psa/new/
+        org = Organization.objects.create(name='ACME', slug='acme')
+        Membership.objects.update_or_create(
+            user=self.user, organization=org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        s = self.client.session; s['current_organization_id'] = org.id; s.save()
+        resp = self.client.get('/psa/new/?from_catalog=password-reset')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('Password reset', body)  # default subject

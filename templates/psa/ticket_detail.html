@@ -21,10 +21,22 @@
             <small class="text-muted">opened {{ ticket.created_at|timesince }} ago{% if ticket.created_by %} by {{ ticket.created_by.username }}{% endif %}</small>
         </div>
     </div>
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
         <span class="badge bg-secondary">{{ ticket.priority.code }} {{ ticket.priority.name }}</span>
         <span class="badge bg-info text-dark">{{ ticket.status.name }}</span>
         <span class="badge bg-light text-dark border">{{ ticket.queue.name }}</span>
+        {# SLA chip — colour by state #}
+        {% if sla.kind == 'breached' %}
+            <span class="badge bg-danger" title="Resolution due {{ sla.due_at }}"><i class="fas fa-triangle-exclamation me-1"></i>{{ sla.label }}</span>
+        {% elif sla.kind == 'warning' %}
+            <span class="badge bg-warning text-dark" title="Resolution due {{ sla.due_at }}"><i class="fas fa-clock me-1"></i>{{ sla.label }}</span>
+        {% elif sla.kind == 'on_track' %}
+            <span class="badge bg-success" title="Resolution due {{ sla.due_at }}"><i class="fas fa-clock me-1"></i>{{ sla.label }}</span>
+        {% elif sla.kind == 'paused' %}
+            <span class="badge bg-secondary"><i class="fas fa-pause me-1"></i>{{ sla.label }}</span>
+        {% elif sla.kind == 'resolved' %}
+            <span class="badge bg-success"><i class="fas fa-check me-1"></i>{{ sla.label }}</span>
+        {% endif %}
 
         {# Watch / Unwatch (Phase 2b) #}
         <form method="post" action="{% url 'psa:ticket_watch_toggle' ticket.ticket_number %}" class="d-inline">
@@ -90,6 +102,18 @@
     <strong><i class="fas fa-check-circle me-1"></i>Resolved
     {% if ticket.closure_category %}— {{ ticket.get_closure_category_display }}{% endif %}</strong>
     <pre class="mb-0 mt-2" style="white-space: pre-wrap; font-family: inherit;">{{ ticket.resolution_summary }}</pre>
+</div>
+{% endif %}
+
+{# Hygiene flags — surface things to fix before close #}
+{% if hygiene and not is_closed %}
+<div class="alert alert-light border-warning mb-3">
+    <strong><i class="fas fa-list-check me-1"></i>Hygiene checks</strong>
+    <ul class="mb-0 mt-1 small">
+        {% for h in hygiene %}
+        <li><span class="badge bg-warning text-dark me-1">{{ h.key }}</span>{{ h.message }}</li>
+        {% endfor %}
+    </ul>
 </div>
 {% endif %}
 
@@ -271,6 +295,61 @@
                     View all ({{ vault_count }})
                 </a>
             </div>
+            {% endif %}
+        </div>
+
+        {# Time tracking (Phase 2c) #}
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong><i class="fas fa-stopwatch me-1"></i>Time</strong>
+                <small class="text-muted">{{ total_minutes }}m total · {{ billable_minutes }}m billable</small>
+            </div>
+            {% if not is_closed %}
+            <div class="card-body small">
+                {% if running_timer %}
+                <form method="post" action="{% url 'psa:timer_stop' ticket.ticket_number %}" class="d-flex gap-2 align-items-center mb-2">
+                    {% csrf_token %}
+                    <span class="badge bg-success"><i class="fas fa-circle me-1"></i>Running</span>
+                    <small class="text-muted">started {{ running_timer.started_at|timesince }} ago</small>
+                    <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)" maxlength="200">
+                    <button type="submit" class="btn btn-sm btn-outline-success ms-auto"><i class="fas fa-stop me-1"></i>Stop &amp; log</button>
+                </form>
+                {% else %}
+                <form method="post" action="{% url 'psa:timer_start' ticket.ticket_number %}" class="d-flex gap-2 align-items-center mb-2">
+                    {% csrf_token %}
+                    <div class="form-check">
+                        <input type="checkbox" id="timer_billable" name="is_billable" value="1" class="form-check-input" checked>
+                        <label class="form-check-label small" for="timer_billable">Billable</label>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-outline-primary ms-auto"><i class="fas fa-play me-1"></i>Start timer</button>
+                </form>
+                {% endif %}
+                <form method="post" action="{% url 'psa:time_entry_manual' ticket.ticket_number %}" class="d-flex gap-1 align-items-center">
+                    {% csrf_token %}
+                    <input type="number" name="minutes" class="form-control form-control-sm" placeholder="min" min="1" max="1440" style="width:80px;" required>
+                    <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (manual entry)" maxlength="200">
+                    <div class="form-check">
+                        <input type="checkbox" id="manual_billable" name="is_billable" value="1" class="form-check-input" checked>
+                        <label class="form-check-label small" for="manual_billable">Bill</label>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-outline-secondary ms-auto" title="Log time without using a timer">Log</button>
+                </form>
+            </div>
+            {% endif %}
+            {% if time_entries %}
+            <ul class="list-group list-group-flush small">
+                {% for te in time_entries %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>
+                        <strong>{{ te.duration_minutes }}m</strong>
+                        {% if te.is_billable %}<span class="badge bg-success ms-1">billable</span>{% else %}<span class="badge bg-secondary ms-1">non-billable</span>{% endif %}
+                        {% if te.is_running %}<span class="badge bg-warning text-dark ms-1">running</span>{% endif %}
+                        <small class="text-muted ms-2">{{ te.user.username|default:"—" }} · {{ te.started_at|timesince }} ago</small>
+                        {% if te.notes %}<div class="text-muted small mt-1">{{ te.notes }}</div>{% endif %}
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
             {% endif %}
         </div>
 

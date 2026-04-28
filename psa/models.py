@@ -515,3 +515,100 @@ class CannedReply(models.Model):
             out = out.replace('{{user.last_name}}', user.last_name or '')
             out = out.replace('{{user.username}}', user.username or '')
         return out
+
+
+# ---------------------------------------------------------------------------
+# Phase 2c — time tracking + service catalog + hygiene
+# ---------------------------------------------------------------------------
+
+class TicketTimeEntry(models.Model):
+    """
+    Time logged against a ticket. Supports running-timer entries
+    (started_at set, ended_at null) and finalised manual entries.
+    Approval flow lands in a later phase; for now `is_billable` and
+    `notes` are the load-bearing fields.
+    """
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='time_entries')
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='psa_time_entries',
+    )
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    duration_minutes = models.PositiveIntegerField(default=0,
+        help_text='Computed on save when ended_at is set')
+    is_billable = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_ticket_time_entries'
+        ordering = ['-started_at']
+        indexes = [
+            models.Index(fields=['ticket', '-started_at']),
+            models.Index(fields=['user', '-started_at']),
+            models.Index(fields=['ticket', 'is_billable']),
+        ]
+        constraints = [
+            # Prevent two running timers on the same ticket for the same user.
+            models.UniqueConstraint(
+                fields=['ticket', 'user'],
+                condition=models.Q(ended_at__isnull=True),
+                name='psa_one_running_timer_per_user_per_ticket',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} on ticket {self.ticket_id}: {self.duration_minutes}m'
+
+    def save(self, *args, **kwargs):
+        if self.ended_at and self.started_at and not self.duration_minutes:
+            delta = self.ended_at - self.started_at
+            self.duration_minutes = max(0, int(delta.total_seconds() // 60))
+        super().save(*args, **kwargs)
+
+    @property
+    def is_running(self):
+        return self.ended_at is None
+
+
+class ServiceCatalogItem(models.Model):
+    """
+    Predefined ticket template — admin or ticket creator picks one and
+    a partly-filled ticket is created. Common MSP requests live here:
+    New User, Terminate User, Password Reset, etc. Seeded by the
+    psa_seed_defaults command.
+    """
+    name = models.CharField(max_length=120, unique=True)
+    slug = models.SlugField(max_length=120, unique=True)
+    description = models.TextField(blank=True,
+        help_text='Shown in the catalog grid')
+    default_subject = models.CharField(max_length=300, blank=True)
+    default_body = models.TextField(blank=True)
+    default_priority = models.ForeignKey(
+        TicketPriority, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='catalog_items',
+    )
+    default_queue = models.ForeignKey(
+        Queue, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='catalog_items',
+    )
+    default_type = models.ForeignKey(
+        TicketType, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='catalog_items',
+    )
+    icon = models.CharField(max_length=80, blank=True,
+        help_text='Font Awesome class, e.g. "fas fa-user-plus"')
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_service_catalog_items'
+        ordering = ['sort_order', 'name']
+
+    def __str__(self):
+        return self.name

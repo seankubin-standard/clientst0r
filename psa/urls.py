@@ -14,6 +14,12 @@ urlpatterns = [
     path('canned/', views.canned_reply_list, name='canned_reply_list'),
     path('canned/new/', views.canned_reply_create, name='canned_reply_create'),
     path('canned/<int:pk>/edit/', views.canned_reply_edit, name='canned_reply_edit'),
+    # Service catalog (Phase 2c)
+    path('catalog/', views.service_catalog, name='service_catalog'),
+    # Time entries
+    path('t/<str:ticket_number>/timer/start/', views.timer_start, name='timer_start'),
+    path('t/<str:ticket_number>/timer/stop/', views.timer_stop, name='timer_stop'),
+    path('t/<str:ticket_number>/time/manual/', views.time_entry_manual, name='time_entry_manual'),
     # Per-ticket
     path('t/<str:ticket_number>/context/', views.ticket_vault_context, name='ticket_vault_context'),
     path('t/<str:ticket_number>/comment/', views.ticket_post_comment, name='ticket_post_comment'),

@@ -167,11 +167,26 @@ plugs into existing models so we don't duplicate.
 > Profitability per client/ticket, utilization rates, SLA compliance,
 > financial metrics.
 
-### Status: ⚪ planned (some pieces already exist in `reports/`)
+### Status: 🔵 next — extends existing `reports/` app
 
-### How it plugs in
-- The existing `reports/` app already has the chrome — we add PSA
-  reports as new entries there:
+### How it plugs in (verified against the live `reports/` app)
+- `reports.generators.REPORT_GENERATORS` is a class-registry dict at
+  `reports/generators.py:286-295`. Each report inherits `ReportGenerator`
+  and implements `generate()` returning a dict that lands in
+  `GeneratedReport.file` (CSV/PDF/Excel/JSON via the existing
+  `FORMAT_CHOICES` model field).
+- Add a new `psa_*` family of generator classes alongside the existing
+  `AssetSummaryReport`, `PasswordAuditReport`, `MonitorUptimeReport` —
+  same shape, no new infra.
+- Surface link goes on `templates/reports/home.html` quick-actions
+  block as a "PSA Reports" tile pointing at a new `reports:psa_list`
+  view.
+- All proposed PSA reports verified as single-ORM-call feasible
+  (Open tickets by client, SLA breaches in N days, avg response/
+  resolution time, billable hours by client via TicketTimeEntry
+  rollup, recurring issues by asset, tickets by queue/type/priority).
+- No chart library is wired in today — first PSA report that needs a
+  chart pulls in Chart.js via CDN; later we centralise.
   - Open tickets / SLA warnings / SLA breaches
   - Response time and resolution time distributions
   - Tickets by client / tech / queue / type
@@ -240,11 +255,34 @@ plugs into existing models so we don't duplicate.
   - Pax8 (cloud distributor)
   - QBS Software
   - Westcoast
-  - Each plugs into a generalised `integrations.DistributorConnection`
-    model with provider-specific adapters in `integrations/distributors/`.
-    Service catalog (`Workstream 1` — service catalog) becomes the
-    consumer: a ticket for "new computer" can fetch live pricing from
-    multiple distributors and let the tech pick.
+  - Implementation pattern (verified against existing `integrations/`):
+    - **`integrations.DistributorConnection`** model parallel to `PSAConnection`
+      — same encrypted-credentials pattern via `vault.encryption.encrypt_dict()`
+    - **`integrations/providers/distributors/`** directory with one module per
+      distributor (`ingram_xvantage.py`, `synnex.py`, `d_and_h.py`,
+      `scansource.py`, `pax8.py`)
+    - Each registers in `integrations.providers.PROVIDER_REGISTRY` (dynamic
+      lookup via `get_provider(connection)`)
+    - **`BaseDistributorProvider`** extends `BaseProvider` with a fresh
+      interface — distributors don't share PSA's company/contact/ticket
+      shape; they have catalog/pricing/stock/order/webhook:
+      - `test_connection() → bool`
+      - `list_products(...)`
+      - `get_pricing(sku, qty)`
+      - `check_stock(sku, location)`
+      - `place_order(items, customer, ...)`
+      - `handle_webhook(payload)` — for ASN / order-status updates
+    - **New management command** `sync_distributor` mirrors `sync_psa`;
+      registers as `'distributor_sync'` task type in `core.ScheduledTask`.
+    - **Webhook receivers don't exist yet** in `integrations/` — distributors
+      will be the first surface to add them. URL pattern:
+      `path('webhooks/<provider>/<token>/', views.distributor_webhook, ...)`
+      with HMAC signature verification.
+    - **Service catalog** (Workstream 1) becomes the consumer: a ticket for
+      "new computer" can fetch live pricing from multiple distributors and
+      let the tech pick.
+    - Confirmed greenfield — `grep -r 'ingram\|synnex' .` returns zero hits
+      across the existing codebase.
 - 🔵 **Accounting** — QuickBooks Online + Xero. Output-only (push invoice
   drafts, never read GL data); driven by Workstream 5.
 - ⚪ **Webhook outbound** — Workstream 9 dependency.
