@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}{{ item.quote_number }} — PSA Quote{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:quote_list' %}">Quotes</a></li>
+        <li class="breadcrumb-item active">{{ item.quote_number }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">{{ item.quote_number }} — {{ item.title }}
+        {% if item.status == 'accepted' %}<span class="badge text-bg-success">Accepted</span>
+        {% elif item.status == 'sent' %}<span class="badge text-bg-info">Sent</span>
+        {% elif item.status == 'draft' %}<span class="badge text-bg-secondary">Draft</span>
+        {% elif item.status == 'rejected' %}<span class="badge text-bg-danger">Rejected</span>
+        {% else %}<span class="badge text-bg-warning">{{ item.get_status_display }}</span>{% endif %}
+    </h2>
+    <div class="btn-group">
+        <a href="{% url 'psa:quote_edit' item.pk %}" class="btn btn-outline-secondary"><i class="fas fa-pen"></i> Edit</a>
+        <a href="{% url 'psa:quote_pdf' item.pk %}" class="btn btn-outline-primary" target="_blank"><i class="fas fa-file-pdf"></i> View PDF</a>
+        <a href="{% url 'psa:quote_pdf' item.pk %}?download=1" class="btn btn-outline-primary"><i class="fas fa-download"></i> Download</a>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#emailQuoteModal"><i class="fas fa-envelope"></i> Email</button>
+        {% if item.customer_token and item.status != 'accepted' and item.status != 'rejected' %}
+        <button class="btn btn-outline-info copy-sign-link"
+                data-link="{{ request.scheme }}://{{ request.get_host }}/portal/quote/{{ item.customer_token }}/sign/"
+                title="Copy customer e-sign URL">
+            <i class="fas fa-signature"></i> Copy Sign URL
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-5">Client</dt><dd class="col-7">{{ item.client_org.name }}</dd>
+                    <dt class="col-5">Created</dt><dd class="col-7">{{ item.created_at|date:'Y-m-d' }}</dd>
+                    <dt class="col-5">Valid until</dt><dd class="col-7">{{ item.valid_until|default:'—' }}</dd>
+                    <dt class="col-5">Subtotal</dt><dd class="col-7">{{ item.subtotal }}</dd>
+                    <dt class="col-5">Tax</dt><dd class="col-7">{{ item.tax_amount }} ({{ item.tax_rate }})</dd>
+                    <dt class="col-5">Total</dt><dd class="col-7"><strong>{{ item.total }}</strong></dd>
+                </dl>
+                {% if item.signature %}
+                <hr>
+                <p class="mb-0 small text-success">
+                    <i class="fas fa-check-circle"></i> Signed by <strong>{{ item.signature.signed_by_name }}</strong>
+                    ({{ item.signature.signed_by_email }}) on {{ item.signature.signed_at|date:'Y-m-d H:i' }}
+                    {% if item.signature.ip_address %}<br><small class="text-muted">IP {{ item.signature.ip_address }}</small>{% endif %}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        {% if item.converted_ticket %}
+        <div class="card mb-3">
+            <div class="card-body small">
+                <i class="fas fa-link me-1"></i>Converted to ticket
+                <a href="{% url 'psa:ticket_detail' item.converted_ticket.ticket_number %}">{{ item.converted_ticket.ticket_number }}</a>
+            </div>
+        </div>
+        {% endif %}
+        {% if item.status != 'accepted' and item.status != 'rejected' %}
+        <div class="card">
+            <div class="card-header"><strong>Accept</strong></div>
+            <div class="card-body">
+                <form method="post" action="{% url 'psa:quote_accept' item.pk %}">
+                    {% csrf_token %}
+                    <div class="form-check mb-2">
+                        <input type="checkbox" class="form-check-input" id="create_ticket" name="create_ticket" checked>
+                        <label class="form-check-label small" for="create_ticket">Also create a ticket</label>
+                    </div>
+                    <button class="btn btn-sm btn-success" onclick="return confirm('Accept this quote?')">
+                        <i class="fas fa-check"></i> Mark accepted
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header"><strong>Line items</strong></div>
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th class="text-end">Line total</th></tr></thead>
+                <tbody>
+                    {% for li in line_items %}
+                    <tr>
+                        <td>{{ li.description }}</td>
+                        <td>{{ li.quantity }}</td>
+                        <td>{{ li.unit_price }}</td>
+                        <td class="text-end">{{ li.line_total }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center text-muted">No line items.</td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr><td colspan="3" class="text-end small text-muted">Subtotal</td><td class="text-end">{{ item.subtotal }}</td></tr>
+                    <tr><td colspan="3" class="text-end small text-muted">Tax</td><td class="text-end">{{ item.tax_amount }}</td></tr>
+                    <tr><td colspan="3" class="text-end"><strong>Total</strong></td><td class="text-end"><strong>{{ item.total }}</strong></td></tr>
+                </tfoot>
+            </table>
+        </div>
+        {% if item.description %}
+        <div class="card"><div class="card-body">
+            <h6>Description</h6>
+            <p class="mb-0">{{ item.description|linebreaksbr }}</p>
+        </div></div>
+        {% endif %}
+    </div>
+</div>
+
+{# Email modal — sends the customer a PDF + signing link #}
+<div class="modal fade" id="emailQuoteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'psa:quote_email' item.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Email quote to customer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">Sends the PDF as an attachment, with a signing link in the body if the quote isn't yet accepted.</p>
+                    <div class="mb-2">
+                        <label class="form-label">Recipient email</label>
+                        <input type="email" name="recipient" class="form-control" required
+                               value="{{ item.client_org.primary_contact_email|default:item.client_org.email }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Subject (optional)</label>
+                        <input type="text" name="subject" class="form-control"
+                               placeholder="Quote {{ item.quote_number }} from {{ item.organization.name }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Body (optional — defaults are friendly)</label>
+                        <textarea name="body" rows="4" class="form-control"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Send</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('.copy-sign-link').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const link = btn.dataset.link;
+        navigator.clipboard.writeText(link).then(() => {
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> Copied';
+            setTimeout(() => { btn.innerHTML = orig; }, 1500);
+        }).catch(() => alert('Sign URL: ' + link));
+    });
+});
+</script>
+{% endblock %}

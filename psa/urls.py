@@ -60,6 +60,7 @@ urlpatterns = [
     # Quotes / Estimates
     path('quotes/', views.quote_list, name='quote_list'),
     path('quotes/new/', views.quote_form, name='quote_create'),
+    path('quotes/<int:pk>/', views.quote_detail, name='quote_detail'),
     path('quotes/<int:pk>/edit/', views.quote_form, name='quote_edit'),
     path('quotes/<int:pk>/accept/', views.quote_accept, name='quote_accept'),
     # Expenses (per-ticket)
@@ -78,5 +79,10 @@ urlpatterns = [
     path('invoices/<int:pk>/edit/', views.invoice_form, name='invoice_edit'),
     path('invoices/<int:pk>/payment/', views.payment_add, name='payment_add'),
     path('invoices/<int:pk>/push/', views.invoice_push_to_accounting, name='invoice_push_to_accounting'),
+    path('invoices/<int:pk>/pdf/', views.invoice_pdf, name='invoice_pdf'),
+    path('invoices/<int:pk>/email/', views.invoice_email, name='invoice_email'),
     path('invoices/from-ticket/<str:ticket_number>/', views.invoice_from_ticket, name='invoice_from_ticket'),
+    # Quote PDF + email
+    path('quotes/<int:pk>/pdf/', views.quote_pdf, name='quote_pdf'),
+    path('quotes/<int:pk>/email/', views.quote_email, name='quote_email'),
 ]

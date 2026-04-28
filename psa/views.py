@@ -2606,3 +2606,142 @@ def invoice_push_to_accounting(request, pk):
     else:
         messages.error(request, f'Push failed: {result.get("error", "unknown")}')
     return redirect('psa:invoice_detail', pk=invoice.pk)
+
+
+# ---------------------------------------------------------------------------
+# Phase 9 — PDF downloads + customer email for quotes and invoices
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_psa_enabled
+def quote_pdf(request, pk):
+    from django.http import HttpResponse
+    from .pdf import render_quote_pdf
+    org = get_request_organization(request)
+    qs = Quote.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    quote = get_object_or_404(qs.select_related('client_org', 'organization'), pk=pk)
+    sign_url = request.build_absolute_uri(
+        f'/portal/quote/{quote.customer_token}/sign/'
+    ) if quote.customer_token and quote.status not in ('accepted', 'rejected') else ''
+    pdf_bytes = render_quote_pdf(quote, sign_url=sign_url)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    disposition = 'attachment' if request.GET.get('download') else 'inline'
+    resp['Content-Disposition'] = f'{disposition}; filename="{quote.quote_number}.pdf"'
+    return resp
+
+
+@login_required
+@require_psa_enabled
+def invoice_pdf(request, pk):
+    from django.http import HttpResponse
+    from .pdf import render_invoice_pdf
+    org = get_request_organization(request)
+    qs = Invoice.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    invoice = get_object_or_404(qs.select_related('client_org', 'organization'), pk=pk)
+    pdf_bytes = render_invoice_pdf(invoice)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    disposition = 'attachment' if request.GET.get('download') else 'inline'
+    resp['Content-Disposition'] = f'{disposition}; filename="{invoice.invoice_number}.pdf"'
+    return resp
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def quote_email(request, pk):
+    from .pdf import email_quote
+    org = get_request_organization(request)
+    qs = Quote.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    quote = get_object_or_404(qs.select_related('client_org', 'organization'), pk=pk)
+    recipient = (request.POST.get('recipient') or '').strip()
+    subject = (request.POST.get('subject') or '').strip()
+    body = (request.POST.get('body') or '').strip()
+    if not recipient or '@' not in recipient:
+        messages.error(request, 'Provide a valid recipient email.')
+        return redirect('psa:quote_list')
+    try:
+        ok = email_quote(quote, recipient=recipient, subject=subject, body=body, request=request)
+    except Exception as exc:
+        messages.error(request, f'Email failed: {exc}')
+        return redirect('psa:quote_list')
+    if ok:
+        # Mark sent if it was draft
+        if quote.status == 'draft':
+            quote.status = 'sent'
+            quote.sent_at = timezone.now()
+            quote.save(update_fields=['status', 'sent_at', 'updated_at'])
+        AuditLog.log(
+            user=request.user, action='update',
+            organization=quote.organization,
+            object_type='psa.Quote', object_id=quote.pk,
+            object_repr=quote.quote_number,
+            description=f'Emailed quote {quote.quote_number} to {recipient}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Sent quote {quote.quote_number} to {recipient}.')
+    else:
+        messages.error(request, 'Email send returned 0 recipients.')
+    return redirect('psa:quote_list')
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def invoice_email(request, pk):
+    from .pdf import email_invoice
+    org = get_request_organization(request)
+    qs = Invoice.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    invoice = get_object_or_404(qs.select_related('client_org', 'organization'), pk=pk)
+    recipient = (request.POST.get('recipient') or '').strip()
+    subject = (request.POST.get('subject') or '').strip()
+    body = (request.POST.get('body') or '').strip()
+    if not recipient or '@' not in recipient:
+        messages.error(request, 'Provide a valid recipient email.')
+        return redirect('psa:invoice_detail', pk=invoice.pk)
+    try:
+        ok = email_invoice(invoice, recipient=recipient, subject=subject, body=body)
+    except Exception as exc:
+        messages.error(request, f'Email failed: {exc}')
+        return redirect('psa:invoice_detail', pk=invoice.pk)
+    if ok:
+        if invoice.status == 'draft':
+            invoice.status = 'sent'
+            invoice.sent_at = timezone.now()
+            invoice.save(update_fields=['status', 'sent_at', 'updated_at'])
+        AuditLog.log(
+            user=request.user, action='update',
+            organization=invoice.organization,
+            object_type='psa.Invoice', object_id=invoice.pk,
+            object_repr=invoice.invoice_number,
+            description=f'Emailed invoice {invoice.invoice_number} to {recipient}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Sent invoice {invoice.invoice_number} to {recipient}.')
+    else:
+        messages.error(request, 'Email send returned 0 recipients.')
+    return redirect('psa:invoice_detail', pk=invoice.pk)
+
+
+@login_required
+@require_psa_enabled
+def quote_detail(request, pk):
+    org = get_request_organization(request)
+    qs = Quote.objects.select_related('client_org', 'organization', 'created_by')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    return render(request, 'psa/quote_detail.html', {
+        'item': item,
+        'line_items': item.line_items.all(),
+    })

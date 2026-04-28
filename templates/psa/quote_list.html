@@ -31,7 +31,7 @@
             <tbody>
                 {% for q in quotes %}
                 <tr>
-                    <td><strong>{{ q.quote_number }}</strong></td>
+                    <td><a href="{% url 'psa:quote_detail' q.pk %}"><strong>{{ q.quote_number }}</strong></a></td>
                     <td>{{ q.title|truncatechars:60 }}</td>
                     <td>{{ q.client_org.name }}</td>
                     <td>

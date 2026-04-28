@@ -18,8 +18,11 @@
         {% elif item.status == 'overdue' %}<span class="badge text-bg-danger">Overdue</span>
         {% else %}<span class="badge text-bg-secondary">{{ item.get_status_display }}</span>{% endif %}
     </h2>
-    <div>
+    <div class="btn-group flex-wrap">
         <a href="{% url 'psa:invoice_edit' item.pk %}" class="btn btn-outline-secondary"><i class="fas fa-pen"></i> Edit</a>
+        <a href="{% url 'psa:invoice_pdf' item.pk %}" class="btn btn-outline-primary" target="_blank"><i class="fas fa-file-pdf"></i> View PDF</a>
+        <a href="{% url 'psa:invoice_pdf' item.pk %}?download=1" class="btn btn-outline-primary"><i class="fas fa-download"></i> Download</a>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#emailInvoiceModal"><i class="fas fa-envelope"></i> Email</button>
         <form method="post" action="{% url 'psa:invoice_push_to_accounting' item.pk %}" class="d-inline">
             {% csrf_token %}
             <button class="btn btn-warning"
@@ -117,6 +120,42 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+{# Email modal — sends the customer a PDF of the invoice #}
+<div class="modal fade" id="emailInvoiceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'psa:invoice_email' item.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Email invoice to customer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">Sends the PDF as an attachment.</p>
+                    <div class="mb-2">
+                        <label class="form-label">Recipient email</label>
+                        <input type="email" name="recipient" class="form-control" required
+                               value="{{ item.client_org.primary_contact_email|default:item.client_org.email }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Subject (optional)</label>
+                        <input type="text" name="subject" class="form-control"
+                               placeholder="Invoice {{ item.invoice_number }} from {{ item.organization.name }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Body (optional)</label>
+                        <textarea name="body" rows="4" class="form-control"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Send</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

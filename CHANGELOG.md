@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.98] - 2026-04-28
+
+### Added — Phase 9: PDF + Email for Quotes & Invoices
+- **Branded PDF rendering** (`psa.pdf` — ReportLab) with shared layout for quotes and invoices: logo header (org logo with system custom_logo fallback), kicker block (number / date / due-or-valid-until), From/Bill-to address blocks, line-items table with alternating row banding, tax/subtotal/total summary, page footer with page numbers and brand mark.
+- **View / Download PDF** buttons on quote and invoice detail pages — `?download=1` forces an attachment Content-Disposition.
+- **Email modal** on quote and invoice detail — sends the PDF as an attachment to the customer. For quotes, the body includes the customer's e-sign link. Auto-flips quote/invoice to `sent` if it was `draft`. Audit-logged.
+- **Quote detail page** (`/psa/quotes/<id>/`) — new, mirrors the invoice detail layout: stats card, line items, signature record (when signed), accept-with-create-ticket form, and the email/PDF/sign-URL buttons.
+
+### Changed
+- **Quote form qty + unit-price columns widened** (120px / 140px / 130px) so values aren't truncated.
+- **Quote list** number column now links to the new quote detail page.
+- **Invoice and quote detail layouts are now consistent** — same header structure, same button order, same email modal.
+
+### Dependencies
+- Added `reportlab>=4.0,<5.0` to requirements.txt.
+
 ## [3.17.97] - 2026-04-28
 
 ### Fixed
