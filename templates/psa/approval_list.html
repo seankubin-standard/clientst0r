@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}PSA — Approvals{% endblock %}
+{% block content %}
+{% include "psa/_scope_banner.html" %}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Approvals</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3"><i class="fas fa-circle-check me-2"></i>Approvals</h2>
+
+<div class="btn-group mb-3" role="group">
+    <a href="?status=pending" class="btn btn-{% if status_filter == 'pending' %}primary{% else %}outline-primary{% endif %} btn-sm">Pending</a>
+    <a href="?status=approved" class="btn btn-{% if status_filter == 'approved' %}primary{% else %}outline-primary{% endif %} btn-sm">Approved</a>
+    <a href="?status=denied" class="btn btn-{% if status_filter == 'denied' %}primary{% else %}outline-primary{% endif %} btn-sm">Denied</a>
+    <a href="?status=cancelled" class="btn btn-{% if status_filter == 'cancelled' %}primary{% else %}outline-primary{% endif %} btn-sm">Cancelled</a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr><th>Kind</th><th>Subject</th><th>Requested by</th><th>Requested at</th><th>Ticket</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for a in approvals %}
+                <tr>
+                    <td><span class="badge text-bg-info">{{ a.get_kind_display }}</span></td>
+                    <td>{{ a.object_repr|default:a.object_type|truncatechars:80 }}</td>
+                    <td>{% if a.requested_by %}{{ a.requested_by.username }}{% else %}—{% endif %}</td>
+                    <td><span data-utc="{{ a.requested_at|date:'c' }}">{{ a.requested_at|date:'Y-m-d H:i' }}</span></td>
+                    <td>{% if a.related_ticket %}<a href="{% url 'psa:ticket_detail' a.related_ticket.ticket_number %}">{{ a.related_ticket.ticket_number }}</a>{% else %}—{% endif %}</td>
+                    <td>
+                        {% if a.status == 'pending' %}
+                        <form method="post" action="{% url 'psa:approval_decide' a.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button name="decision" value="approve" class="btn btn-sm btn-success">Approve</button>
+                            <button name="decision" value="deny" class="btn btn-sm btn-danger">Deny</button>
+                        </form>
+                        {% else %}
+                        <span class="badge {% if a.status == 'approved' %}text-bg-success{% elif a.status == 'denied' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">{{ a.get_status_display }}</span>
+                        {% if a.decided_by %}<small class="text-muted">by {{ a.decided_by.username }}</small>{% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">No {{ status_filter }} approvals.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

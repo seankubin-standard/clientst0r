@@ -29,5 +29,21 @@ urlpatterns = [
     path('t/<str:ticket_number>/action/', views.ticket_quick_action, name='ticket_quick_action'),
     path('t/<str:ticket_number>/watch/', views.ticket_watch_toggle, name='ticket_watch_toggle'),
     path('t/<str:ticket_number>/merge/', views.ticket_merge, name='ticket_merge'),
+    path('t/<str:ticket_number>/kb-link/', views.ticket_kb_link, name='ticket_kb_link'),
+    path('t/<str:ticket_number>/kb-unlink/<int:link_pk>/', views.ticket_kb_unlink, name='ticket_kb_unlink'),
     path('t/<str:ticket_number>/', views.ticket_detail, name='ticket_detail'),
+    # Projects (Workstream 3)
+    path('projects/', views.project_list, name='project_list'),
+    path('projects/new/', views.project_form, name='project_create'),
+    path('projects/<int:pk>/', views.project_detail, name='project_detail'),
+    path('projects/<int:pk>/edit/', views.project_form, name='project_edit'),
+    # Recurring tickets (preventive maintenance)
+    path('recurring/', views.recurring_list, name='recurring_list'),
+    path('recurring/new/', views.recurring_form, name='recurring_create'),
+    path('recurring/<int:pk>/edit/', views.recurring_form, name='recurring_edit'),
+    # Knowledge Base browser
+    path('kb/', views.kb_browse, name='kb_browse'),
+    # Approvals
+    path('approvals/', views.approval_list, name='approval_list'),
+    path('approvals/<int:pk>/decide/', views.approval_decide, name='approval_decide'),
 ]

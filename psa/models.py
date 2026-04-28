@@ -155,6 +155,7 @@ SOURCE_CHOICES = [
     ('monitoring', 'Monitoring'),
     ('anonymous', 'Anonymous Form'),
     ('calendar', 'Calendar'),
+    ('recurring', 'Recurring Schedule'),
 ]
 
 VISIBILITY_CHOICES = [
@@ -250,6 +251,16 @@ class Ticket(models.Model):
         'self',
         on_delete=models.SET_NULL, null=True, blank=True,
         related_name='duplicates',
+    )
+    project = models.ForeignKey(
+        'Project', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets',
+        help_text='Group this ticket under a PSA project',
+    )
+    recurring_schedule = models.ForeignKey(
+        'RecurringTicketSchedule', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='generated_tickets',
+        help_text='Set when the ticket was created by a recurring schedule',
     )
 
     # Severity scoring
@@ -633,3 +644,271 @@ class ServiceCatalogItem(models.Model):
 
     def __str__(self):
         return self.name
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Projects (Workstream 3)
+# ---------------------------------------------------------------------------
+
+class Project(models.Model):
+    """
+    Lightweight PSA project. Groups tickets under a named delivery effort
+    so techs can see all related work in one place. Optional client_org
+    scopes the project to a specific customer organization (when null,
+    the project is internal to the MSP tenant).
+
+    NOT a full project-management replacement — for a deep PM tool, link
+    to the existing `processes/` workflows. This model is the answer to
+    "show me everything we're doing for ACME this quarter".
+    """
+    STATUS_CHOICES = [
+        ('planning', 'Planning'),
+        ('active', 'Active'),
+        ('on_hold', 'On Hold'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_projects',
+        help_text='MSP tenant that owns the project',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_client_projects',
+        help_text='Client organization the project is for (null = internal)',
+    )
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=220, blank=True)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='planning')
+
+    start_date = models.DateField(null=True, blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    owner = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='owned_psa_projects',
+    )
+    is_billable = models.BooleanField(default=True)
+    estimated_hours = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_projects'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'status']),
+            models.Index(fields=['client_org', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.get_status_display()})'
+
+    def save(self, *args, **kwargs):
+        if not self.slug and self.name:
+            from django.utils.text import slugify
+            base = slugify(self.name)[:200] or 'project'
+            slug = base
+            n = 2
+            while Project.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f'{base}-{n}'
+                n += 1
+            self.slug = slug
+        if self.status == 'completed' and not self.completed_at:
+            self.completed_at = timezone.now()
+        super().save(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Recurring tickets (preventive maintenance) — Workstream 1 queued item
+# ---------------------------------------------------------------------------
+
+class RecurringTicketSchedule(models.Model):
+    """
+    Cron-driven creation of routine maintenance tickets.
+
+    The `psa_run_recurring_tickets` management command (run hourly via
+    cron / systemd timer) finds schedules whose next_run_at <= now and
+    is_active=True, creates a fresh Ticket from the template, and rolls
+    next_run_at forward by one frequency interval.
+    """
+    FREQUENCY_CHOICES = [
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('yearly', 'Yearly'),
+    ]
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_recurring_schedules',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_client_recurring_schedules',
+        help_text='Client the recurring ticket targets (null = internal/MSP)',
+    )
+
+    name = models.CharField(max_length=200, help_text='Internal name for this schedule')
+    template_subject = models.CharField(max_length=300)
+    template_body = models.TextField(blank=True)
+
+    queue = models.ForeignKey(Queue, on_delete=models.PROTECT, related_name='recurring_schedules')
+    priority = models.ForeignKey(TicketPriority, on_delete=models.PROTECT, related_name='recurring_schedules')
+    ticket_type = models.ForeignKey(TicketType, on_delete=models.PROTECT, related_name='recurring_schedules')
+    assigned_to = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='recurring_schedules',
+    )
+
+    frequency = models.CharField(max_length=20, choices=FREQUENCY_CHOICES, default='monthly')
+    interval = models.PositiveIntegerField(default=1,
+        help_text='Run every N units (e.g. interval=2, frequency=weekly = every 2 weeks)')
+
+    is_active = models.BooleanField(default=True)
+    next_run_at = models.DateTimeField()
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_recurring_schedules',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_recurring_schedules'
+        ordering = ['next_run_at']
+        indexes = [
+            models.Index(fields=['is_active', 'next_run_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.get_frequency_display()} ×{self.interval})'
+
+    def advance_next_run(self):
+        """Advance `next_run_at` by one frequency-interval step."""
+        from datetime import timedelta
+        from dateutil.relativedelta import relativedelta  # already in deps via icalendar
+        base = self.next_run_at or timezone.now()
+        if self.frequency == 'daily':
+            self.next_run_at = base + timedelta(days=self.interval)
+        elif self.frequency == 'weekly':
+            self.next_run_at = base + timedelta(weeks=self.interval)
+        elif self.frequency == 'monthly':
+            self.next_run_at = base + relativedelta(months=self.interval)
+        elif self.frequency == 'quarterly':
+            self.next_run_at = base + relativedelta(months=3 * self.interval)
+        elif self.frequency == 'yearly':
+            self.next_run_at = base + relativedelta(years=self.interval)
+
+
+# ---------------------------------------------------------------------------
+# Knowledge Base linking — the docs app already provides KB-style articles
+# (docs.Document with is_global=True), but ticket↔article was a single FK.
+# This through model lets a ticket attach to multiple KB articles.
+# ---------------------------------------------------------------------------
+
+class TicketKBLink(models.Model):
+    """Many-to-many linkage between PSA tickets and docs.Document KB articles."""
+    ticket = models.ForeignKey('Ticket', on_delete=models.CASCADE, related_name='kb_links')
+    article = models.ForeignKey('docs.Document', on_delete=models.CASCADE,
+                                related_name='psa_ticket_links')
+    linked_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='kb_links_created',
+    )
+    note = models.CharField(max_length=300, blank=True,
+        help_text='Optional context on why this article was linked')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_ticket_kb_links'
+        unique_together = [['ticket', 'article']]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.ticket.ticket_number} ↔ {self.article_id}'
+
+
+# ---------------------------------------------------------------------------
+# Approvals — generic manager-approval gate for time, expenses, quotes,
+# AI actions, distributor orders, etc.
+# ---------------------------------------------------------------------------
+
+class PSAApproval(models.Model):
+    """
+    Generic approval record. Any PSA workflow that needs a manager sign-off
+    can create one of these and reference it by (object_type, object_id).
+    """
+    KIND_CHOICES = [
+        ('time', 'Time entry'),
+        ('expense', 'Expense'),
+        ('quote', 'Quote / estimate'),
+        ('order', 'Distributor order'),
+        ('action', 'AI action'),
+        ('change', 'Change / scope'),
+        ('other', 'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('denied', 'Denied'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_approvals',
+    )
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    object_type = models.CharField(max_length=80,
+        help_text='app_label.ModelName of the thing being approved')
+    object_id = models.PositiveIntegerField()
+    object_repr = models.CharField(max_length=300, blank=True)
+
+    requested_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_approvals_requested',
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    request_comment = models.TextField(blank=True)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    decided_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_approvals_decided',
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_comment = models.TextField(blank=True)
+
+    related_ticket = models.ForeignKey(
+        'Ticket', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approvals',
+        help_text='If the approval is tied to a specific ticket',
+    )
+
+    class Meta:
+        db_table = 'psa_approvals'
+        ordering = ['-requested_at']
+        indexes = [
+            models.Index(fields=['organization', 'status', '-requested_at']),
+            models.Index(fields=['object_type', 'object_id']),
+        ]
+
+    def __str__(self):
+        return f'{self.get_kind_display()} #{self.pk} — {self.get_status_display()}'
+
+    def decide(self, *, user, approved: bool, comment: str = ''):
+        self.status = 'approved' if approved else 'denied'
+        self.decided_by = user
+        self.decided_at = timezone.now()
+        self.decision_comment = comment[:5000]
+        self.save(update_fields=['status', 'decided_by', 'decided_at', 'decision_comment'])

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}PSA — Projects{% endblock %}
+{% block content %}
+{% include "psa/_scope_banner.html" %}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Projects</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="mb-0"><i class="fas fa-diagram-project me-2"></i>Projects</h2>
+        <small class="text-muted">Group related tickets under a delivery effort.</small>
+    </div>
+    <a href="{% url 'psa:project_create' %}" class="btn btn-primary">
+        <i class="fas fa-plus me-1"></i>New Project
+    </a>
+</div>
+
+<form method="get" class="mb-3">
+    <select name="status" class="form-select form-select-sm d-inline-block" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All statuses</option>
+        <option value="planning" {% if status_filter == 'planning' %}selected{% endif %}>Planning</option>
+        <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+        <option value="on_hold" {% if status_filter == 'on_hold' %}selected{% endif %}>On Hold</option>
+        <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Completed</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr><th>Name</th><th>Client</th><th>Status</th><th>Owner</th><th>Due</th><th>Tickets</th></tr>
+            </thead>
+            <tbody>
+                {% for p in projects %}
+                <tr>
+                    <td><a href="{% url 'psa:project_detail' p.pk %}"><strong>{{ p.name }}</strong></a></td>
+                    <td>{% if p.client_org %}{{ p.client_org.name }}{% else %}<span class="text-muted">Internal</span>{% endif %}</td>
+                    <td>
+                        {% if p.status == 'active' %}<span class="badge text-bg-success">Active</span>
+                        {% elif p.status == 'planning' %}<span class="badge text-bg-info">Planning</span>
+                        {% elif p.status == 'on_hold' %}<span class="badge text-bg-warning">On Hold</span>
+                        {% elif p.status == 'completed' %}<span class="badge text-bg-secondary">Completed</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ p.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td>{% if p.owner %}{{ p.owner.username }}{% else %}—{% endif %}</td>
+                    <td>{{ p.due_date|default:'—' }}</td>
+                    <td>{{ p.tickets.count }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">No projects yet. <a href="{% url 'psa:project_create' %}">Create one</a>.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

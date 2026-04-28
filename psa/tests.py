@@ -1234,3 +1234,113 @@ class Phase2cRemainderTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.t1.refresh_from_db()
         self.assertEqual(self.t1.duplicate_of_id, before)  # unchanged
+
+
+class Phase3FeaturesTests(TestCase):
+    """
+    Phase 3: Projects, Recurring Tickets, Approvals, KB linking.
+
+    Each feature gets a smoke test:
+      * model creation works (unique-together / save() helpers fire)
+      * the runner command creates a ticket and rolls next_run_at
+      * the approval decide() helper updates status/decided_at
+      * KB link enforces uniqueness
+    """
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ACME Phase3', slug='acme-p3')
+        self.user = User.objects.create_user('p3-tech', password='pw', email='p3@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        from psa.models import (
+            Queue, TicketPriority, TicketType, TicketStatus,
+        )
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status = TicketStatus.objects.filter(slug='new').first()
+
+    def test_project_save_generates_slug(self):
+        from psa.models import Project
+        p = Project.objects.create(organization=self.org, name='ACME Onboarding 2026')
+        self.assertTrue(p.slug.startswith('acme-onboarding-2026'))
+
+    def test_project_completed_sets_completed_at(self):
+        from psa.models import Project
+        p = Project.objects.create(organization=self.org, name='Migration')
+        self.assertIsNone(p.completed_at)
+        p.status = 'completed'
+        p.save()
+        self.assertIsNotNone(p.completed_at)
+
+    def test_recurring_advance_next_run_monthly(self):
+        from psa.models import RecurringTicketSchedule
+        from datetime import datetime
+        s = RecurringTicketSchedule.objects.create(
+            organization=self.org,
+            name='Monthly patch',
+            template_subject='Patch {{org}}',
+            queue=self.queue, priority=self.priority, ticket_type=self.ttype,
+            frequency='monthly', interval=1,
+            next_run_at=timezone.make_aware(datetime(2026, 1, 15, 9, 0)),
+        )
+        s.advance_next_run()
+        self.assertEqual(s.next_run_at.month, 2)
+        self.assertEqual(s.next_run_at.day, 15)
+
+    def test_recurring_runner_creates_ticket(self):
+        from psa.models import RecurringTicketSchedule, Ticket
+        from datetime import timedelta
+        s = RecurringTicketSchedule.objects.create(
+            organization=self.org,
+            name='Daily backup check',
+            template_subject='Daily backup verification',
+            template_body='Verify the backup completed.',
+            queue=self.queue, priority=self.priority, ticket_type=self.ttype,
+            frequency='daily', interval=1,
+            next_run_at=timezone.now() - timedelta(hours=1),  # overdue
+        )
+        before = Ticket.objects.filter(organization=self.org).count()
+        call_command('psa_run_recurring_tickets', verbosity=0)
+        after = Ticket.objects.filter(organization=self.org).count()
+        self.assertEqual(after, before + 1)
+        # next_run_at rolled forward past now
+        s.refresh_from_db()
+        self.assertGreater(s.next_run_at, timezone.now())
+        # The created ticket links back to the schedule
+        t = Ticket.objects.filter(recurring_schedule=s).first()
+        self.assertIsNotNone(t)
+        self.assertEqual(t.source, 'recurring')
+
+    def test_approval_decide_updates_status_and_decided_at(self):
+        from psa.models import PSAApproval
+        a = PSAApproval.objects.create(
+            organization=self.org, kind='time',
+            object_type='psa.TicketTimeEntry', object_id=99,
+            requested_by=self.user, request_comment='Need approval',
+        )
+        self.assertEqual(a.status, 'pending')
+        a.decide(user=self.user, approved=True, comment='LGTM')
+        self.assertEqual(a.status, 'approved')
+        self.assertIsNotNone(a.decided_at)
+        self.assertEqual(a.decision_comment, 'LGTM')
+
+    def test_ticket_kb_link_uniqueness(self):
+        from psa.models import Ticket, TicketKBLink
+        from docs.models import Document
+        ticket = Ticket.objects.create(
+            organization=self.org, subject='TEST',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        article = Document.objects.create(
+            title='How to reset password', body='...', is_global=True,
+        )
+        TicketKBLink.objects.create(ticket=ticket, article=article, linked_by=self.user)
+        # Second create with same pair should fail unique_together
+        with self.assertRaises(Exception):
+            TicketKBLink.objects.create(ticket=ticket, article=article, linked_by=self.user)

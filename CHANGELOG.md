@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.90] - 2026-04-28
+
+### Added — PSA Phase 3: full-featured push
+Adds four major missing pieces. PSA dropdown gets four new entries (Projects, Recurring Tickets, Knowledge Base, Approvals).
+
+- **Projects** (`psa.Project`) — group tickets under a delivery effort with status (planning/active/on_hold/completed/cancelled), owner, billable flag, estimated hours, start/due dates, optional client_org. New routes `/psa/projects/`, `/psa/projects/new/`, `/psa/projects/<pk>/`, `/psa/projects/<pk>/edit/`. Ticket gets `project` FK.
+- **Recurring tickets** (`psa.RecurringTicketSchedule`) — preventive-maintenance template with frequency (daily/weekly/monthly/quarterly/yearly) × interval. New `psa_run_recurring_tickets` management command for cron (recommended every 15 min). Generated tickets carry `recurring_schedule` FK + `source='recurring'` and roll `next_run_at` forward by one cycle. Catch-up cap of 50 tickets per overdue schedule prevents runaway after a long downtime.
+- **Knowledge Base** browser at `/psa/kb/` — searches `docs.Document` filtered to `is_global=True`. New `psa.TicketKBLink` through-table allows many KB articles per ticket; link/unlink endpoints on ticket detail.
+- **Approvals** (`psa.PSAApproval`) — generic manager-approval gate for time / expense / quote / order / AI-action / change. List + decide UI at `/psa/approvals/`. `approval.decide(user, approved, comment)` helper writes status + decided_at atomically.
+
+### Tests
+6 new tests in `psa.tests.Phase3FeaturesTests` covering slug auto-gen, completed_at auto-set, monthly relativedelta math, the cron command actually creating a ticket and rolling next_run_at, approval decision atomicity, and KB-link uniqueness.
+
 ## [3.17.89] - 2026-04-28
 
 ### Added — Distributors: Pax8 + TD Synnex adapters

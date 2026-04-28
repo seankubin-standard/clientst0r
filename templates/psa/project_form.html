@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{% if item %}Edit{% else %}New{% endif %} Project — PSA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:project_list' %}">Projects</a></li>
+        <li class="breadcrumb-item active">{% if item %}{{ item.name }}{% else %}New{% endif %}</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3">{% if item %}Edit Project{% else %}New Project{% endif %}</h2>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input type="text" name="name" class="form-control" required value="{{ item.name|default:'' }}">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="3">{{ item.description|default:'' }}</textarea>
+        </div>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    {% for code, label in status_choices %}
+                    <option value="{{ code }}" {% if item.status == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Client (optional)</label>
+                <select name="client_org" class="form-select">
+                    <option value="">— internal / MSP —</option>
+                    {% for o in client_orgs %}
+                    <option value="{{ o.pk }}" {% if item.client_org_id == o.pk %}selected{% endif %}>{{ o.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Estimated hours</label>
+                <input type="number" step="0.25" name="estimated_hours" class="form-control"
+                       value="{{ item.estimated_hours|default:'' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Start date</label>
+                <input type="date" name="start_date" class="form-control" value="{{ item.start_date|date:'Y-m-d'|default:'' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Due date</label>
+                <input type="date" name="due_date" class="form-control" value="{{ item.due_date|date:'Y-m-d'|default:'' }}">
+            </div>
+            <div class="col-md-4 form-check ms-3 mt-4">
+                <input type="checkbox" name="is_billable" class="form-check-input" id="is_billable"
+                       {% if not item or item.is_billable %}checked{% endif %}>
+                <label class="form-check-label" for="is_billable">Billable</label>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{% url 'psa:project_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

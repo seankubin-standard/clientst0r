@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ item.name }} — PSA Project{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:project_list' %}">Projects</a></li>
+        <li class="breadcrumb-item active">{{ item.name }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">{{ item.name }}
+        {% if item.status == 'active' %}<span class="badge text-bg-success">Active</span>
+        {% elif item.status == 'planning' %}<span class="badge text-bg-info">Planning</span>
+        {% elif item.status == 'on_hold' %}<span class="badge text-bg-warning">On Hold</span>
+        {% else %}<span class="badge text-bg-secondary">{{ item.get_status_display }}</span>{% endif %}
+    </h2>
+    <a href="{% url 'psa:project_edit' item.pk %}" class="btn btn-outline-secondary"><i class="fas fa-pen"></i> Edit</a>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-5">Client</dt><dd class="col-7">{% if item.client_org %}{{ item.client_org.name }}{% else %}<span class="text-muted">Internal</span>{% endif %}</dd>
+                    <dt class="col-5">Owner</dt><dd class="col-7">{% if item.owner %}{{ item.owner.username }}{% else %}—{% endif %}</dd>
+                    <dt class="col-5">Start</dt><dd class="col-7">{{ item.start_date|default:'—' }}</dd>
+                    <dt class="col-5">Due</dt><dd class="col-7">{{ item.due_date|default:'—' }}</dd>
+                    <dt class="col-5">Est. hours</dt><dd class="col-7">{{ item.estimated_hours|default:'—' }}</dd>
+                    <dt class="col-5">Billable</dt><dd class="col-7">{% if item.is_billable %}Yes{% else %}No{% endif %}</dd>
+                </dl>
+            </div>
+        </div>
+        {% if item.description %}
+        <div class="card mb-3">
+            <div class="card-header">Description</div>
+            <div class="card-body"><p class="mb-0">{{ item.description|linebreaksbr }}</p></div>
+        </div>
+        {% endif %}
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between">
+                <strong>Tickets in this project</strong>
+                <a href="{% url 'psa:ticket_create' %}?project={{ item.pk }}" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> New Ticket</a>
+            </div>
+            <table class="table table-hover mb-0">
+                <thead class="table-light"><tr><th>#</th><th>Subject</th><th>Status</th><th>Priority</th></tr></thead>
+                <tbody>
+                    {% for t in tickets %}
+                    <tr>
+                        <td><a href="{% url 'psa:ticket_detail' t.ticket_number %}">{{ t.ticket_number }}</a></td>
+                        <td>{{ t.subject|truncatechars:80 }}</td>
+                        <td>{{ t.status.name }}</td>
+                        <td>{{ t.priority.name }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center text-muted py-3">No tickets yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

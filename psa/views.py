@@ -28,11 +28,15 @@ from .feature_flags import (
 from .models import (
     CannedReply,
     ClientPSASettings,
+    Project,
+    PSAApproval,
     Queue,
+    RecurringTicketSchedule,
     ServiceCatalogItem,
     Ticket,
     TicketAttachment,
     TicketComment,
+    TicketKBLink,
     TicketPriority,
     TicketStatus,
     TicketTimeEntry,
@@ -1407,3 +1411,317 @@ def service_catalog_form(request, pk=None):
         'types': types,
         'fields_json_pretty': _json.dumps(item.fields_json if item else [], indent=2),
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Projects, Recurring Tickets, KB linking, Approvals
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_psa_enabled
+def project_list(request):
+    """Tenant-scoped list of PSA projects with status filter."""
+    org = get_request_organization(request)
+    qs = Project.objects.select_related('client_org', 'owner')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    status = request.GET.get('status')
+    if status in {'planning', 'active', 'on_hold', 'completed', 'cancelled'}:
+        qs = qs.filter(status=status)
+    return render(request, 'psa/project_list.html', {
+        'projects': qs.order_by('-created_at')[:200],
+        'status_filter': status or '',
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def project_form(request, pk=None):
+    org = get_request_organization(request)
+    if org is None:
+        messages.error(request, 'Pick a client first.')
+        return redirect('psa:project_list')
+    item = get_object_or_404(Project, pk=pk, organization=org) if pk else None
+
+    if request.method == 'POST':
+        name = (request.POST.get('name') or '').strip()
+        if not name:
+            messages.error(request, 'Name is required.')
+            return redirect(request.path)
+        if item is None:
+            item = Project(organization=org, name=name)
+        else:
+            item.name = name
+        item.description = (request.POST.get('description') or '').strip()
+        item.status = request.POST.get('status') or 'planning'
+        item.start_date = request.POST.get('start_date') or None
+        item.due_date = request.POST.get('due_date') or None
+        item.is_billable = request.POST.get('is_billable') == 'on'
+        try:
+            item.estimated_hours = request.POST.get('estimated_hours') or None
+        except (TypeError, ValueError):
+            item.estimated_hours = None
+        client_org_id = request.POST.get('client_org') or ''
+        if client_org_id:
+            from core.models import Organization
+            item.client_org = Organization.objects.filter(pk=client_org_id).first()
+        else:
+            item.client_org = None
+        if not item.owner_id:
+            item.owner = request.user
+        item.save()
+
+        AuditLog.log(
+            user=request.user, action='update' if pk else 'create',
+            organization=org,
+            object_type='psa.Project', object_id=item.pk,
+            object_repr=item.name,
+            description=f'{"Updated" if pk else "Created"} PSA project "{item.name}"',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Saved "{item.name}".')
+        return redirect('psa:project_detail', pk=item.pk)
+
+    from core.models import Organization
+    return render(request, 'psa/project_form.html', {
+        'item': item,
+        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
+        'status_choices': Project.STATUS_CHOICES,
+    })
+
+
+@login_required
+@require_psa_enabled
+def project_detail(request, pk):
+    org = get_request_organization(request)
+    qs = Project.objects.select_related('client_org', 'owner')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    tickets = item.tickets.select_related('status', 'priority').order_by('-created_at')[:100]
+    return render(request, 'psa/project_detail.html', {
+        'item': item,
+        'tickets': tickets,
+    })
+
+
+@login_required
+@require_psa_enabled
+def recurring_list(request):
+    """Tenant-scoped list of recurring ticket schedules."""
+    org = get_request_organization(request)
+    qs = RecurringTicketSchedule.objects.select_related('queue', 'priority', 'ticket_type', 'assigned_to')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    return render(request, 'psa/recurring_list.html', {
+        'schedules': qs.order_by('next_run_at')[:200],
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def recurring_form(request, pk=None):
+    org = get_request_organization(request)
+    if org is None:
+        messages.error(request, 'Pick a client first.')
+        return redirect('psa:recurring_list')
+    item = get_object_or_404(RecurringTicketSchedule, pk=pk, organization=org) if pk else None
+
+    queues = Queue.objects.filter(is_active=True)
+    priorities = TicketPriority.objects.all()
+    types = TicketType.objects.all()
+
+    if request.method == 'POST':
+        name = (request.POST.get('name') or '').strip()
+        subject = (request.POST.get('template_subject') or '').strip()
+        if not name or not subject:
+            messages.error(request, 'Name and template subject are required.')
+            return redirect(request.path)
+        try:
+            queue = queues.get(pk=request.POST.get('queue'))
+            priority = priorities.get(pk=request.POST.get('priority'))
+            ticket_type = types.get(pk=request.POST.get('ticket_type'))
+        except (Queue.DoesNotExist, TicketPriority.DoesNotExist,
+                TicketType.DoesNotExist, ValueError):
+            messages.error(request, 'Pick a valid queue / priority / type.')
+            return redirect(request.path)
+
+        if item is None:
+            item = RecurringTicketSchedule(
+                organization=org,
+                queue=queue, priority=priority, ticket_type=ticket_type,
+                next_run_at=timezone.now(),
+                created_by=request.user,
+            )
+        else:
+            item.queue = queue
+            item.priority = priority
+            item.ticket_type = ticket_type
+        item.name = name
+        item.template_subject = subject
+        item.template_body = (request.POST.get('template_body') or '').strip()
+        item.frequency = request.POST.get('frequency') or 'monthly'
+        try:
+            item.interval = max(1, int(request.POST.get('interval') or 1))
+        except ValueError:
+            item.interval = 1
+        item.is_active = request.POST.get('is_active') == 'on'
+
+        first_run = request.POST.get('next_run_at')
+        if first_run:
+            try:
+                from django.utils.dateparse import parse_datetime
+                parsed = parse_datetime(first_run)
+                if parsed:
+                    item.next_run_at = parsed
+            except (TypeError, ValueError):
+                pass
+
+        client_org_id = request.POST.get('client_org') or ''
+        if client_org_id:
+            from core.models import Organization
+            item.client_org = Organization.objects.filter(pk=client_org_id).first()
+        else:
+            item.client_org = None
+
+        item.save()
+        messages.success(request, f'Saved schedule "{item.name}".')
+        return redirect('psa:recurring_list')
+
+    from core.models import Organization
+    return render(request, 'psa/recurring_form.html', {
+        'item': item,
+        'queues': queues, 'priorities': priorities, 'types': types,
+        'frequency_choices': RecurringTicketSchedule.FREQUENCY_CHOICES,
+        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
+    })
+
+
+@login_required
+@require_psa_enabled
+def kb_browse(request):
+    """KB browser — wraps docs.Document filtered to global KB articles."""
+    from docs.models import Document
+    qs = Document.objects.filter(is_global=True).order_by('-updated_at')
+    q = (request.GET.get('q') or '').strip()
+    if q:
+        qs = qs.filter(models.Q(title__icontains=q) | models.Q(content__icontains=q))
+    return render(request, 'psa/kb_browse.html', {
+        'articles': qs[:50],
+        'query': q,
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def ticket_kb_link(request, ticket_number):
+    """Link a docs.Document KB article to a ticket."""
+    from docs.models import Document
+    org = get_request_organization(request)
+    qs = Ticket.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    ticket = get_object_or_404(qs, ticket_number=ticket_number)
+
+    article_id = request.POST.get('article_id')
+    if not article_id:
+        messages.error(request, 'Pick an article.')
+        return redirect('psa:ticket_detail', ticket_number=ticket_number)
+
+    article = get_object_or_404(Document, pk=article_id, is_global=True)
+    link, created = TicketKBLink.objects.get_or_create(
+        ticket=ticket, article=article,
+        defaults={'linked_by': request.user, 'note': request.POST.get('note', '')[:300]},
+    )
+    if created:
+        messages.success(request, f'Linked KB: {article.title}')
+        AuditLog.log(
+            user=request.user, action='update',
+            organization=ticket.organization,
+            object_type='psa.Ticket', object_id=ticket.pk,
+            object_repr=ticket.ticket_number,
+            description=f'Linked KB article "{article.title}" to {ticket.ticket_number}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+    else:
+        messages.info(request, f'Already linked to "{article.title}".')
+    return redirect('psa:ticket_detail', ticket_number=ticket_number)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def ticket_kb_unlink(request, ticket_number, link_pk):
+    org = get_request_organization(request)
+    qs = TicketKBLink.objects.select_related('ticket', 'article')
+    if org is not None:
+        qs = qs.filter(ticket__organization=org)
+    link = get_object_or_404(qs, pk=link_pk, ticket__ticket_number=ticket_number)
+    title = link.article.title
+    link.delete()
+    messages.success(request, f'Unlinked "{title}".')
+    return redirect('psa:ticket_detail', ticket_number=ticket_number)
+
+
+@login_required
+@require_psa_enabled
+def approval_list(request):
+    """Tenant-scoped list of PSA approvals (pending first)."""
+    org = get_request_organization(request)
+    qs = PSAApproval.objects.select_related('requested_by', 'decided_by', 'related_ticket')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    status = request.GET.get('status', 'pending')
+    if status in {'pending', 'approved', 'denied', 'cancelled'}:
+        qs = qs.filter(status=status)
+    return render(request, 'psa/approval_list.html', {
+        'approvals': qs.order_by('-requested_at')[:200],
+        'status_filter': status,
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def approval_decide(request, pk):
+    org = get_request_organization(request)
+    qs = PSAApproval.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    approval = get_object_or_404(qs, pk=pk)
+    if approval.status != 'pending':
+        messages.error(request, 'This approval has already been decided.')
+        return redirect('psa:approval_list')
+
+    decision = request.POST.get('decision')
+    comment = (request.POST.get('comment') or '').strip()
+    if decision not in {'approve', 'deny'}:
+        messages.error(request, 'Pick approve or deny.')
+        return redirect('psa:approval_list')
+
+    approval.decide(user=request.user, approved=(decision == 'approve'), comment=comment)
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=approval.organization,
+        object_type='psa.PSAApproval', object_id=approval.pk,
+        object_repr=str(approval),
+        description=f'{decision.title()}d {approval.get_kind_display()} approval #{approval.pk}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'{decision.title()}d.')
+    return redirect('psa:approval_list')
