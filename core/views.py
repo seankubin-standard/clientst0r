@@ -35,6 +35,29 @@ def documentation(request):
 
 
 @login_required
+def roadmap(request):
+    """
+    Public roadmap page rendered from `docs/ROADMAP.md`. No login required —
+    same as /core/about/. Markdown is rendered server-side so the file
+    stays the single source of truth (also visible on GitHub at /docs/ROADMAP.md).
+    """
+    import os
+    from pathlib import Path
+    from django.conf import settings
+    from markdown import markdown
+    base = getattr(settings, 'BASE_DIR', Path(__file__).resolve().parent.parent)
+    path = Path(base) / 'docs' / 'ROADMAP.md'
+    try:
+        raw = path.read_text(encoding='utf-8')
+    except OSError:
+        raw = '# Roadmap\n\nThe roadmap file could not be loaded.'
+    html = markdown(raw, extensions=['extra', 'tables', 'sane_lists', 'toc'])
+    return render(request, 'core/roadmap.html', {
+        'roadmap_html': html,
+        'roadmap_source_url': 'https://github.com/agit8or1/clientst0r/blob/main/docs/ROADMAP.md',
+    })
+
+
 def about(request):
     """
     About page with version and system information.

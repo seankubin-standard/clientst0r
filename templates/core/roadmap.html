@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Roadmap - {{ system_settings.custom_company_name|default:"Client St0r" }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.roadmap-content { max-width: 920px; margin: 0 auto; }
+.roadmap-content h1 { font-size: 1.7rem; margin-top: 0; }
+.roadmap-content h2 { font-size: 1.25rem; margin-top: 1.5rem; padding-bottom: .35rem; border-bottom: 1px solid var(--bs-border-color, rgba(0,0,0,.1)); }
+.roadmap-content h3 { font-size: 1rem; margin-top: 1rem; }
+.roadmap-content table { width: 100%; }
+.roadmap-content table th, .roadmap-content table td { padding: .35rem .55rem; vertical-align: top; }
+.roadmap-content code { font-size: .82rem; padding: 1px 5px; border-radius: 3px;
+    background: var(--bs-tertiary-bg, rgba(0,0,0,0.06));
+    color: var(--bs-emphasis-color, var(--bs-body-color, inherit)); }
+[data-bs-theme="dark"] .roadmap-content code { background: rgba(255,255,255,0.08); }
+.roadmap-content blockquote { border-left: 3px solid var(--bs-primary); padding-left: 1rem; color: var(--bs-secondary-color); }
+.roadmap-content hr { margin: 1.5rem 0; border-color: var(--bs-border-color, rgba(0,0,0,.1)); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 roadmap-content">
+    <h2 class="mb-0"><i class="fas fa-map me-1"></i>Public Roadmap</h2>
+    <a href="{{ roadmap_source_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
+        <i class="fab fa-github me-1"></i>View on GitHub
+    </a>
+</div>
+
+<div class="alert alert-info roadmap-content small">
+    <i class="fas fa-info-circle me-1"></i>
+    This roadmap is rendered live from <code>docs/ROADMAP.md</code> in the repo. Phases ship incrementally; check the
+    <a href="https://github.com/agit8or1/clientst0r/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG</a>
+    for what's already landed in your installed version.
+</div>
+
+<div class="card roadmap-content">
+    <div class="card-body">
+        <div class="roadmap-content">
+            {{ roadmap_html|safe }}
+        </div>
+    </div>
+</div>
+{% endblock %}

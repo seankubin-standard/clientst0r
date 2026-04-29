@@ -90,6 +90,41 @@ Not a single phase — runs alongside 1-6.
 - **Integration SDK**: clean provider plugin interface; then steady drops — Datto Backup, ITGlue v2 import, Hudu sync, BackupRadar, ScreenConnect, Acronis, Liongard. Target: 5-10 new providers per quarter.
 - **Polish backlog** — test coverage gaps, permission edge cases, audit improvements, mobile UI fixes, onboarding docs, import-tool maturity, API stability, third-party trust signals
 
+## Phase 9 — Security alert ingestion: EDR / AV / Firewall on the dashboard **(M)**
+
+MSPs run a stack of security tools that all alert independently — SentinelOne, CrowdStrike, Defender, Sophos, Bitdefender, Webroot, Fortinet, Palo Alto, Sonicwall, etc. The PSA dashboard should aggregate alerts from all of them, surface critical issues per client, and let techs triage from one screen.
+
+### Sub-phase 9.1 — Connection framework
+
+- Generic `SecurityVendorConnection` model: provider type (edr/av/firewall), org-scoped credentials (encrypted), poll interval, last_sync_at, last_error
+- Provider type enums covering EDR (CrowdStrike Falcon, SentinelOne Singularity, Microsoft Defender for Endpoint, Sophos Central, Huntress, ThreatLocker), AV (Bitdefender GravityZone, Webroot, Malwarebytes, ESET), Firewall (Fortinet FortiGate, Palo Alto, Sonicwall, Cisco Meraki MX, Sophos XG, pfSense)
+- Two-way mapping: each connection optionally pinned to a client `Organization` (multi-tenant alert routing)
+- Reuses existing integration patterns (status pill from v3.17.135)
+
+### Sub-phase 9.2 — Alert model + poller
+
+- `SecurityAlert` model: connection FK, external_id (dedupe key), severity (info/low/medium/high/critical), title, description, asset hint, raw_payload (JSON), seen_at, acknowledged_by, acknowledged_at, status (new/acknowledged/dismissed/resolved), auto_ticket FK (optional)
+- Per-vendor poller adapters returning normalized alert dicts; one mgmt cmd `psa_poll_security_alerts` runs every 5 min via cron
+- Idempotent dedupe by (connection_id, external_id)
+- Alert webhook receiver endpoint `/security-alerts/webhook/<token>/` for vendors that push (HMAC-verified)
+
+### Sub-phase 9.3 — Dashboard + auto-ticketing
+
+- New "Security alerts" card on the global dashboard + per-org dashboard: count by severity in the last 24h, drill-down to filtered list, color-coded
+- New page `/psa/security-alerts/` — full triage UI; filter by severity / vendor / client / status
+- Per-vendor or per-severity rule: auto-create a PSA ticket from an alert (priority mapped from severity, queue configurable, assignee from a default rule). Mirrors workflow rules engine (v3.17.111).
+- Bulk "ack / dismiss / convert to ticket" actions
+
+### Sub-phase 9.4 — Reporting
+
+- "Mean time to acknowledge" metric per client / per vendor
+- Suppression rules (don't auto-ticket from this vendor between 22:00–06:00 etc.)
+- Weekly digest email to client of unresolved alerts (opt-in)
+
+**Sizing:** **M** — 9.1+9.2 = 2 weeks (one reference adapter + the framework), 9.3 = 2 weeks, 9.4 = 1 week. Each new vendor adapter beyond the first is ~2-4 days. Ship the framework + 1-2 reference adapters first, then add vendors as customer demand arrives.
+
+**Dependencies:** none. Can run alongside Phase 2 / 3 / 8.
+
 ## Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock **(L · keystone)**
 
 Reverses the earlier "PWA only" deferral. The combination of GPS auto-documentation + employee timeclock makes this a force-multiplier for billable-hours capture, not just a UX improvement.
@@ -155,6 +190,7 @@ Reverses the earlier "PWA only" deferral. The combination of GPS auto-documentat
 | 6 — ITIL | M | 2-3 weeks | none |
 | 7 — Outsourcing + ecosystem + polish | Continuous | ongoing | runs alongside |
 | 8 — Mobile apps + GPS auto-time + Timeclock | L | 10-13 weeks | Phase 2 (WorkingHours); ideally before Phase 3 |
+| 9 — Security alert ingestion (EDR / AV / Firewall) | M | 5 weeks | none — can run alongside any |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.
 

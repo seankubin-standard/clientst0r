@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.136] - 2026-04-29
+
+### Added — Public roadmap on website + GitHub + new Phase 9 (Security alerts)
+- **Live roadmap page in-app at `/core/roadmap/`** — renders `docs/ROADMAP.md` server-side with markdown + tables + sane lists. Theme-aware styling, "View on GitHub" button. Linked from the user dropdown menu.
+- **README "Roadmap" section** rewritten to point to `docs/ROADMAP.md` and list recently-shipped + in-flight + planned phases at a glance. Browsable on GitHub at the repo URL.
+- **New Phase 9 — Security alert ingestion (EDR / AV / Firewall)** added to roadmap. Four sub-phases: connection framework, alert model + poller (5-min cron + HMAC webhook receiver), dashboard + auto-ticketing, reporting (MTTA, suppression rules, weekly digest). Provider types: CrowdStrike Falcon, SentinelOne, Microsoft Defender, Sophos Central, Huntress, ThreatLocker, Bitdefender, Webroot, Fortinet, Palo Alto, Sonicwall, Meraki MX, etc. Sizing M, ~5 weeks. Independent of all other phases.
+
 ## [3.17.135] - 2026-04-29
 
 ### Added — Service Catalog Tile / List view toggle

@@ -834,14 +834,28 @@ Your support allows me to continue developing open-source tools like Client St0r
 
 ## 🗺️ Roadmap
 
-- [x] Mobile-responsive UI improvements ✅
-- [x] Advanced reporting and analytics ✅
-- [x] Backup/restore functionality ✅
-- [x] Docker deployment option (optional) ✅
-- [x] Additional PSA/RMM integrations ✅
-- [x] API v2 with GraphQL ✅
-- [x] MagicPlan floor plan integration ✅
-- [x] Mobile app (development plan complete) ✅
+**Full live roadmap → [docs/ROADMAP.md](docs/ROADMAP.md)** *(also browsable in-app at `/core/roadmap/`)*
+
+### Recently shipped ✅
+- v3.17.83 → 3.17.130: complete Native PSA / Service Desk (12+ phases — see CHANGELOG)
+- Mobile-responsive UI, advanced reporting, backup/restore, Docker option, API v2 GraphQL, MagicPlan import
+- Phase 1 Contract Engine (1.1 + 1.2): rollover, auto-renew, role gates, bundled services, profitability
+- Phase 2.1 Resourcing: skills, certifications, working hours
+- AI Triage suggestions on tickets with full guardrails
+
+### In flight 🔄
+- **Phase 2.2 / 2.3** — PTO + LeaveRequest + BillableTarget; capacity report + skill ranking on dispatch board
+
+### Coming up (planned)
+- **Phase 3** — Financial reporting + BI: profitability by client/contract/tech, custom dashboards, scheduled reports, wallboard, client-health score
+- **Phase 4** — Procurement: requisitions, POs, receiving, drop-ship, fulfillment tracking
+- **Phase 5** — CRM / sales pipeline: leads, opportunities, campaigns, commissions, quote-to-project automation
+- **Phase 6** — ITIL maturity: change requests, CAB workflow, problem records, release management
+- **Phase 7** — Outsourcing + integration ecosystem + polish *(continuous)*
+- **Phase 8** — Native iOS + Android apps with GPS auto-time + employee Timeclock
+- **Phase 9** — Security alert ingestion: EDR / AV / Firewall vendor connections + dashboard alerts + auto-ticketing
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for full sub-phase breakdowns, sizing, and dependencies.
 
 ## ⚡ Performance
 
