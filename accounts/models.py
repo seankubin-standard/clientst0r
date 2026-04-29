@@ -100,6 +100,14 @@ class Membership(BaseModel):
                 # KB
                 kb_view_articles=True, kb_edit_articles=True, kb_move_articles=True,
                 kb_manage_categories=True, kb_publish_articles=True,
+                # Reports + financials (v3.17.145) — Owner: all True
+                reports_view_dashboards=True, reports_view_financial=True,
+                reports_view_sla=True, reports_view_capacity=True,
+                reports_manage_dashboards=True, reports_manage_scheduled=True,
+                resourcing_view_team=True, resourcing_manage_cost_rates=True,
+                resourcing_approve_leave=True, resourcing_manage_holidays=True,
+                billing_view_invoices=True, billing_send_invoices=True,
+                billing_record_payments=True, billing_view_aging=True,
             )
         elif self.role == Role.ADMIN:
             return SimpleNamespace(
@@ -118,6 +126,15 @@ class Membership(BaseModel):
                 # KB
                 kb_view_articles=True, kb_edit_articles=True, kb_move_articles=True,
                 kb_manage_categories=True, kb_publish_articles=True,
+                # Reports + financials (v3.17.145) — Admin: all True except
+                # reports_manage_scheduled (admins typically delegate that).
+                reports_view_dashboards=True, reports_view_financial=True,
+                reports_view_sla=True, reports_view_capacity=True,
+                reports_manage_dashboards=True, reports_manage_scheduled=False,
+                resourcing_view_team=True, resourcing_manage_cost_rates=True,
+                resourcing_approve_leave=True, resourcing_manage_holidays=True,
+                billing_view_invoices=True, billing_send_invoices=True,
+                billing_record_payments=True, billing_view_aging=True,
             )
         elif self.role == Role.EDITOR:
             return SimpleNamespace(
@@ -136,6 +153,15 @@ class Membership(BaseModel):
                 # KB — Editor can view/edit/move/publish, but NOT manage_categories
                 kb_view_articles=True, kb_edit_articles=True, kb_move_articles=True,
                 kb_manage_categories=False, kb_publish_articles=True,
+                # Reports + financials (v3.17.145) — Editor (techs):
+                # dashboards-only, no financial/sla/capacity/billing.
+                reports_view_dashboards=True, reports_view_financial=False,
+                reports_view_sla=False, reports_view_capacity=False,
+                reports_manage_dashboards=False, reports_manage_scheduled=False,
+                resourcing_view_team=False, resourcing_manage_cost_rates=False,
+                resourcing_approve_leave=False, resourcing_manage_holidays=False,
+                billing_view_invoices=False, billing_send_invoices=False,
+                billing_record_payments=False, billing_view_aging=False,
             )
         else:  # READONLY
             return SimpleNamespace(
@@ -154,6 +180,15 @@ class Membership(BaseModel):
                 # KB — read-only sees articles but cannot mutate
                 kb_view_articles=True, kb_edit_articles=False, kb_move_articles=False,
                 kb_manage_categories=False, kb_publish_articles=False,
+                # Reports + financials (v3.17.145) — Read-Only:
+                # dashboards only, nothing else.
+                reports_view_dashboards=True, reports_view_financial=False,
+                reports_view_sla=False, reports_view_capacity=False,
+                reports_manage_dashboards=False, reports_manage_scheduled=False,
+                resourcing_view_team=False, resourcing_manage_cost_rates=False,
+                resourcing_approve_leave=False, resourcing_manage_holidays=False,
+                billing_view_invoices=False, billing_send_invoices=False,
+                billing_record_payments=False, billing_view_aging=False,
             )
 
     def can_read(self):
@@ -595,6 +630,39 @@ class RoleTemplate(BaseModel):
     kb_publish_articles = models.BooleanField(default=False,
         help_text='Publish/unpublish KB articles (toggle is_published)')
 
+    # --- Reports + financials (Phase 3 reports + dashboards) — v3.17.145 ---
+    reports_view_dashboards = models.BooleanField(default=True)
+    reports_view_financial = models.BooleanField(
+        default=False,
+        help_text='Profitability, effective hourly rate, revenue leakage, '
+                  'margin analytics — surfaces revenue + cost numbers.',
+    )
+    reports_view_sla = models.BooleanField(default=False,
+        help_text='SLA trend report. Defaults off because techs don\'t need it.')
+    reports_view_capacity = models.BooleanField(default=False,
+        help_text='Capacity / utilization report — exposes target hours + '
+                  'realization % per tech across the team.')
+    reports_manage_dashboards = models.BooleanField(default=False,
+        help_text='Create / edit / delete dashboards + widgets.')
+    reports_manage_scheduled = models.BooleanField(default=False,
+        help_text='Configure scheduled reports.')
+
+    # --- Resource management — v3.17.145 ---
+    resourcing_view_team = models.BooleanField(default=False,
+        help_text='See the staff tech roster + cost rates list.')
+    resourcing_manage_cost_rates = models.BooleanField(default=False,
+        help_text='Edit per-tech loaded $/hr rates. Drives all profitability math.')
+    resourcing_approve_leave = models.BooleanField(default=False,
+        help_text='Approve / deny LeaveRequest.')
+    resourcing_manage_holidays = models.BooleanField(default=False)
+
+    # --- Billing / financial — v3.17.145 ---
+    billing_view_invoices = models.BooleanField(default=False)
+    billing_send_invoices = models.BooleanField(default=False)
+    billing_record_payments = models.BooleanField(default=False)
+    billing_view_aging = models.BooleanField(default=False,
+        help_text='See the cross-client aging report.')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -664,6 +732,21 @@ class RoleTemplate(BaseModel):
                 'kb_move_articles': True,
                 'kb_manage_categories': True,
                 'kb_publish_articles': True,
+                # Reports + financials (v3.17.145) — Owner: all True
+                'reports_view_dashboards': True,
+                'reports_view_financial': True,
+                'reports_view_sla': True,
+                'reports_view_capacity': True,
+                'reports_manage_dashboards': True,
+                'reports_manage_scheduled': True,
+                'resourcing_view_team': True,
+                'resourcing_manage_cost_rates': True,
+                'resourcing_approve_leave': True,
+                'resourcing_manage_holidays': True,
+                'billing_view_invoices': True,
+                'billing_send_invoices': True,
+                'billing_record_payments': True,
+                'billing_view_aging': True,
             },
             {
                 'name': 'Administrator',
@@ -720,6 +803,22 @@ class RoleTemplate(BaseModel):
                 'kb_move_articles': True,
                 'kb_manage_categories': True,
                 'kb_publish_articles': True,
+                # Reports + financials (v3.17.145) — Administrator: all True
+                # except reports_manage_scheduled (admins delegate that).
+                'reports_view_dashboards': True,
+                'reports_view_financial': True,
+                'reports_view_sla': True,
+                'reports_view_capacity': True,
+                'reports_manage_dashboards': True,
+                'reports_manage_scheduled': False,
+                'resourcing_view_team': True,
+                'resourcing_manage_cost_rates': True,
+                'resourcing_approve_leave': True,
+                'resourcing_manage_holidays': True,
+                'billing_view_invoices': True,
+                'billing_send_invoices': True,
+                'billing_record_payments': True,
+                'billing_view_aging': True,
             },
             {
                 'name': 'Editor',
@@ -776,6 +875,22 @@ class RoleTemplate(BaseModel):
                 'kb_move_articles': True,
                 'kb_manage_categories': False,
                 'kb_publish_articles': True,
+                # Reports + financials (v3.17.145) — Editor (techs):
+                # dashboards only, no financial/sla/capacity/billing.
+                'reports_view_dashboards': True,
+                'reports_view_financial': False,
+                'reports_view_sla': False,
+                'reports_view_capacity': False,
+                'reports_manage_dashboards': False,
+                'reports_manage_scheduled': False,
+                'resourcing_view_team': False,
+                'resourcing_manage_cost_rates': False,
+                'resourcing_approve_leave': False,
+                'resourcing_manage_holidays': False,
+                'billing_view_invoices': False,
+                'billing_send_invoices': False,
+                'billing_record_payments': False,
+                'billing_view_aging': False,
             },
             {
                 'name': 'Help Desk',
@@ -832,6 +947,22 @@ class RoleTemplate(BaseModel):
                 'kb_move_articles': False,
                 'kb_manage_categories': False,
                 'kb_publish_articles': False,
+                # Reports + financials (v3.17.145) — Help Desk:
+                # dashboards only.
+                'reports_view_dashboards': True,
+                'reports_view_financial': False,
+                'reports_view_sla': False,
+                'reports_view_capacity': False,
+                'reports_manage_dashboards': False,
+                'reports_manage_scheduled': False,
+                'resourcing_view_team': False,
+                'resourcing_manage_cost_rates': False,
+                'resourcing_approve_leave': False,
+                'resourcing_manage_holidays': False,
+                'billing_view_invoices': False,
+                'billing_send_invoices': False,
+                'billing_record_payments': False,
+                'billing_view_aging': False,
             },
             {
                 'name': 'IT Manager',
@@ -888,6 +1019,23 @@ class RoleTemplate(BaseModel):
                 'kb_move_articles': True,
                 'kb_manage_categories': True,
                 'kb_publish_articles': True,
+                # Reports + financials (v3.17.145) — IT Manager:
+                # dashboards + financial + sla + capacity, but NOT
+                # manage_cost_rates (owner-only).
+                'reports_view_dashboards': True,
+                'reports_view_financial': True,
+                'reports_view_sla': True,
+                'reports_view_capacity': True,
+                'reports_manage_dashboards': True,
+                'reports_manage_scheduled': False,
+                'resourcing_view_team': True,
+                'resourcing_manage_cost_rates': False,
+                'resourcing_approve_leave': True,
+                'resourcing_manage_holidays': True,
+                'billing_view_invoices': True,
+                'billing_send_invoices': False,
+                'billing_record_payments': False,
+                'billing_view_aging': True,
             },
             {
                 'name': 'Documentation Writer',
@@ -944,6 +1092,22 @@ class RoleTemplate(BaseModel):
                 'kb_move_articles': True,
                 'kb_manage_categories': True,
                 'kb_publish_articles': True,
+                # Reports + financials (v3.17.145) — Documentation Writer:
+                # dashboards only.
+                'reports_view_dashboards': True,
+                'reports_view_financial': False,
+                'reports_view_sla': False,
+                'reports_view_capacity': False,
+                'reports_manage_dashboards': False,
+                'reports_manage_scheduled': False,
+                'resourcing_view_team': False,
+                'resourcing_manage_cost_rates': False,
+                'resourcing_approve_leave': False,
+                'resourcing_manage_holidays': False,
+                'billing_view_invoices': False,
+                'billing_send_invoices': False,
+                'billing_record_payments': False,
+                'billing_view_aging': False,
             },
             {
                 'name': 'Read-Only',
@@ -1000,6 +1164,22 @@ class RoleTemplate(BaseModel):
                 'kb_move_articles': False,
                 'kb_manage_categories': False,
                 'kb_publish_articles': False,
+                # Reports + financials (v3.17.145) — Read-Only:
+                # dashboards only, no mutations.
+                'reports_view_dashboards': True,
+                'reports_view_financial': False,
+                'reports_view_sla': False,
+                'reports_view_capacity': False,
+                'reports_manage_dashboards': False,
+                'reports_manage_scheduled': False,
+                'resourcing_view_team': False,
+                'resourcing_manage_cost_rates': False,
+                'resourcing_approve_leave': False,
+                'resourcing_manage_holidays': False,
+                'billing_view_invoices': False,
+                'billing_send_invoices': False,
+                'billing_record_payments': False,
+                'billing_view_aging': False,
             },
         ]
 

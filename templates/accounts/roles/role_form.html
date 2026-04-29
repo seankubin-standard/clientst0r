@@ -341,6 +341,118 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Reports & Dashboards Permissions (v3.17.145) -->
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0"><i class="fas fa-chart-bar"></i> Reports &amp; Dashboards</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="reports_view_dashboards" id="reports_view_dashboards"
+                                       {% if role %}{% if role.reports_view_dashboards %}checked{% endif %}{% elif copy_from %}{% if copy_from.reports_view_dashboards %}checked{% endif %}{% else %}checked{% endif %}>
+                                <label class="form-check-label" for="reports_view_dashboards">View dashboards &amp; basic reports</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="reports_view_financial" id="reports_view_financial"
+                                       {% if role %}{% if role.reports_view_financial %}checked{% endif %}{% elif copy_from %}{% if copy_from.reports_view_financial %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="reports_view_financial">View financial reports</label>
+                                <div class="form-text small">Profitability, effective hourly rate, revenue leakage, margin analytics &mdash; surfaces revenue + cost numbers.</div>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="reports_view_sla" id="reports_view_sla"
+                                       {% if role %}{% if role.reports_view_sla %}checked{% endif %}{% elif copy_from %}{% if copy_from.reports_view_sla %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="reports_view_sla">View SLA trend report</label>
+                                <div class="form-text small">Defaults off because techs don't need it.</div>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="reports_view_capacity" id="reports_view_capacity"
+                                       {% if role %}{% if role.reports_view_capacity %}checked{% endif %}{% elif copy_from %}{% if copy_from.reports_view_capacity %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="reports_view_capacity">View capacity / utilization report</label>
+                                <div class="form-text small">Exposes target hours + realization % per tech across the team.</div>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="reports_manage_dashboards" id="reports_manage_dashboards"
+                                       {% if role %}{% if role.reports_manage_dashboards %}checked{% endif %}{% elif copy_from %}{% if copy_from.reports_manage_dashboards %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="reports_manage_dashboards">Manage dashboards &amp; widgets</label>
+                                <div class="form-text small">Create / edit / delete dashboards + widgets.</div>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="reports_manage_scheduled" id="reports_manage_scheduled"
+                                       {% if role %}{% if role.reports_manage_scheduled %}checked{% endif %}{% elif copy_from %}{% if copy_from.reports_manage_scheduled %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="reports_manage_scheduled">Manage scheduled reports</label>
+                                <div class="form-text small">Configure scheduled reports.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resource Management Permissions (v3.17.145) -->
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0"><i class="fas fa-user-clock"></i> Resource Management</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="resourcing_view_team" id="resourcing_view_team"
+                                       {% if role %}{% if role.resourcing_view_team %}checked{% endif %}{% elif copy_from %}{% if copy_from.resourcing_view_team %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="resourcing_view_team">View tech roster</label>
+                                <div class="form-text small">See the staff tech roster + cost rates list.</div>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="resourcing_manage_cost_rates" id="resourcing_manage_cost_rates"
+                                       {% if role %}{% if role.resourcing_manage_cost_rates %}checked{% endif %}{% elif copy_from %}{% if copy_from.resourcing_manage_cost_rates %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="resourcing_manage_cost_rates">Manage tech cost rates</label>
+                                <div class="form-text small">Edit per-tech loaded $/hr rates. Drives all profitability math.</div>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="resourcing_approve_leave" id="resourcing_approve_leave"
+                                       {% if role %}{% if role.resourcing_approve_leave %}checked{% endif %}{% elif copy_from %}{% if copy_from.resourcing_approve_leave %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="resourcing_approve_leave">Approve leave requests</label>
+                                <div class="form-text small">Approve / deny LeaveRequest.</div>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="resourcing_manage_holidays" id="resourcing_manage_holidays"
+                                       {% if role %}{% if role.resourcing_manage_holidays %}checked{% endif %}{% elif copy_from %}{% if copy_from.resourcing_manage_holidays %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="resourcing_manage_holidays">Manage holidays</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Billing & Financial Permissions (v3.17.145) -->
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0"><i class="fas fa-file-invoice-dollar"></i> Billing &amp; Financial</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="billing_view_invoices" id="billing_view_invoices"
+                                       {% if role %}{% if role.billing_view_invoices %}checked{% endif %}{% elif copy_from %}{% if copy_from.billing_view_invoices %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="billing_view_invoices">View invoices</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="billing_send_invoices" id="billing_send_invoices"
+                                       {% if role %}{% if role.billing_send_invoices %}checked{% endif %}{% elif copy_from %}{% if copy_from.billing_send_invoices %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="billing_send_invoices">Send invoices</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="billing_record_payments" id="billing_record_payments"
+                                       {% if role %}{% if role.billing_record_payments %}checked{% endif %}{% elif copy_from %}{% if copy_from.billing_record_payments %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="billing_record_payments">Record payments</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="billing_view_aging" id="billing_view_aging"
+                                       {% if role %}{% if role.billing_view_aging %}checked{% endif %}{% elif copy_from %}{% if copy_from.billing_view_aging %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="billing_view_aging">View aging report</label>
+                                <div class="form-text small">See the cross-client aging report.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <hr class="my-4">

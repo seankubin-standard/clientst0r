@@ -129,6 +129,38 @@
                                         </ul>
                                     </div>
                                 </div>
+                                <!-- v3.17.145 — Reports / Resourcing / Billing perm groups -->
+                                <div class="row mt-3">
+                                    <div class="col-md-4">
+                                        <h6><i class="fas fa-chart-bar"></i> Reports &amp; Dashboards</h6>
+                                        <ul class="list-unstyled small">
+                                            <li>{% if role.reports_view_dashboards %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Dashboards</li>
+                                            <li>{% if role.reports_view_financial %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Financial</li>
+                                            <li>{% if role.reports_view_sla %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View SLA</li>
+                                            <li>{% if role.reports_view_capacity %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Capacity</li>
+                                            <li>{% if role.reports_manage_dashboards %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Manage Dashboards</li>
+                                            <li>{% if role.reports_manage_scheduled %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Manage Scheduled</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h6><i class="fas fa-user-clock"></i> Resource Management</h6>
+                                        <ul class="list-unstyled small">
+                                            <li>{% if role.resourcing_view_team %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Team Roster</li>
+                                            <li>{% if role.resourcing_manage_cost_rates %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Manage Cost Rates</li>
+                                            <li>{% if role.resourcing_approve_leave %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Approve Leave</li>
+                                            <li>{% if role.resourcing_manage_holidays %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Manage Holidays</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h6><i class="fas fa-file-invoice-dollar"></i> Billing &amp; Financial</h6>
+                                        <ul class="list-unstyled small">
+                                            <li>{% if role.billing_view_invoices %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Invoices</li>
+                                            <li>{% if role.billing_send_invoices %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Send Invoices</li>
+                                            <li>{% if role.billing_record_payments %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Record Payments</li>
+                                            <li>{% if role.billing_view_aging %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Aging Report</li>
+                                        </ul>
+                                    </div>
+                                </div>
                             </div>
                         </td>
                     </tr>
@@ -248,6 +280,38 @@
                                             <li>{% if role.kb_move_articles %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Move Articles</li>
                                             <li>{% if role.kb_manage_categories %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Manage Categories</li>
                                             <li>{% if role.kb_publish_articles %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Publish Articles</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <!-- v3.17.145 — Reports / Resourcing / Billing perm groups -->
+                                <div class="row mt-3">
+                                    <div class="col-md-4">
+                                        <h6><i class="fas fa-chart-bar"></i> Reports &amp; Dashboards</h6>
+                                        <ul class="list-unstyled small">
+                                            <li>{% if role.reports_view_dashboards %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Dashboards</li>
+                                            <li>{% if role.reports_view_financial %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Financial</li>
+                                            <li>{% if role.reports_view_sla %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View SLA</li>
+                                            <li>{% if role.reports_view_capacity %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Capacity</li>
+                                            <li>{% if role.reports_manage_dashboards %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Manage Dashboards</li>
+                                            <li>{% if role.reports_manage_scheduled %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Manage Scheduled</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h6><i class="fas fa-user-clock"></i> Resource Management</h6>
+                                        <ul class="list-unstyled small">
+                                            <li>{% if role.resourcing_view_team %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Team Roster</li>
+                                            <li>{% if role.resourcing_manage_cost_rates %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Manage Cost Rates</li>
+                                            <li>{% if role.resourcing_approve_leave %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Approve Leave</li>
+                                            <li>{% if role.resourcing_manage_holidays %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Manage Holidays</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h6><i class="fas fa-file-invoice-dollar"></i> Billing &amp; Financial</h6>
+                                        <ul class="list-unstyled small">
+                                            <li>{% if role.billing_view_invoices %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Invoices</li>
+                                            <li>{% if role.billing_send_invoices %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Send Invoices</li>
+                                            <li>{% if role.billing_record_payments %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} Record Payments</li>
+                                            <li>{% if role.billing_view_aging %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-times text-danger"></i>{% endif %} View Aging Report</li>
                                         </ul>
                                     </div>
                                 </div>

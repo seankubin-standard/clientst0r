@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.145] - 2026-04-29
+
+### Added — Reports + sensitive-feature permission groups (RoleTemplate)
+- 14 new RoleTemplate booleans across three groups:
+  - **Reports & dashboards**: `reports_view_dashboards`, `reports_view_financial`, `reports_view_sla`, `reports_view_capacity`, `reports_manage_dashboards`, `reports_manage_scheduled`
+  - **Resource management**: `resourcing_view_team`, `resourcing_manage_cost_rates`, `resourcing_approve_leave`, `resourcing_manage_holidays`
+  - **Billing & financial**: `billing_view_invoices`, `billing_send_invoices`, `billing_record_payments`, `billing_view_aging`
+- New `accounts.permission_utils.user_has_perm(user, perm_name)` helper + `@require_perm('...')` decorator. Mirrors the v3.17.134 KB pattern.
+- Every report view now gated on a specific permission instead of the coarse `is_staff` flag. Defaults are tech-conservative: **Editor / Read-Only roles get dashboards only; financial / SLA / capacity reports default OFF**. Owners get everything; Admins get everything except `reports_manage_scheduled`.
+- Role-template form (`/accounts/roles/<id>/edit/`) exposes all 14 new booleans across three new cards.
+- Reports Home (`/reports/`) hides cards the user can't access — no more "click → 403".
+- 12 new tests under `accounts.tests.ReportsPermissionTests` cover the gates (financial / capacity / roster / SLA + the helper itself).
+
+### Backwards-compatibility note
+- Existing staff users (`is_staff=True`) WITHOUT a `role_template` will fall back to the **Editor** profile — which means they LOSE direct access to financial / SLA / capacity reports. To restore access, assign them an Admin or Owner role-template, or a custom template with the relevant booleans set. Superusers (`is_superuser=True`) are unchanged — full access.
+
+### Migration
+`accounts.0020_roletemplate_billing_record_payments_and_more` — adds 14 new boolean fields.
+
 ## [3.17.144] - 2026-04-29
 
 ### Docs

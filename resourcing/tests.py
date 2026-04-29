@@ -117,10 +117,17 @@ class IsWorkingNowTests(TestCase):
 
 @override_settings(REQUIRE_2FA=False)
 class TechRosterAccessTests(TestCase):
+    """v3.17.145: tech_roster is gated on `resourcing_view_team`. Plain
+    is_staff users no longer pass automatically (Editor fallback doesn't
+    grant the new boolean) — only superusers or a role_template granting
+    `resourcing_view_team`."""
     def setUp(self):
         self.client = Client()
         self.regular = User.objects.create_user(username='regular', password='pw-test-12345')
-        self.staff = User.objects.create_user(username='ops-tech', password='pw-test-12345', is_staff=True)
+        # v3.17.145: switched from is_staff to is_superuser so the test
+        # passes the new RoleTemplate gate.
+        self.staff = User.objects.create_user(username='ops-tech', password='pw-test-12345',
+                                              is_staff=True, is_superuser=True)
 
     def test_regular_user_blocked(self):
         """A non-staff user should NOT see the roster — either redirected away
@@ -133,7 +140,7 @@ class TechRosterAccessTests(TestCase):
         self.assertIn(resp.status_code, (301, 302, 303, 403))
 
     def test_staff_user_allowed(self):
-        """A staff user can reach the roster (status 200, or — if 2FA-redirect
+        """A superuser can reach the roster (status 200, or — if 2FA-redirect
         middleware bounces them — at least *not* a 403)."""
         self.client.force_login(self.staff)
         resp = self.client.get(reverse('resourcing:tech_roster'), follow=False)

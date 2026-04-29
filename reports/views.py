@@ -10,6 +10,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
+from accounts.permission_utils import user_has_perm, require_perm
 from .models import (
     Dashboard, DashboardWidget, ReportTemplate, GeneratedReport,
     ScheduledReport, AnalyticsEvent
@@ -37,9 +38,19 @@ def get_user_primary_organization(user):
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def reports_home(request):
     """Reports and Analytics home page"""
     orgs = get_user_organizations(request.user)
+
+    perm = {
+        'view_dashboards': True,  # we got past require_perm above
+        'view_financial': user_has_perm(request.user, 'reports_view_financial'),
+        'view_sla': user_has_perm(request.user, 'reports_view_sla'),
+        'view_capacity': user_has_perm(request.user, 'reports_view_capacity'),
+        'manage_dashboards': user_has_perm(request.user, 'reports_manage_dashboards'),
+        'manage_scheduled': user_has_perm(request.user, 'reports_manage_scheduled'),
+    }
 
     context = {
         'recent_reports': GeneratedReport.objects.filter(
@@ -55,12 +66,14 @@ def reports_home(request):
         'templates_count': ReportTemplate.objects.filter(
             Q(organization__in=orgs) | Q(is_global=True)
         ).count(),
+        'perm': perm,
     }
 
     return render(request, 'reports/home.html', context)
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def dashboard_list(request):
     """List all available dashboards"""
     orgs = get_user_organizations(request.user)
@@ -77,6 +90,7 @@ def dashboard_list(request):
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def dashboard_detail(request, pk):
     """View a specific dashboard.
 
@@ -130,6 +144,7 @@ def dashboard_detail(request, pk):
 
 
 @login_required
+@require_perm('reports_manage_dashboards')
 def dashboard_create(request):
     """Create a new dashboard"""
     org = get_user_primary_organization(request.user)
@@ -157,6 +172,7 @@ def dashboard_create(request):
 
 
 @login_required
+@require_perm('reports_manage_dashboards')
 def dashboard_edit(request, pk):
     """Edit an existing dashboard"""
     orgs = get_user_organizations(request.user)
@@ -184,6 +200,7 @@ def dashboard_edit(request, pk):
 
 
 @login_required
+@require_perm('reports_manage_dashboards')
 def dashboard_delete(request, pk):
     """Delete a dashboard"""
     orgs = get_user_organizations(request.user)
@@ -208,6 +225,7 @@ def dashboard_delete(request, pk):
 # ---------------------------------------------------------------------------
 
 @login_required
+@require_perm('reports_manage_dashboards')
 def dashboard_widget_add(request, dashboard_pk):
     """Add a widget to a dashboard. Owner or staff only."""
     dashboard = get_object_or_404(Dashboard, pk=dashboard_pk)
@@ -236,6 +254,7 @@ def dashboard_widget_add(request, dashboard_pk):
 
 
 @login_required
+@require_perm('reports_manage_dashboards')
 def dashboard_widget_edit(request, pk):
     """Edit an existing widget. Owner or staff only."""
     widget = get_object_or_404(DashboardWidget, pk=pk)
@@ -263,6 +282,7 @@ def dashboard_widget_edit(request, pk):
 
 
 @login_required
+@require_perm('reports_manage_dashboards')
 def dashboard_widget_delete(request, pk):
     """Delete a widget. Owner or staff only."""
     widget = get_object_or_404(DashboardWidget, pk=pk)
@@ -279,6 +299,7 @@ def dashboard_widget_delete(request, pk):
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def template_list(request):
     """List all report templates"""
     orgs = get_user_organizations(request.user)
@@ -304,6 +325,7 @@ def template_list(request):
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def template_detail(request, pk):
     """View a report template"""
     orgs = get_user_organizations(request.user)
@@ -328,6 +350,7 @@ def template_detail(request, pk):
 
 
 @login_required
+@require_perm('reports_manage_dashboards')
 def template_create(request):
     """Create a new report template"""
     org = get_user_primary_organization(request.user)
@@ -364,6 +387,7 @@ def template_create(request):
 
 
 @login_required
+@require_perm('reports_manage_dashboards')
 def template_edit(request, pk):
     """Edit a report template"""
     orgs = get_user_organizations(request.user)
@@ -394,6 +418,7 @@ def template_edit(request, pk):
 
 
 @login_required
+@require_perm('reports_manage_dashboards')
 def template_delete(request, pk):
     """Delete a report template"""
     orgs = get_user_organizations(request.user)
@@ -480,6 +505,7 @@ def generate_report(request, pk):
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def generated_list(request):
     """List all generated reports"""
     orgs = get_user_organizations(request.user)
@@ -496,6 +522,7 @@ def generated_list(request):
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def generated_detail(request, pk):
     """View a generated report"""
     orgs = get_user_organizations(request.user)
@@ -513,6 +540,7 @@ def generated_detail(request, pk):
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def generated_download(request, pk):
     """Download a generated report"""
     orgs = get_user_organizations(request.user)
@@ -530,6 +558,7 @@ def generated_download(request, pk):
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def generated_delete(request, pk):
     """Delete a generated report"""
     orgs = get_user_organizations(request.user)
@@ -549,6 +578,7 @@ def generated_delete(request, pk):
 
 
 @login_required
+@require_perm('reports_manage_scheduled')
 def scheduled_list(request):
     """List all scheduled reports"""
     orgs = get_user_organizations(request.user)
@@ -565,6 +595,7 @@ def scheduled_list(request):
 
 
 @login_required
+@require_perm('reports_manage_scheduled')
 def scheduled_create(request):
     """Create a new scheduled report"""
     org = get_user_primary_organization(request.user)
@@ -624,6 +655,7 @@ def scheduled_create(request):
 
 
 @login_required
+@require_perm('reports_manage_scheduled')
 def scheduled_edit(request, pk):
     """Edit a scheduled report"""
     orgs = get_user_organizations(request.user)
@@ -663,6 +695,7 @@ def scheduled_edit(request, pk):
 
 
 @login_required
+@require_perm('reports_manage_scheduled')
 def scheduled_delete(request, pk):
     """Delete a scheduled report"""
     orgs = get_user_organizations(request.user)
@@ -683,6 +716,7 @@ def scheduled_delete(request, pk):
 
 
 @login_required
+@require_perm('reports_manage_scheduled')
 def scheduled_toggle(request, pk):
     """Toggle a scheduled report active/inactive"""
     orgs = get_user_organizations(request.user)
@@ -702,6 +736,7 @@ def scheduled_toggle(request, pk):
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def analytics_overview(request):
     """Analytics overview dashboard"""
     orgs = get_user_organizations(request.user)
@@ -733,6 +768,7 @@ def analytics_overview(request):
 
 
 @login_required
+@require_perm('reports_view_dashboards')
 def analytics_events(request):
     """Detailed analytics events list"""
     orgs = get_user_organizations(request.user)
@@ -877,7 +913,7 @@ def _parse_date(s, fallback):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('reports_view_financial')
 def psa_profitability_by_client(request):
     """
     Per-client profitability report — revenue, cost, margin over a
@@ -991,7 +1027,7 @@ def _csv_response(filename, header, rows, totals_row=None):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('reports_view_financial')
 def psa_profitability_by_tech(request):
     """Per-tech profitability — hours / cost / attributed revenue / margin /
     utilization %. CSV export via ?format=csv."""
@@ -1041,7 +1077,7 @@ def psa_profitability_by_tech(request):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('reports_view_financial')
 def psa_profitability_by_contract(request):
     """Per-contract profitability."""
     from .queries import profitability_by_contract
@@ -1086,7 +1122,7 @@ def psa_profitability_by_contract(request):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('reports_view_financial')
 def psa_profitability_by_project(request):
     """Per-project profitability."""
     from .queries import profitability_by_project
@@ -1146,7 +1182,7 @@ def _median(vals):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('reports_view_financial')
 def psa_effective_hourly_rate(request):
     """
     Effective hourly rate report — `revenue ÷ billable_hours` per client
@@ -1227,7 +1263,7 @@ def psa_effective_hourly_rate(request):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('reports_view_financial')
 def psa_revenue_leakage(request):
     """
     Revenue leakage report — three categories of "money you should have
@@ -1299,7 +1335,7 @@ def psa_revenue_leakage(request):
 # ---------------------------------------------------------------------------
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('reports_view_sla')
 def psa_sla_trends(request):
     """
     SLA breach trend report — per-priority response + resolution breach %
@@ -1399,7 +1435,7 @@ def psa_sla_trends(request):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('reports_view_financial')
 def psa_margin_analytics(request):
     """
     Margin grouped by service-line dimension — ticket_type / closure_category

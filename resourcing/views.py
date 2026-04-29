@@ -22,6 +22,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
+from accounts.permission_utils import require_perm, user_has_perm
 from .forms import (
     BillableTargetForm, HolidayForm, LeaveRequestForm, TechCostRateForm,
     UserCertificationForm, UserSkillForm, WorkingHoursForm,
@@ -268,7 +269,7 @@ def hours_delete(request, pk):
 # ---------------------------------------------------------------------------
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('resourcing_view_team')
 def tech_roster(request):
     """
     List every active staff/internal user with skill counts, cert counts
@@ -330,7 +331,7 @@ def tech_roster(request):
 # ---------------------------------------------------------------------------
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('resourcing_manage_holidays')
 def holiday_list(request):
     holidays = Holiday.objects.select_related('organization').all()
     return render(request, 'resourcing/holiday_list.html', {
@@ -340,7 +341,7 @@ def holiday_list(request):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('resourcing_manage_holidays')
 def holiday_add(request):
     if request.method == 'POST':
         form = HolidayForm(request.POST)
@@ -356,7 +357,7 @@ def holiday_add(request):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('resourcing_manage_holidays')
 def holiday_edit(request, pk):
     instance = get_object_or_404(Holiday, pk=pk)
     if request.method == 'POST':
@@ -373,7 +374,7 @@ def holiday_edit(request, pk):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('resourcing_manage_holidays')
 def holiday_delete(request, pk):
     instance = get_object_or_404(Holiday, pk=pk)
     if request.method == 'POST':
@@ -465,7 +466,7 @@ def leave_request_cancel(request, pk):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('resourcing_approve_leave')
 def leave_approvals(request):
     """Staff queue of pending leave requests across all users.
 
@@ -511,7 +512,7 @@ def leave_approvals(request):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('resourcing_approve_leave')
 def leave_decide(request, pk):
     """POST endpoint: ?action=approve|deny + optional note. Audit-logged."""
     if request.method != 'POST':
@@ -573,7 +574,11 @@ def my_billable_target(request):
 @login_required
 def billable_target_edit(request, user_id):
     target = get_object_or_404(User, pk=user_id)
-    if request.user.id != target.id and not (request.user.is_staff or request.user.is_superuser):
+    # Own-data: always allowed. Other-user: require resourcing_manage_cost_rates
+    # (v3.17.145 — replaces the coarse is_staff check).
+    if request.user.id != target.id and not user_has_perm(
+        request.user, 'resourcing_manage_cost_rates'
+    ):
         raise PermissionDenied
     bt, _ = BillableTarget.objects.get_or_create(user=target)
     if request.method == 'POST':
@@ -602,7 +607,7 @@ def billable_target_edit(request, user_id):
 # ---------------------------------------------------------------------------
 
 @login_required
-@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+@require_perm('reports_view_capacity')
 def capacity_report(request):
     """
     Capacity / utilization report for techs. Default window = current ISO
@@ -714,7 +719,7 @@ def capacity_report(request):
 # ---------------------------------------------------------------------------
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('resourcing_manage_cost_rates')
 def tech_cost_rate_list(request):
     """List every internal/staff user with their current loaded cost rate."""
     today = timezone.now().date()
@@ -744,7 +749,7 @@ def tech_cost_rate_list(request):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('resourcing_manage_cost_rates')
 def tech_cost_rate_edit(request, user_id):
     """Show a user's full rate history + a form to add a new effective row."""
     target = get_object_or_404(User, pk=user_id)
@@ -784,7 +789,7 @@ def tech_cost_rate_edit(request, user_id):
 
 
 @login_required
-@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+@require_perm('resourcing_manage_cost_rates')
 def tech_cost_rate_delete(request, pk):
     """Delete a single cost-rate history row."""
     instance = get_object_or_404(TechCostRate, pk=pk)

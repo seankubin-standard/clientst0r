@@ -117,6 +117,26 @@ def role_create(request):
         role.kb_manage_categories = request.POST.get('kb_manage_categories') == 'on'
         role.kb_publish_articles = request.POST.get('kb_publish_articles') == 'on'
 
+        # Reports & dashboards permissions (v3.17.145)
+        role.reports_view_dashboards = request.POST.get('reports_view_dashboards') == 'on'
+        role.reports_view_financial = request.POST.get('reports_view_financial') == 'on'
+        role.reports_view_sla = request.POST.get('reports_view_sla') == 'on'
+        role.reports_view_capacity = request.POST.get('reports_view_capacity') == 'on'
+        role.reports_manage_dashboards = request.POST.get('reports_manage_dashboards') == 'on'
+        role.reports_manage_scheduled = request.POST.get('reports_manage_scheduled') == 'on'
+
+        # Resource management permissions (v3.17.145)
+        role.resourcing_view_team = request.POST.get('resourcing_view_team') == 'on'
+        role.resourcing_manage_cost_rates = request.POST.get('resourcing_manage_cost_rates') == 'on'
+        role.resourcing_approve_leave = request.POST.get('resourcing_approve_leave') == 'on'
+        role.resourcing_manage_holidays = request.POST.get('resourcing_manage_holidays') == 'on'
+
+        # Billing & financial permissions (v3.17.145)
+        role.billing_view_invoices = request.POST.get('billing_view_invoices') == 'on'
+        role.billing_send_invoices = request.POST.get('billing_send_invoices') == 'on'
+        role.billing_record_payments = request.POST.get('billing_record_payments') == 'on'
+        role.billing_view_aging = request.POST.get('billing_view_aging') == 'on'
+
         role.save()
 
         messages.success(request, f'Role "{role.name}" created successfully.')
@@ -202,6 +222,26 @@ def role_edit(request, pk):
         role.kb_move_articles = request.POST.get('kb_move_articles') == 'on'
         role.kb_manage_categories = request.POST.get('kb_manage_categories') == 'on'
         role.kb_publish_articles = request.POST.get('kb_publish_articles') == 'on'
+
+        # Reports & dashboards permissions (v3.17.145)
+        role.reports_view_dashboards = request.POST.get('reports_view_dashboards') == 'on'
+        role.reports_view_financial = request.POST.get('reports_view_financial') == 'on'
+        role.reports_view_sla = request.POST.get('reports_view_sla') == 'on'
+        role.reports_view_capacity = request.POST.get('reports_view_capacity') == 'on'
+        role.reports_manage_dashboards = request.POST.get('reports_manage_dashboards') == 'on'
+        role.reports_manage_scheduled = request.POST.get('reports_manage_scheduled') == 'on'
+
+        # Resource management permissions (v3.17.145)
+        role.resourcing_view_team = request.POST.get('resourcing_view_team') == 'on'
+        role.resourcing_manage_cost_rates = request.POST.get('resourcing_manage_cost_rates') == 'on'
+        role.resourcing_approve_leave = request.POST.get('resourcing_approve_leave') == 'on'
+        role.resourcing_manage_holidays = request.POST.get('resourcing_manage_holidays') == 'on'
+
+        # Billing & financial permissions (v3.17.145)
+        role.billing_view_invoices = request.POST.get('billing_view_invoices') == 'on'
+        role.billing_send_invoices = request.POST.get('billing_send_invoices') == 'on'
+        role.billing_record_payments = request.POST.get('billing_record_payments') == 'on'
+        role.billing_view_aging = request.POST.get('billing_view_aging') == 'on'
 
         role.save()
 
