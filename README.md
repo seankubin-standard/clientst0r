@@ -1,7 +1,7 @@
 # Client St0r
 
 [![GitHub Stars](https://img.shields.io/github/stars/agit8or1/clientst0r?style=social)](https://github.com/agit8or1/clientst0r/stargazers)
-[![Version 3.17.28](https://img.shields.io/badge/version-3.17.28-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
+[![Version 3.17.112](https://img.shields.io/badge/version-3.17.112-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green)](https://github.com/agit8or1/clientst0r)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-blue)](https://www.djangoproject.com/)
@@ -313,9 +313,16 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 
 ### Latest Release - v3.17.x (April 2026)
 
-**🎉 New in v3.17:**
+**🎉 New in v3.17 (latest: v3.17.112):**
 
-- **🎫 Native PSA / Service Desk** - Full-featured ticketing system across **6 phases** (v3.17.83 → v3.17.93): tickets / queues / SLA engine / time tracking / service catalog with structured fields / watchers / canned replies / @mentions / similar-tickets / merge / projects with tasks & milestones / recurring tickets / KB linking / approvals / contracts (block-hours, retainer, managed-services with auto-tracked hours and per-priority SLA matrix) / quotes & estimates with line items and convert-to-ticket on accept / per-ticket expenses / customer portal at `/portal/` / IMAP email-to-ticket / distributor integrations (Ingram Micro, Pax8, TD Synnex) with HMAC-signed webhooks / AI-assisted reply & action suggestions with strict guardrails and granular role-based permissions
+- **🎫 Native PSA / Service Desk** - Full-featured ticketing system across **11 phases** (v3.17.83 → v3.17.112): tickets / queues / SLA engine / time tracking / service catalog with structured fields / watchers / canned replies / @mentions / similar-tickets / merge / projects with tasks & milestones / recurring tickets / KB linking / approvals / contracts (block-hours, retainer, managed-services with auto-tracked hours and per-priority SLA matrix) / quotes & estimates with line items and convert-to-ticket on accept + **e-signature** / per-ticket expenses / **invoices & payments with branded PDFs / per-client account view + aging report / charges (one-time + recurring credits)** / **dispatch board with drag-and-drop reassignment** / **workflow rules engine (MSP-wide or per-client) with visual rule builder** / customer portal at `/portal/` **with per-org branding + vault RBAC** / IMAP email-to-ticket / distributor integrations (Ingram Micro, Pax8, TD Synnex) with HMAC-signed webhooks / **QuickBooks Online + Xero accounting push** / AI-assisted reply & action suggestions with strict guardrails and granular role-based permissions
+
+**🆕 Latest PSA additions (v3.17.105 → v3.17.112):**
+- **Process workflows on tickets** *(v3.17.105)* — onboarding/offboarding runbooks attach directly to a native PSA ticket via `ProcessExecution.native_psa_ticket`
+- **Portal user invites + KB visibility** *(v3.17.106)* — invite contacts to the portal, gate KB articles with `Document.is_client_visible`
+- **Vault RBAC for portal users** *(v3.17.107)* — four access modes (`none` / `all_org` / `specific_users` / `org_admin_managed`); portal users only see vault entries explicitly opened to them
+- **MSP-wide workflow rules** *(v3.17.111)* — leave "Applies to" on "All clients" to fire a rule globally; per-client scoping still supported. Auto-installed cron for recurring tickets, email polling, and distributor health probes.
+- **Per-org portal branding + drag-and-drop dispatch + visual rule builder + 14 unit tests** *(v3.17.112)* — portal navbar shows the client's logo, dispatch board supports DnD reassignment with optimistic UI + audit logging, and the workflow rule form is a click-to-add visual builder (raw JSON kept under "Advanced")
 - **🧾 Vehicle Receipt Scanning with AI OCR** - Photograph receipts directly from your phone; Claude vision API automatically extracts vendor, date, amount, tax, expense category, and odometer reading; receipts tab on vehicle detail shows per-category cost summary cards (Fuel, Maintenance, Repair, Total); duplicate prevention via SHA-256 image hashing
 - **📱 Install App / Add to Home Screen** - Dedicated install page (`/core/install/`) with QR code of your server URL, downloadable QR PNG, one-tap PWA install button (Android/desktop), and step-by-step instructions for Android Chrome, iPhone/iPad Safari, and desktop; per-vehicle receipt shortcuts also available
 - **🔒 Automated Security Scan Alerts** - Opt-in daily scheduled security scan emails all superusers when vulnerabilities are found; toggle on/off from Security Dashboard
@@ -759,8 +766,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📊 Project Status
 
-- **Version**: 3.16.5
-- **Release Date**: March 2026
+- **Version**: 3.17.112
+- **Release Date**: April 2026
 - **Status**: Production Ready
 - **Maintained**: Yes
 - **Security**: Continuous monitoring, automated scanning, HaveIBeenPwned integrated

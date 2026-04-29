@@ -490,9 +490,26 @@ A complete in-house ticketing system, separate from the PSA *integrations* below
 
 ### Customer Portal
 - **Stripped client-facing site** at `/portal/` — clients log in and see only their org's tickets where `client_can_view=True`
+- **Per-org branding** *(v3.17.112)* — Portal navbar and login page show the client `Organization.logo` when one is set on the org row, falling back to the life-ring icon + org name. No new model fields required — uses the existing `Organization.logo` ImageField.
 - **Submit + reply** - Clients post replies as public comments and can submit new tickets
+- **Portal user invite flow** *(v3.17.106)* — Invite contacts to the client portal directly from the org page; Document.is_client_visible field controls which knowledge-base articles surface to portal users.
 - **Internal-only filtering** - Internal comments and staff-only attachments are filtered at the queryset layer
 - **Per-org opt-in** via `ClientPSASettings.portal_enabled`
+
+### Vault Visibility for Portal Users *(v3.17.107)*
+- **`Password.client_visible`** boolean gates whether a vault entry is exposed to the portal at all (default false)
+- **Four access modes** via `Password.client_access_mode`:
+  - `none` — never shown
+  - `all_org` — every active member of the password's org sees it
+  - `specific_users` — only users explicitly added to `Password.client_allowed_users`
+  - `org_admin_managed` — same logic as `specific_users`, but the client's own org admin manages the list
+- **Defence-in-depth** — `Password.visible_to_portal_user(user)` checks `Membership` even if a user is in the allowed-users list. Personal vault entries (`is_personal=True`) are never portal-visible regardless of mode.
+- **Test coverage** — 9 unit tests in `psa.tests.PortalVaultRBACTests` cover every mode, the personal-vault carve-out, and the unauthenticated case.
+
+### Process Workflows on PSA Tickets *(v3.17.105)*
+- **`ProcessExecution.native_psa_ticket`** FK lets a Process workflow attach to a native PSA ticket (in addition to the existing `psa_ticket` link for third-party PSAs)
+- **Reverse query** — `ticket.process_executions.all()` lists every workflow run against that ticket
+- Useful for onboarding/offboarding/change-management runbooks that need to live on the same record as the ticket they were spawned from
 
 ### Email-to-Ticket
 - **IMAP poller** - `psa_poll_email` management command (cron every 5 min)
@@ -502,13 +519,16 @@ A complete in-house ticketing system, separate from the PSA *integrations* below
 
 ### Workflow Rules Engine
 - **Trigger events** - `ticket_created`, `ticket_updated`, `status_changed`, `comment_added`
-- **Condition DSL** - JSON: `{"priority": "P1"}`, `{"subject_contains": "outage"}`, `{"is_unassigned": true}`, `{"all": [...]}`, `{"any": [...]}`, `__in` / `__not` operators
+- **MSP-wide vs client-scoped** *(v3.17.111)* — `WorkflowRule.organization` is nullable. NULL = applies to every ticket, regardless of client. Set to a specific org = scoped to that client only. Engine queries `Q(organization__isnull=True) | Q(organization=ticket.organization)` so both fire correctly.
+- **Visual rule builder** *(v3.17.112)* — Click-to-add condition + action rows in the rule form. Field dropdown (priority / queue / status / ticket_type / is_unassigned / is_paused / subject_contains) renders the matching value picker (priority codes, queue names, status slugs, etc.). Existing rules with combinators (`any`/`all`/`__in`/`__not`) auto-fall-back to a locked raw-JSON mode so complex rules stay editable.
+- **Condition DSL** - JSON: `{"priority": "P1"}`, `{"subject_contains": "outage"}`, `{"is_unassigned": true}`, `{"all": [...]}`, `{"any": [...]}`, `__in` / `__not` operators — still available under "Advanced raw JSON" for power users
 - **Actions** - `set_priority`, `set_queue`, `assign_to`, `add_watcher`, `add_internal_note`, `add_tag`
 - **Per-rule audit** - `last_fired_at`, `fire_count`, `last_error` so misconfigured rules surface visibly without blocking ticket save
 - **Sample workflows** - `psa_seed_sample_workflows` installs starter rules (P1 escalation, sales-inquiry follow-up, new-user onboarding, termination security routing, outage keyword detection, unassigned triage, client-reply tagging)
 
 ### Dispatch Board
 - **7-day grid** - Columns = days, rows = techs; tickets bucketed by their due date
+- **Drag-and-drop reassignment** *(v3.17.112)* — Drag a ticket card from one technician's column to another to reassign. Optimistic UI with Bootstrap toast feedback; failed drags roll the card back and reload. Backed by `POST /psa/dispatch/assign/` (JSON, audit-logged exactly like a manual edit).
 - **Overdue panel** - Surfaces overdue open tickets at the top regardless of date
 - **Unassigned row** - Visible at the top so unassigned work isn't missed
 
