@@ -310,3 +310,49 @@ class SkillRankingTests(TestCase):
         a_score = next(r['score'] for r in ranking if r['user'].username == 'alice')
         b_score = next(r['score'] for r in ranking if r['user'].username == 'bob')
         self.assertGreater(a_score, b_score)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.2 — TechCostRate UI access gates
+# ---------------------------------------------------------------------------
+
+@override_settings(REQUIRE_2FA=False, SECURE_SSL_REDIRECT=False)
+class TechCostRateViewTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.staff = User.objects.create_user('admin1', 'a@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        self.regular = User.objects.create_user('reg', 'r@x.com', 'pw')
+
+    def test_list_blocked_for_regular(self):
+        self.client.force_login(self.regular)
+        session = self.client.session
+        session['2fa_prompted'] = True
+        session.save()
+        r = self.client.get(reverse('resourcing:tech_cost_rate_list'))
+        self.assertIn(r.status_code, [301, 302, 303, 403])
+
+    def test_list_allowed_for_staff(self):
+        self.client.force_login(self.staff)
+        session = self.client.session
+        session['2fa_prompted'] = True
+        session.save()
+        r = self.client.get(reverse('resourcing:tech_cost_rate_list'), follow=True)
+        self.assertEqual(r.status_code, 200)
+
+    def test_edit_creates_rate_row(self):
+        from resourcing.models import TechCostRate
+        from datetime import date
+        self.client.force_login(self.staff)
+        session = self.client.session
+        session['2fa_prompted'] = True
+        session.save()
+        r = self.client.post(
+            reverse('resourcing:tech_cost_rate_edit', args=[self.regular.id]),
+            {'rate_per_hour': '75.50', 'effective_from': date.today().isoformat(),
+             'notes': 'unit test'},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(TechCostRate.objects.filter(user=self.regular,
+                                                    rate_per_hour='75.50').exists())

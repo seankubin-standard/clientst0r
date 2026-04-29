@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    BillableTarget, Holiday, LeaveRequest,
+    BillableTarget, Holiday, LeaveRequest, TechCostRate,
     UserSkill, UserCertification, WorkingHours,
 )
 
@@ -73,3 +73,13 @@ class BillableTargetAdmin(admin.ModelAdmin):
     search_fields = ('user__username', 'user__first_name', 'user__last_name')
     autocomplete_fields = ('user',)
     list_editable = ('target_hours_per_week', 'is_active')
+
+
+@admin.register(TechCostRate)
+class TechCostRateAdmin(admin.ModelAdmin):
+    list_display = ('user', 'rate_per_hour', 'effective_from', 'updated_at')
+    list_filter = ('effective_from',)
+    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'notes')
+    autocomplete_fields = ('user',)
+    date_hierarchy = 'effective_from'
+    ordering = ('-effective_from', 'user__username')

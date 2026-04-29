@@ -46,5 +46,12 @@ urlpatterns = [
     # catch-all `<str:report_type>/` so the literal slug routes here.
     path('psa/profitability-by-client/', views.psa_profitability_by_client,
          name='psa_profitability_by_client'),
+    # Phase 3.2 — Profitability pivots (tech / contract / project)
+    path('psa/profitability-by-tech/', views.psa_profitability_by_tech,
+         name='psa_profitability_by_tech'),
+    path('psa/profitability-by-contract/', views.psa_profitability_by_contract,
+         name='psa_profitability_by_contract'),
+    path('psa/profitability-by-project/', views.psa_profitability_by_project,
+         name='psa_profitability_by_project'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

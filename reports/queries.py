@@ -80,6 +80,90 @@ def hours_minutes_by_tech(start_date, end_date, organization=None):
     return sorted(out.values(), key=lambda r: r['total_minutes'], reverse=True)
 
 
+def hours_minutes_by_contract(start_date, end_date, organization=None):
+    """
+    Total billable + non-billable minutes per `Contract` active for the
+    ticket on the entry date. Looks up the active contract per
+    TicketTimeEntry's ticket via `Contract.for_ticket`.
+
+    Returns: list of {'contract_id', 'contract_name', 'client_id',
+    'client_name', 'billable_minutes', 'nonbillable_minutes',
+    'total_minutes'} dicts.
+    """
+    from psa.models import TicketTimeEntry, Contract
+    qs = TicketTimeEntry.objects.filter(
+        started_at__date__gte=start_date,
+        started_at__date__lte=end_date,
+    ).select_related('ticket__organization')
+    if organization is not None:
+        qs = qs.filter(ticket__organization=organization)
+
+    out = {}
+    for te in qs:
+        contract = Contract.for_ticket(te.ticket)
+        if contract is None:
+            continue
+        row = out.setdefault(contract.id, {
+            'contract_id': contract.id,
+            'contract_name': contract.name,
+            'client_id': contract.client_org_id,
+            'client_name': contract.client_org.name if contract.client_org else '',
+            'billable_minutes': 0,
+            'nonbillable_minutes': 0,
+            'total_minutes': 0,
+        })
+        mins = te.duration_minutes or 0
+        if te.is_billable:
+            row['billable_minutes'] += mins
+        else:
+            row['nonbillable_minutes'] += mins
+        row['total_minutes'] += mins
+    return sorted(out.values(), key=lambda r: r['total_minutes'], reverse=True)
+
+
+def hours_minutes_by_project(start_date, end_date, organization=None):
+    """
+    Total billable + non-billable minutes per `psa.Project`. Time entries
+    are linked to a project via `Ticket.project`.
+
+    Returns: list of {'project_id', 'project_name', 'client_id',
+    'client_name', 'billable_minutes', 'nonbillable_minutes',
+    'total_minutes'} dicts.
+    """
+    from psa.models import TicketTimeEntry
+    qs = TicketTimeEntry.objects.filter(
+        started_at__date__gte=start_date,
+        started_at__date__lte=end_date,
+        ticket__project__isnull=False,
+    ).select_related('ticket__project', 'ticket__project__client_org',
+                     'ticket__organization')
+    if organization is not None:
+        qs = qs.filter(ticket__organization=organization)
+
+    out = {}
+    for te in qs:
+        project = te.ticket.project
+        if not project:
+            continue
+        client = project.client_org or te.ticket.organization
+        row = out.setdefault(project.id, {
+            'project_id': project.id,
+            'project_name': project.name,
+            'client_id': client.id if client else None,
+            'client_name': client.name if client else '',
+            'billable_minutes': 0,
+            'nonbillable_minutes': 0,
+            'total_minutes': 0,
+        })
+        mins = te.duration_minutes or 0
+        if te.is_billable:
+            row['billable_minutes'] += mins
+        else:
+            row['nonbillable_minutes'] += mins
+        row['total_minutes'] += mins
+    return sorted(out.values(), key=lambda r: r['total_minutes'], reverse=True)
+
+
 # ---- Revenue ---------------------------------------------------------------
 
 def revenue_by_client(start_date, end_date, organization=None):
@@ -120,33 +204,296 @@ def revenue_by_client(start_date, end_date, organization=None):
     return sorted(out.values(), key=lambda r: r['invoiced'], reverse=True)
 
 
+def revenue_by_contract(start_date, end_date, organization=None):
+    """
+    Revenue attributed to each Contract active in the window. Two
+    components are summed:
+      1. The contract's `bundled_subtotal()` — recurring per-period bundle.
+      2. Invoiced amounts (status in sent/partial/paid/overdue) where
+         `Invoice.source_contract` points at this contract.
+
+    Returns: list of {'contract_id', 'contract_name', 'client_id',
+    'client_name', 'invoiced', 'bundled', 'revenue'} dicts.
+    """
+    from psa.models import Contract, Invoice
+
+    contract_qs = Contract.objects.select_related('client_org')
+    if organization is not None:
+        contract_qs = contract_qs.filter(organization=organization)
+    # We only care about contracts active during the window
+    contract_qs = contract_qs.filter(
+        Q(end_date__isnull=True) | Q(end_date__gte=start_date),
+        start_date__lte=end_date,
+    )
+
+    out = {}
+    for c in contract_qs:
+        out[c.id] = {
+            'contract_id': c.id,
+            'contract_name': c.name,
+            'client_id': c.client_org_id,
+            'client_name': c.client_org.name if c.client_org else '',
+            'invoiced': Decimal('0'),
+            'bundled': c.bundled_subtotal(),
+            'revenue': Decimal('0'),
+        }
+
+    inv_qs = Invoice.objects.filter(
+        invoice_date__gte=start_date,
+        invoice_date__lte=end_date,
+        status__in=['sent', 'partial', 'paid', 'overdue'],
+        source_contract__isnull=False,
+    )
+    if organization is not None:
+        inv_qs = inv_qs.filter(organization=organization)
+    for inv in inv_qs:
+        cid = inv.source_contract_id
+        if cid not in out:
+            # Contract not in active window — still attribute its revenue
+            c = inv.source_contract
+            out[cid] = {
+                'contract_id': c.id,
+                'contract_name': c.name,
+                'client_id': c.client_org_id,
+                'client_name': c.client_org.name if c.client_org else '',
+                'invoiced': Decimal('0'),
+                'bundled': c.bundled_subtotal(),
+                'revenue': Decimal('0'),
+            }
+        out[cid]['invoiced'] += (inv.total or Decimal('0'))
+
+    for r in out.values():
+        r['revenue'] = r['invoiced'] + r['bundled']
+        r['invoiced'] = float(r['invoiced'])
+        r['bundled'] = float(r['bundled'])
+        r['revenue'] = float(r['revenue'])
+    return sorted(out.values(), key=lambda r: r['revenue'], reverse=True)
+
+
+def revenue_by_project(start_date, end_date, organization=None):
+    """
+    Revenue per `psa.Project`. Approximated as the sum of invoiced amounts
+    on tickets attached to the project — i.e., where
+    `Invoice.source_ticket.project_id == project.id`.
+
+    Returns: list of {'project_id', 'project_name', 'client_id',
+    'client_name', 'revenue'} dicts.
+    """
+    from psa.models import Invoice
+
+    qs = Invoice.objects.filter(
+        invoice_date__gte=start_date,
+        invoice_date__lte=end_date,
+        status__in=['sent', 'partial', 'paid', 'overdue'],
+        source_ticket__project__isnull=False,
+    ).select_related('source_ticket__project',
+                     'source_ticket__project__client_org',
+                     'source_ticket__organization')
+    if organization is not None:
+        qs = qs.filter(organization=organization)
+
+    out = {}
+    for inv in qs:
+        ticket = inv.source_ticket
+        project = ticket.project if ticket else None
+        if not project:
+            continue
+        client = project.client_org or ticket.organization
+        row = out.setdefault(project.id, {
+            'project_id': project.id,
+            'project_name': project.name,
+            'client_id': client.id if client else None,
+            'client_name': client.name if client else '',
+            'revenue': Decimal('0'),
+        })
+        row['revenue'] += (inv.total or Decimal('0'))
+
+    for r in out.values():
+        r['revenue'] = float(r['revenue'])
+    return sorted(out.values(), key=lambda r: r['revenue'], reverse=True)
+
+
 # ---- Cost ------------------------------------------------------------------
 
-# Placeholder loaded-rate per tech ($/hr). Phase 3.2 will move this onto
-# UserProfile (or a TechCostRate model) so per-tech rates configure properly.
+# Canonical default loaded-rate per tech ($/hr). Per-tech rates from
+# `resourcing.TechCostRate` win when present; this is the ultimate fallback.
 DEFAULT_LOADED_RATE = Decimal('60')
+
+
+def cost_for_period(user, minutes, period_midpoint):
+    """
+    Decimal cost for `user` × `minutes` of work, using the active
+    `TechCostRate` on `period_midpoint` (or DEFAULT_LOADED_RATE when no
+    rate is configured).
+
+    `minutes` can be int or Decimal; `period_midpoint` is a date.
+    """
+    from resourcing.models import TechCostRate
+    rate = TechCostRate.rate_for(user, period_midpoint) if user else Decimal(str(DEFAULT_LOADED_RATE))
+    hours = Decimal(str(minutes or 0)) / Decimal('60')
+    return (hours * Decimal(str(rate))).quantize(Decimal('0.01'))
+
+
+def _period_midpoint(start_date, end_date):
+    """Midpoint date of the inclusive [start, end] window."""
+    if not start_date and not end_date:
+        return date.today()
+    if not start_date:
+        return end_date
+    if not end_date:
+        return start_date
+    delta = (end_date - start_date).days // 2
+    return start_date + timedelta(days=delta)
 
 
 def cost_estimate_by_client(start_date, end_date, organization=None,
                             default_loaded_rate=None):
     """
-    Coarse cost-of-delivery estimate: hours_used × loaded_rate.
-    Until per-tech cost rates land in Phase 3.2, uses DEFAULT_LOADED_RATE.
+    Cost-of-delivery estimate per client. Now uses **per-tech**
+    `TechCostRate.rate_for(user, midpoint)` × the user's minutes on tickets
+    for that client. Falls back to `default_loaded_rate` (or
+    DEFAULT_LOADED_RATE) when no per-tech rate is configured.
 
-    Returns: list of {'client_id', 'client_name', 'cost'} dicts.
+    Returns: list of {'client_id', 'client_name', 'hours', 'cost'} dicts.
     """
-    rate = Decimal(str(default_loaded_rate or DEFAULT_LOADED_RATE))
-    rows = hours_minutes_by_client(start_date, end_date, organization=organization)
-    out = []
-    for r in rows:
-        hours = Decimal(r['total_minutes']) / Decimal(60)
-        out.append({
-            'client_id': r['client_id'],
-            'client_name': r['client_name'],
-            'hours': float(hours),
-            'cost': float(hours * rate),
+    from psa.models import TicketTimeEntry
+    from resourcing.models import TechCostRate
+
+    fallback_rate = Decimal(str(default_loaded_rate or DEFAULT_LOADED_RATE))
+    midpoint = _period_midpoint(start_date, end_date)
+
+    qs = TicketTimeEntry.objects.filter(
+        started_at__date__gte=start_date,
+        started_at__date__lte=end_date,
+    ).select_related('user', 'ticket__organization')
+    if organization is not None:
+        qs = qs.filter(ticket__organization=organization)
+
+    out = {}
+    for te in qs:
+        org = te.ticket.organization
+        if not org:
+            continue
+        # Per-tech rate (with fallback to the param-or-default)
+        if te.user_id:
+            rate = TechCostRate.rate_for(te.user, midpoint)
+            # `rate_for` falls back to DEFAULT_LOADED_RATE when no rows
+            # exist; if the caller passed a custom default_loaded_rate
+            # AND there's still no row, prefer the caller's value.
+            if rate == DEFAULT_LOADED_RATE and default_loaded_rate is not None:
+                rate = fallback_rate
+        else:
+            rate = fallback_rate
+        mins = te.duration_minutes or 0
+        hours = Decimal(mins) / Decimal('60')
+        row = out.setdefault(org.id, {
+            'client_id': org.id, 'client_name': org.name,
+            'hours': Decimal('0'), 'cost': Decimal('0'),
         })
-    return out
+        row['hours'] += hours
+        row['cost'] += hours * Decimal(str(rate))
+
+    for r in out.values():
+        r['hours'] = float(r['hours'])
+        r['cost'] = float(r['cost'])
+    return sorted(out.values(), key=lambda r: r['cost'], reverse=True)
+
+
+def cost_estimate_by_contract(start_date, end_date, organization=None,
+                              default_loaded_rate=None):
+    """Per-contract cost estimate using per-tech rates, mirroring
+    `cost_estimate_by_client` but grouped by `Contract.for_ticket`."""
+    from psa.models import TicketTimeEntry, Contract
+    from resourcing.models import TechCostRate
+
+    fallback_rate = Decimal(str(default_loaded_rate or DEFAULT_LOADED_RATE))
+    midpoint = _period_midpoint(start_date, end_date)
+
+    qs = TicketTimeEntry.objects.filter(
+        started_at__date__gte=start_date,
+        started_at__date__lte=end_date,
+    ).select_related('user', 'ticket__organization')
+    if organization is not None:
+        qs = qs.filter(ticket__organization=organization)
+
+    out = {}
+    for te in qs:
+        contract = Contract.for_ticket(te.ticket)
+        if contract is None:
+            continue
+        if te.user_id:
+            rate = TechCostRate.rate_for(te.user, midpoint)
+            if rate == DEFAULT_LOADED_RATE and default_loaded_rate is not None:
+                rate = fallback_rate
+        else:
+            rate = fallback_rate
+        mins = te.duration_minutes or 0
+        hours = Decimal(mins) / Decimal('60')
+        row = out.setdefault(contract.id, {
+            'contract_id': contract.id,
+            'contract_name': contract.name,
+            'client_id': contract.client_org_id,
+            'client_name': contract.client_org.name if contract.client_org else '',
+            'hours': Decimal('0'),
+            'cost': Decimal('0'),
+        })
+        row['hours'] += hours
+        row['cost'] += hours * Decimal(str(rate))
+
+    for r in out.values():
+        r['hours'] = float(r['hours'])
+        r['cost'] = float(r['cost'])
+    return sorted(out.values(), key=lambda r: r['cost'], reverse=True)
+
+
+def cost_estimate_by_project(start_date, end_date, organization=None,
+                             default_loaded_rate=None):
+    """Per-project cost estimate using per-tech rates."""
+    from psa.models import TicketTimeEntry
+    from resourcing.models import TechCostRate
+
+    fallback_rate = Decimal(str(default_loaded_rate or DEFAULT_LOADED_RATE))
+    midpoint = _period_midpoint(start_date, end_date)
+
+    qs = TicketTimeEntry.objects.filter(
+        started_at__date__gte=start_date,
+        started_at__date__lte=end_date,
+        ticket__project__isnull=False,
+    ).select_related('user', 'ticket__project',
+                     'ticket__project__client_org',
+                     'ticket__organization')
+    if organization is not None:
+        qs = qs.filter(ticket__organization=organization)
+
+    out = {}
+    for te in qs:
+        project = te.ticket.project
+        if not project:
+            continue
+        if te.user_id:
+            rate = TechCostRate.rate_for(te.user, midpoint)
+            if rate == DEFAULT_LOADED_RATE and default_loaded_rate is not None:
+                rate = fallback_rate
+        else:
+            rate = fallback_rate
+        mins = te.duration_minutes or 0
+        hours = Decimal(mins) / Decimal('60')
+        client = project.client_org or te.ticket.organization
+        row = out.setdefault(project.id, {
+            'project_id': project.id,
+            'project_name': project.name,
+            'client_id': client.id if client else None,
+            'client_name': client.name if client else '',
+            'hours': Decimal('0'),
+            'cost': Decimal('0'),
+        })
+        row['hours'] += hours
+        row['cost'] += hours * Decimal(str(rate))
+
+    for r in out.values():
+        r['hours'] = float(r['hours'])
+        r['cost'] = float(r['cost'])
+    return sorted(out.values(), key=lambda r: r['cost'], reverse=True)
 
 
 # ---- Profitability ---------------------------------------------------------
@@ -180,3 +527,174 @@ def profitability_by_client(start_date, end_date, organization=None,
             'hours': c.get('hours', 0.0),
         })
     return sorted(rows, key=lambda r: r['revenue'], reverse=True)
+
+
+def profitability_by_contract(start_date, end_date, organization=None,
+                              default_loaded_rate=None):
+    """Per-contract profitability. Same shape as `profitability_by_client`
+    but pivoted on Contract."""
+    rev = {r['contract_id']: r for r in revenue_by_contract(start_date, end_date, organization)}
+    cost = {r['contract_id']: r for r in cost_estimate_by_contract(start_date, end_date, organization, default_loaded_rate)}
+    ids = set(rev.keys()) | set(cost.keys())
+
+    rows = []
+    for cid in ids:
+        r = rev.get(cid, {})
+        c = cost.get(cid, {})
+        revenue = r.get('revenue', 0.0)
+        cost_v = c.get('cost', 0.0)
+        margin = revenue - cost_v
+        margin_pct = (margin / revenue * 100) if revenue else 0.0
+        rows.append({
+            'contract_id': cid,
+            'contract_name': r.get('contract_name') or c.get('contract_name') or '?',
+            'client_id': r.get('client_id') or c.get('client_id'),
+            'client_name': r.get('client_name') or c.get('client_name') or '',
+            'revenue': revenue,
+            'cost': cost_v,
+            'margin': margin,
+            'margin_pct': round(margin_pct, 1),
+            'hours': c.get('hours', 0.0),
+        })
+    return sorted(rows, key=lambda r: r['revenue'], reverse=True)
+
+
+def profitability_by_project(start_date, end_date, organization=None,
+                             default_loaded_rate=None):
+    """Per-project profitability. Same shape pivoted on Project."""
+    rev = {r['project_id']: r for r in revenue_by_project(start_date, end_date, organization)}
+    cost = {r['project_id']: r for r in cost_estimate_by_project(start_date, end_date, organization, default_loaded_rate)}
+    ids = set(rev.keys()) | set(cost.keys())
+
+    rows = []
+    for pid in ids:
+        r = rev.get(pid, {})
+        c = cost.get(pid, {})
+        revenue = r.get('revenue', 0.0)
+        cost_v = c.get('cost', 0.0)
+        margin = revenue - cost_v
+        margin_pct = (margin / revenue * 100) if revenue else 0.0
+        rows.append({
+            'project_id': pid,
+            'project_name': r.get('project_name') or c.get('project_name') or '?',
+            'client_id': r.get('client_id') or c.get('client_id'),
+            'client_name': r.get('client_name') or c.get('client_name') or '',
+            'revenue': revenue,
+            'cost': cost_v,
+            'margin': margin,
+            'margin_pct': round(margin_pct, 1),
+            'hours': c.get('hours', 0.0),
+        })
+    return sorted(rows, key=lambda r: r['revenue'], reverse=True)
+
+
+def profitability_by_tech(start_date, end_date, organization=None,
+                          default_loaded_rate=None):
+    """
+    Per-tech profitability and utilization.
+
+    Cost: hours × the tech's `TechCostRate` (or DEFAULT_LOADED_RATE).
+    Attributed revenue: per-tech billable hours × the active contract's
+    `hourly_rate` (best-effort approximation — exact per-entry billing rates
+    arrive in Phase 3.4).
+    Utilization: actual_hours / target_hours_per_week × weeks_in_period × 100.
+
+    Returns: list of {'tech_id', 'tech_username', 'hours',
+    'billable_minutes', 'cost', 'attributed_revenue', 'margin',
+    'margin_pct', 'utilization_pct'} dicts, sorted by attributed_revenue
+    desc.
+    """
+    from decimal import Decimal as _D
+    from psa.models import TicketTimeEntry, Contract
+    from resourcing.models import TechCostRate, BillableTarget
+
+    fallback_rate = _D(str(default_loaded_rate or DEFAULT_LOADED_RATE))
+    midpoint = _period_midpoint(start_date, end_date)
+
+    qs = TicketTimeEntry.objects.filter(
+        started_at__date__gte=start_date,
+        started_at__date__lte=end_date,
+    ).select_related('user', 'ticket', 'ticket__organization')
+    if organization is not None:
+        qs = qs.filter(ticket__organization=organization)
+
+    # Cache per-ticket contract lookups
+    contract_cache = {}
+
+    out = {}
+    for te in qs:
+        if not te.user_id:
+            continue
+        # Cost rate
+        rate = TechCostRate.rate_for(te.user, midpoint)
+        if rate == DEFAULT_LOADED_RATE and default_loaded_rate is not None:
+            rate = fallback_rate
+        mins = te.duration_minutes or 0
+        hours = _D(mins) / _D('60')
+        # Attributed revenue: billable minutes × contract hourly_rate.
+        # NOTE: exact per-entry billing rates arrive in Phase 3.4 — this
+        # approximates revenue using the active contract's hourly_rate
+        # (or `default_loaded_rate` fallback as a stand-in for retail).
+        contract = contract_cache.get(te.ticket_id)
+        if te.ticket_id not in contract_cache:
+            contract = Contract.for_ticket(te.ticket)
+            contract_cache[te.ticket_id] = contract
+        if te.is_billable:
+            billable_hours = hours
+        else:
+            billable_hours = _D('0')
+        if contract and contract.hourly_rate:
+            billing_rate = _D(str(contract.hourly_rate))
+        else:
+            billing_rate = fallback_rate
+        attr_rev = billable_hours * billing_rate
+
+        row = out.setdefault(te.user_id, {
+            'tech_id': te.user_id,
+            'tech_username': te.user.username,
+            'hours': _D('0'),
+            'billable_minutes': 0,
+            'cost': _D('0'),
+            'attributed_revenue': _D('0'),
+        })
+        row['hours'] += hours
+        if te.is_billable:
+            row['billable_minutes'] += mins
+        row['cost'] += hours * _D(str(rate))
+        row['attributed_revenue'] += attr_rev
+
+    # Utilization: pull each tech's BillableTarget once.
+    bt_by_user = {
+        bt.user_id: bt for bt in BillableTarget.objects.filter(user_id__in=list(out.keys()))
+    }
+    days_in_period = ((end_date - start_date).days + 1) if end_date and start_date else 0
+    weeks_in_period = _D(str(max(days_in_period, 1))) / _D('7')
+
+    rows = []
+    for uid, row in out.items():
+        revenue = float(row['attributed_revenue'])
+        cost_v = float(row['cost'])
+        margin = revenue - cost_v
+        margin_pct = (margin / revenue * 100) if revenue else 0.0
+
+        bt = bt_by_user.get(uid)
+        target_per_week = (
+            _D(str(bt.target_hours_per_week)) if bt and bt.is_active
+            else _D('32')
+        )
+        target_hours = target_per_week * weeks_in_period
+        actual_hours = row['hours']
+        util = float((actual_hours / target_hours) * 100) if target_hours else 0.0
+
+        rows.append({
+            'tech_id': row['tech_id'],
+            'tech_username': row['tech_username'],
+            'hours': float(round(actual_hours, 2)),
+            'billable_minutes': row['billable_minutes'],
+            'cost': cost_v,
+            'attributed_revenue': revenue,
+            'margin': margin,
+            'margin_pct': round(margin_pct, 1),
+            'utilization_pct': round(util, 1),
+        })
+    return sorted(rows, key=lambda r: r['attributed_revenue'], reverse=True)

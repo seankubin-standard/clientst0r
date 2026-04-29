@@ -23,11 +23,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .forms import (
-    BillableTargetForm, HolidayForm, LeaveRequestForm,
+    BillableTargetForm, HolidayForm, LeaveRequestForm, TechCostRateForm,
     UserCertificationForm, UserSkillForm, WorkingHoursForm,
 )
 from .models import (
-    BillableTarget, Holiday, LeaveRequest,
+    BillableTarget, Holiday, LeaveRequest, TechCostRate,
     UserCertification, UserSkill, WorkingHours,
 )
 
@@ -103,6 +103,13 @@ def my_resourcing(request):
     # Billable target
     billable_target = BillableTarget.objects.filter(user=target).first()
 
+    # Phase 3.2 — current loaded cost rate ($/hr)
+    current_cost_rate = TechCostRate.rate_for(target, today)
+    has_explicit_cost_rate = TechCostRate.objects.filter(
+        user=target, effective_from__lte=today,
+    ).exists()
+    can_edit_cost_rate = (request.user.is_staff or request.user.is_superuser)
+
     return render(request, 'resourcing/my_resourcing.html', {
         'target': target,
         'viewing_as_admin': viewing_as_admin,
@@ -114,6 +121,9 @@ def my_resourcing(request):
         'pending_count': pending_this_year.count(),
         'days_used_this_year': days_used_this_year,
         'billable_target': billable_target,
+        'current_cost_rate': current_cost_rate,
+        'has_explicit_cost_rate': has_explicit_cost_rate,
+        'can_edit_cost_rate': can_edit_cost_rate,
     })
 
 
@@ -696,6 +706,97 @@ def capacity_report(request):
         'total_scheduled': float(total_scheduled),
         'total_actual': float(round(total_actual, 2)),
         'grand_utilization_pct': round(grand_util, 1),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.2 — Tech cost-rate management (staff/superuser only)
+# ---------------------------------------------------------------------------
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def tech_cost_rate_list(request):
+    """List every internal/staff user with their current loaded cost rate."""
+    today = timezone.now().date()
+    qs = User.objects.filter(is_active=True).filter(
+        Q(is_staff=True) | Q(is_superuser=True) | Q(profile__user_type='staff')
+    ).distinct().order_by('username')
+
+    rows = []
+    for u in qs:
+        current_row = TechCostRate.objects.filter(
+            user=u, effective_from__lte=today,
+        ).order_by('-effective_from').first()
+        history_count = TechCostRate.objects.filter(user=u).count()
+        rows.append({
+            'user': u,
+            'rate': current_row.rate_per_hour if current_row else None,
+            'effective_from': current_row.effective_from if current_row else None,
+            'history_count': history_count,
+            'is_default': current_row is None,
+        })
+    from reports.queries import DEFAULT_LOADED_RATE
+    return render(request, 'resourcing/tech_cost_rate_list.html', {
+        'rows': rows,
+        'today': today,
+        'default_rate': DEFAULT_LOADED_RATE,
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def tech_cost_rate_edit(request, user_id):
+    """Show a user's full rate history + a form to add a new effective row."""
+    target = get_object_or_404(User, pk=user_id)
+    history = TechCostRate.objects.filter(user=target).order_by('-effective_from')
+
+    if request.method == 'POST':
+        form = TechCostRateForm(request.POST)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.user = target
+            try:
+                obj.full_clean(exclude=None)
+            except Exception as e:
+                form.add_error(None, str(e))
+            else:
+                obj.save()
+                messages.success(request, 'Cost rate added.')
+                return redirect('resourcing:tech_cost_rate_edit', user_id=target.id)
+    else:
+        form = TechCostRateForm(initial={'effective_from': timezone.now().date()})
+
+    today = timezone.now().date()
+    current_rate = TechCostRate.rate_for(target, today)
+    has_explicit = TechCostRate.objects.filter(
+        user=target, effective_from__lte=today,
+    ).exists()
+    from reports.queries import DEFAULT_LOADED_RATE
+    return render(request, 'resourcing/tech_cost_rate_edit.html', {
+        'target': target,
+        'history': history,
+        'form': form,
+        'current_rate': current_rate,
+        'has_explicit_cost_rate': has_explicit,
+        'default_rate': DEFAULT_LOADED_RATE,
+        'today': today,
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def tech_cost_rate_delete(request, pk):
+    """Delete a single cost-rate history row."""
+    instance = get_object_or_404(TechCostRate, pk=pk)
+    target = instance.user
+    if request.method == 'POST':
+        instance.delete()
+        messages.success(request, 'Cost rate deleted.')
+        return redirect('resourcing:tech_cost_rate_edit', user_id=target.id)
+    return render(request, 'resourcing/confirm_delete.html', {
+        'instance': instance,
+        'kind': 'Cost rate',
+        'target': target,
     })
 
 

@@ -45,4 +45,9 @@ urlpatterns = [
 
     # Phase 2.3 — Capacity report
     path('capacity/', views.capacity_report, name='capacity_report'),
+
+    # Phase 3.2 — Tech cost rates (staff/superuser)
+    path('cost-rates/', views.tech_cost_rate_list, name='tech_cost_rate_list'),
+    path('cost-rates/<int:user_id>/edit/', views.tech_cost_rate_edit, name='tech_cost_rate_edit'),
+    path('cost-rates/<int:pk>/delete/', views.tech_cost_rate_delete, name='tech_cost_rate_delete'),
 ]

@@ -198,6 +198,28 @@
             <p class="text-muted mb-1">No target set — default is <strong>32 h/wk</strong>.</p>
             <small class="text-muted">Used by Phase 3 utilization reporting.</small>
             {% endif %}
+
+            <hr class="my-3">
+            <div class="d-flex justify-content-between align-items-center"
+                 data-bs-toggle="tooltip"
+                 title="Loaded rate used for profitability reporting">
+                <div>
+                    <small class="text-muted">Loaded cost rate</small>
+                    <div class="h5 mb-0">
+                        ${{ current_cost_rate }}<small class="text-muted">/hr</small>
+                        {% if not has_explicit_cost_rate %}
+                            <span class="badge bg-secondary ms-1" style="font-size: 0.65rem;">default</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if can_edit_cost_rate %}
+                <a href="{% url 'resourcing:tech_cost_rate_edit' target.id %}"
+                   class="btn btn-sm btn-outline-secondary"
+                   title="Edit cost rate (staff)">
+                    <i class="fas fa-edit"></i>
+                </a>
+                {% endif %}
+            </div>
         </div>
     </div>
 </div>

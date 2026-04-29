@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.140] - 2026-04-29
+
+### Added — Phase 3.2: Per-tech cost rates + profitability by tech / contract / project
+- New `resourcing.TechCostRate` model — effective-dated loaded rate ($/hr) per tech. Historical reports stay accurate after a raise / role change. `TechCostRate.rate_for(user, date)` returns the matching rate (falls back to the canonical `DEFAULT_LOADED_RATE = $60` from `reports.queries` if no rows configured).
+- `cost_estimate_by_client` + `profitability_by_client` now use **per-tech rates** instead of the flat $60/hr placeholder. Existing report keeps working — it's strictly more accurate now.
+- Three new profitability reports:
+  - `/reports/psa/profitability-by-tech/` — hours / cost / attributed revenue / margin / utilization %
+  - `/reports/psa/profitability-by-contract/` — per-contract margin
+  - `/reports/psa/profitability-by-project/` — per-project margin
+- Each has the same date-range picker (7d/30d/90d/YTD + custom), summary cards, color-coded margin column, CSV export.
+- Cost-rate management UI at `/resourcing/cost-rates/` — staff list with current rate, per-user edit page showing rate history.
+- Existing `/resourcing/me/` page now shows the user's current loaded rate.
+- New tests in `reports.tests` and `resourcing.tests` cover effective-dated lookup, default fallback, and the three new reports.
+
+Phase 3 sub-phases left: 3.3 Effective hourly rate + revenue leakage; 3.4 SLA trends + margin analytics; 3.5 Custom dashboards + scheduled reports + wallboard + exec scorecard + client-health score.
+
 ## [3.17.139] - 2026-04-29
 
 ### Added — Phase 3.1: Canonical reporting query layer + Profitability by Client

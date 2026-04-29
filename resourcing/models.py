@@ -285,6 +285,49 @@ class BillableTarget(models.Model):
         return f'{self.user.username}: {self.target_hours_per_week}h/wk'
 
 
+class TechCostRate(models.Model):
+    """
+    Loaded cost rate per tech ($/hr) used by Phase 3 profitability
+    reports. Effective-dated so historical reports stay accurate after
+    a raise / role change.
+    """
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='resourcing_cost_rates',
+    )
+    rate_per_hour = models.DecimalField(max_digits=8, decimal_places=2)
+    effective_from = models.DateField(
+        help_text='Rate applies from this date forward (inclusive). The '
+                  'most recent effective_from <= a given report date wins.',
+    )
+    notes = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'resourcing_tech_cost_rates'
+        ordering = ['-effective_from', 'user__username']
+        unique_together = [['user', 'effective_from']]
+        indexes = [models.Index(fields=['user', '-effective_from'])]
+
+    def __str__(self):
+        return f'{self.user.username}: ${self.rate_per_hour}/hr from {self.effective_from}'
+
+    @classmethod
+    def rate_for(cls, user, target_date):
+        """Best-matching rate for `user` on `target_date`. Returns Decimal
+        (or DEFAULT_LOADED_RATE if no rate is configured)."""
+        from decimal import Decimal
+        row = cls.objects.filter(
+            user=user, effective_from__lte=target_date
+        ).order_by('-effective_from').first()
+        if row:
+            return row.rate_per_hour
+        # Fallback to canonical default; import locally to dodge cycle
+        from reports.queries import DEFAULT_LOADED_RATE
+        return Decimal(str(DEFAULT_LOADED_RATE))
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -844,3 +844,179 @@ def psa_profitability_by_client(request):
         'blended_margin_pct': round(blended_margin_pct, 1),
     }
     return render(request, 'reports/psa_profitability_by_client.html', context)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.2 — Profitability by Tech / Contract / Project (PSA)
+# ---------------------------------------------------------------------------
+
+def _profitability_window(request):
+    """Parse start/end/loaded_rate query params → tuple."""
+    today = date.today()
+    default_start = today - timedelta(days=30)
+    start_date = _parse_date(request.GET.get('start'), default_start)
+    end_date = _parse_date(request.GET.get('end'), today)
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+    loaded_rate_raw = (request.GET.get('loaded_rate') or '').strip()
+    from .queries import DEFAULT_LOADED_RATE
+    loaded_rate = DEFAULT_LOADED_RATE
+    if loaded_rate_raw:
+        try:
+            loaded_rate = Decimal(loaded_rate_raw)
+        except (InvalidOperation, ValueError):
+            loaded_rate = DEFAULT_LOADED_RATE
+    return start_date, end_date, loaded_rate, DEFAULT_LOADED_RATE
+
+
+def _csv_response(filename, header, rows, totals_row=None):
+    """Helper: stream a CSV with a header, rows, and an optional totals row."""
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    writer = _csv.writer(response)
+    writer.writerow(header)
+    for r in rows:
+        writer.writerow(r)
+    if totals_row:
+        writer.writerow(totals_row)
+    return response
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def psa_profitability_by_tech(request):
+    """Per-tech profitability — hours / cost / attributed revenue / margin /
+    utilization %. CSV export via ?format=csv."""
+    from .queries import profitability_by_tech
+
+    start_date, end_date, loaded_rate, default_rate = _profitability_window(request)
+    rows = profitability_by_tech(start_date, end_date,
+                                 default_loaded_rate=loaded_rate)
+
+    total_revenue = sum(r['attributed_revenue'] for r in rows)
+    total_cost = sum(r['cost'] for r in rows)
+    total_margin = total_revenue - total_cost
+    blended_margin_pct = (total_margin / total_revenue * 100) if total_revenue else 0.0
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        return _csv_response(
+            f'profitability-by-tech-{start_date.isoformat()}-{end_date.isoformat()}.csv',
+            ['Tech', 'Hours', 'Cost', 'Attributed Revenue', 'Margin', 'Margin %', 'Utilization %'],
+            [[
+                r['tech_username'],
+                f"{r['hours']:.2f}",
+                f"{r['cost']:.2f}",
+                f"{r['attributed_revenue']:.2f}",
+                f"{r['margin']:.2f}",
+                f"{r['margin_pct']:.1f}",
+                f"{r['utilization_pct']:.1f}",
+            ] for r in rows],
+            totals_row=[
+                'TOTAL', '',
+                f"{total_cost:.2f}", f"{total_revenue:.2f}",
+                f"{total_margin:.2f}", f"{round(blended_margin_pct, 1):.1f}", '',
+            ],
+        )
+
+    return render(request, 'reports/psa_profitability_by_tech.html', {
+        'rows': rows,
+        'start_date': start_date,
+        'end_date': end_date,
+        'loaded_rate': loaded_rate,
+        'default_loaded_rate': default_rate,
+        'total_revenue': total_revenue,
+        'total_cost': total_cost,
+        'total_margin': total_margin,
+        'blended_margin_pct': round(blended_margin_pct, 1),
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def psa_profitability_by_contract(request):
+    """Per-contract profitability."""
+    from .queries import profitability_by_contract
+
+    start_date, end_date, loaded_rate, default_rate = _profitability_window(request)
+    rows = profitability_by_contract(start_date, end_date,
+                                     default_loaded_rate=loaded_rate)
+
+    total_revenue = sum(r['revenue'] for r in rows)
+    total_cost = sum(r['cost'] for r in rows)
+    total_margin = total_revenue - total_cost
+    blended_margin_pct = (total_margin / total_revenue * 100) if total_revenue else 0.0
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        return _csv_response(
+            f'profitability-by-contract-{start_date.isoformat()}-{end_date.isoformat()}.csv',
+            ['Contract', 'Client', 'Hours', 'Revenue', 'Cost', 'Margin', 'Margin %'],
+            [[
+                r['contract_name'], r['client_name'],
+                f"{r['hours']:.2f}", f"{r['revenue']:.2f}", f"{r['cost']:.2f}",
+                f"{r['margin']:.2f}", f"{r['margin_pct']:.1f}",
+            ] for r in rows],
+            totals_row=[
+                'TOTAL', '', '',
+                f"{total_revenue:.2f}", f"{total_cost:.2f}",
+                f"{total_margin:.2f}", f"{round(blended_margin_pct, 1):.1f}",
+            ],
+        )
+
+    return render(request, 'reports/psa_profitability_by_contract.html', {
+        'rows': rows,
+        'start_date': start_date,
+        'end_date': end_date,
+        'loaded_rate': loaded_rate,
+        'default_loaded_rate': default_rate,
+        'total_revenue': total_revenue,
+        'total_cost': total_cost,
+        'total_margin': total_margin,
+        'blended_margin_pct': round(blended_margin_pct, 1),
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def psa_profitability_by_project(request):
+    """Per-project profitability."""
+    from .queries import profitability_by_project
+
+    start_date, end_date, loaded_rate, default_rate = _profitability_window(request)
+    rows = profitability_by_project(start_date, end_date,
+                                    default_loaded_rate=loaded_rate)
+
+    total_revenue = sum(r['revenue'] for r in rows)
+    total_cost = sum(r['cost'] for r in rows)
+    total_margin = total_revenue - total_cost
+    blended_margin_pct = (total_margin / total_revenue * 100) if total_revenue else 0.0
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        return _csv_response(
+            f'profitability-by-project-{start_date.isoformat()}-{end_date.isoformat()}.csv',
+            ['Project', 'Client', 'Hours', 'Revenue', 'Cost', 'Margin', 'Margin %'],
+            [[
+                r['project_name'], r['client_name'],
+                f"{r['hours']:.2f}", f"{r['revenue']:.2f}", f"{r['cost']:.2f}",
+                f"{r['margin']:.2f}", f"{r['margin_pct']:.1f}",
+            ] for r in rows],
+            totals_row=[
+                'TOTAL', '', '',
+                f"{total_revenue:.2f}", f"{total_cost:.2f}",
+                f"{total_margin:.2f}", f"{round(blended_margin_pct, 1):.1f}",
+            ],
+        )
+
+    return render(request, 'reports/psa_profitability_by_project.html', {
+        'rows': rows,
+        'start_date': start_date,
+        'end_date': end_date,
+        'loaded_rate': loaded_rate,
+        'default_loaded_rate': default_rate,
+        'total_revenue': total_revenue,
+        'total_cost': total_cost,
+        'total_margin': total_margin,
+        'blended_margin_pct': round(blended_margin_pct, 1),
+    })

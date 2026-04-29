@@ -5,7 +5,7 @@ partials work for add + edit.
 from django import forms
 
 from .models import (
-    BillableTarget, Holiday, LeaveRequest, UserSkill,
+    BillableTarget, Holiday, LeaveRequest, TechCostRate, UserSkill,
     UserCertification, WorkingHours,
 )
 
@@ -94,4 +94,17 @@ class BillableTargetForm(forms.ModelForm):
             'target_hours_per_week': forms.NumberInput(attrs={**_BS_CTRL, 'min': '0', 'max': '60', 'step': '0.5'}),
             'is_active': forms.CheckboxInput(attrs=_BS_CHECK),
             'notes': forms.TextInput(attrs=_BS_CTRL),
+        }
+
+
+class TechCostRateForm(forms.ModelForm):
+    class Meta:
+        model = TechCostRate
+        fields = ['rate_per_hour', 'effective_from', 'notes']
+        widgets = {
+            'rate_per_hour': forms.NumberInput(attrs={**_BS_CTRL, 'min': '0', 'step': '0.01',
+                                                      'placeholder': 'e.g. 65.00'}),
+            'effective_from': forms.DateInput(attrs={**_BS_CTRL, 'type': 'date'}),
+            'notes': forms.TextInput(attrs={**_BS_CTRL,
+                                            'placeholder': 'Optional — e.g. "annual raise", "promotion to T3"'}),
         }
