@@ -11,9 +11,14 @@
 
 <div class="d-flex justify-content-between align-items-baseline mb-3 flex-wrap gap-2">
     <h4 class="mb-0"><i class="fas fa-money-check-dollar me-2"></i>{{ client.name }} — Account</h4>
-    <a href="{% url 'accounts:organization_detail' client.id %}" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-building me-1"></i>Client profile
-    </a>
+    <div class="btn-group btn-group-sm">
+        <a href="{% url 'accounts:organization_detail' client.id %}" class="btn btn-outline-secondary">
+            <i class="fas fa-building me-1"></i>Client profile
+        </a>
+        <a href="{% url 'psa:portal_invite' client.id %}" class="btn btn-outline-success">
+            <i class="fas fa-user-plus me-1"></i>Invite portal user
+        </a>
+    </div>
 </div>
 
 <div class="row g-2 mb-3">

@@ -12,4 +12,7 @@ urlpatterns = [
     path('t/<str:ticket_number>/reply/', views.post_reply, name='post_reply'),
     # Customer-facing quote signing — public, opaque token, no login required.
     path('quote/<str:token>/sign/', views.quote_sign, name='quote_sign'),
+    # Knowledge base for portal users
+    path('kb/', views.kb_list, name='kb_list'),
+    path('kb/<slug:slug>/', views.kb_detail, name='kb_detail'),
 ]

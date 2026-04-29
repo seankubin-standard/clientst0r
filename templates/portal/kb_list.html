@@ -1,0 +1,33 @@
+{% extends "portal/base.html" %}
+{% block title %}Knowledge Base{% endblock %}
+{% block content %}
+<h1 class="mb-3"><i class="fas fa-book me-2"></i>Knowledge Base</h1>
+<p class="text-muted small">Articles your support team has shared with you. Search by title or body.</p>
+
+<form method="get" class="mb-3">
+    <div class="input-group">
+        <input type="search" name="q" class="form-control" placeholder="Search..." value="{{ query }}">
+        <button class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light"><tr><th>Title</th><th>Updated</th></tr></thead>
+            <tbody>
+                {% for a in articles %}
+                <tr>
+                    <td><a href="{% url 'portal:kb_detail' a.slug %}"><strong>{{ a.title }}</strong></a>
+                        {% if a.is_global %}<span class="badge text-bg-secondary">general</span>{% endif %}
+                    </td>
+                    <td><span data-utc="{{ a.updated_at|date:'c' }}">{{ a.updated_at|date:'Y-m-d' }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="2" class="text-center text-muted py-4">{% if query %}No matches.{% else %}No articles available yet.{% endif %}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

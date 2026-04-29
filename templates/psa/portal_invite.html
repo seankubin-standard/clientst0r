@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Invite portal user — {{ org.name }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-2">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'accounts:organization_list' %}">Clients</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:client_account' org.id %}">{{ org.name }}</a></li>
+        <li class="breadcrumb-item active">Invite portal user</li>
+    </ol>
+</nav>
+
+<h4 class="mb-3"><i class="fas fa-user-plus me-2"></i>Invite a portal user — {{ org.name }}</h4>
+<p class="text-muted small">Sends an email with a one-time set-password link. The recipient creates their password, then signs in at <code>/portal/</code> to view tickets and any KB articles you've made client-visible.</p>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="mb-2">
+            <label class="form-label">Email</label>
+            <input type="email" name="email" class="form-control" required maxlength="254"
+                   placeholder="contact@{{ org.slug }}.com">
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Full name (optional)</label>
+            <input type="text" name="full_name" class="form-control" maxlength="200">
+        </div>
+        <div class="alert alert-info small mb-0">
+            <strong>What this does:</strong>
+            <ul class="mb-0">
+                <li>Creates a Django user (or reuses an existing one with that email).</li>
+                <li>Adds a <em>read-only</em> Membership in <strong>{{ org.name }}</strong>.</li>
+                <li>Enables the customer portal for {{ org.name }} if it isn't already.</li>
+                <li>Emails a tokenised password-set link.</li>
+            </ul>
+        </div>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Send invite</button>
+        <a href="{% url 'psa:client_account' org.id %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

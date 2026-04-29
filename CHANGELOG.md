@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.106] - 2026-04-29
+
+### Added — Client portal users + KB articles for clients
+- **Invite portal user** flow at `/psa/clients/<id>/invite-portal/` — admin enters email + name, system creates a Django `User` (or reuses existing matching email), adds a read-only `Membership` in the client org, enables the portal for that org if it isn't already, generates a one-time tokenised set-password link via `default_token_generator`, and emails the invitee. Audit-logged.
+- **`accounts:portal_set_password`** consumes the invite token at `/account/portal/set-password/<uidb64>/<token>/`. Requires the recipient to set a password ≥12 chars; on success signs them in and redirects to `/portal/`.
+- **`docs.Document.is_client_visible`** boolean — staff toggle so a doc is shown in the customer portal KB.
+- **`/portal/kb/`** — KB browser inside the portal. Lists documents with `is_client_visible=True AND is_published=True` AND (`is_global=True` OR scoped to the user's client org). Search box, deep-link to article detail. New nav entry on the portal layout.
+- **`/portal/kb/<slug>/`** — read-only article detail. Markdown content rendered as line-broken text, HTML content rendered as `safe` (trusted staff-published content).
+- **Invite portal user button** on the Client Account page next to "Client profile".
+
+### Notes on the data model
+There is **no separate "client user" table**. A client user is a regular `auth.User` with an active `accounts.Membership` in a client `core.Organization` whose `psa.ClientPSASettings.portal_enabled=True`. The `portal_required` decorator gates portal views on that combination. Staff users (superuser / `is_staff`) are NOT auto-granted portal access — the portal is for clients only.
+
+Migrations: `docs.0013_document_is_client_visible`.
+
 ## [3.17.105] - 2026-04-29
 
 ### Added — Apply workflows (multi-step processes) to native PSA tickets

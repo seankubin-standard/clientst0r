@@ -90,5 +90,6 @@ urlpatterns = [
     path('clients/<int:org_id>/account/', views.client_account, name='client_account'),
     path('clients/<int:org_id>/charge/', views.charge_add, name='charge_add'),
     path('clients/<int:org_id>/charge/invoice/', views.charge_invoice, name='charge_invoice'),
+    path('clients/<int:org_id>/invite-portal/', views.portal_invite, name='portal_invite'),
     path('aging/', views.aging_report, name='aging_report'),
 ]

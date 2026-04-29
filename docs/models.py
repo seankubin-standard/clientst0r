@@ -64,6 +64,12 @@ class Document(BaseModel):
     is_template = models.BooleanField(default=False, help_text='Is this a reusable template?')
     is_archived = models.BooleanField(default=False)
     is_global = models.BooleanField(default=False, help_text='Global KB - visible to all organizations')
+    is_client_visible = models.BooleanField(
+        default=False,
+        help_text='Visible to clients in the customer portal /portal/kb/ — '
+                  'global articles surface to every portal user, '
+                  'org-scoped articles only to that client.'
+    )
 
     # File upload fields
     file = models.FileField(

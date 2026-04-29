@@ -289,3 +289,50 @@ def quote_sign(request, token):
         'organization': quote.client_org,
         'line_items': quote.line_items.all(),
     })
+
+
+# ---------------------------------------------------------------------------
+# Customer portal KB — articles staff have marked is_client_visible=True
+# ---------------------------------------------------------------------------
+
+@portal_required
+def kb_list(request):
+    """List KB articles available to the requesting client.
+
+    Visible: documents where is_client_visible=True AND is_published=True
+    AND (is_global=True OR organization == client's org).
+    """
+    from django.db.models import Q
+    from docs.models import Document
+    m = request.portal_membership
+    q = (request.GET.get('q') or '').strip()
+    qs = Document.objects.filter(
+        is_client_visible=True, is_published=True, is_archived=False,
+    ).filter(
+        Q(is_global=True) | Q(organization=m.organization)
+    )
+    if q:
+        qs = qs.filter(Q(title__icontains=q) | Q(body__icontains=q))
+    return render(request, 'portal/kb_list.html', {
+        'articles': qs.order_by('-updated_at')[:200],
+        'query': q,
+        'organization': m.organization,
+    })
+
+
+@portal_required
+def kb_detail(request, slug):
+    """Show a single KB article. Same visibility rule as kb_list."""
+    from django.db.models import Q
+    from docs.models import Document
+    m = request.portal_membership
+    qs = Document.objects.filter(
+        is_client_visible=True, is_published=True, is_archived=False,
+    ).filter(
+        Q(is_global=True) | Q(organization=m.organization)
+    )
+    article = get_object_or_404(qs, slug=slug)
+    return render(request, 'portal/kb_detail.html', {
+        'article': article,
+        'organization': m.organization,
+    })

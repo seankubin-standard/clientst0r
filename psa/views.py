@@ -3005,3 +3005,106 @@ def ticket_launch_workflow(request, ticket_number):
         'ticket': ticket,
         'processes': processes,
     })
+
+
+# ---------------------------------------------------------------------------
+# Invite a client portal user — creates User + Membership + emails a set-password link
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_admin
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def portal_invite(request, org_id):
+    """
+    Send a portal invite to a client user. Creates a Django User (with
+    an unusable password), a Membership in the client org, and emails
+    a one-time tokenized set-password link.
+    """
+    from django.contrib.auth.models import User
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.encoding import force_bytes
+    from django.utils.http import urlsafe_base64_encode
+    from django.urls import reverse
+    from django.core.mail import EmailMultiAlternatives
+    from accounts.models import Membership, Role
+    from core.models import Organization
+    from psa.models import ClientPSASettings
+
+    org = get_object_or_404(Organization, pk=org_id)
+
+    if request.method == 'POST':
+        email = (request.POST.get('email') or '').strip().lower()
+        full_name = (request.POST.get('full_name') or '').strip()
+        if not email or '@' not in email:
+            messages.error(request, 'A valid email is required.')
+            return redirect(request.path)
+
+        # Ensure the org has portal_enabled — invite is meaningless otherwise.
+        settings_row, _ = ClientPSASettings.objects.get_or_create(organization=org)
+        if not settings_row.portal_enabled:
+            settings_row.portal_enabled = True
+            settings_row.save(update_fields=['portal_enabled', 'updated_at'])
+            messages.info(request, f'Enabled the customer portal for {org.name}.')
+
+        first, _, last = full_name.partition(' ')
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={'username': email[:150], 'first_name': first[:30],
+                      'last_name': last[:150], 'is_active': True},
+        )
+        if created:
+            user.set_unusable_password()
+            user.save()
+        # Force username sync if the User existed but had no email match
+        if not user.username:
+            user.username = email[:150]
+            user.save(update_fields=['username'])
+
+        Membership.objects.update_or_create(
+            user=user, organization=org,
+            defaults={'role': Role.READONLY, 'is_active': True,
+                      'invited_by': request.user},
+        )
+
+        # Build one-time password-set link
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        path = reverse('accounts:portal_set_password',
+                       kwargs={'uidb64': uid, 'token': token})
+        link = request.build_absolute_uri(path)
+
+        portal_url = request.build_absolute_uri('/portal/')
+        subject = f'Your support portal account for {org.name}'
+        text = (
+            f'Hello{(" " + first) if first else ""},\n\n'
+            f'You have been invited to access the support portal for {org.name}.\n\n'
+            f'1. Click the link below to set your password:\n   {link}\n\n'
+            f'2. After setting your password, sign in at:\n   {portal_url}\n\n'
+            f'From there you can submit tickets, see updates from our support '
+            f'team, and read knowledge-base articles we make available.\n\n'
+            f'If you did not expect this invitation, you can safely ignore this email.\n'
+        )
+        try:
+            msg = EmailMultiAlternatives(subject, text, to=[email])
+            msg.send(fail_silently=False)
+        except Exception as exc:
+            messages.warning(request, f'User created but email send failed: {exc}. Invite link: {link}')
+        else:
+            messages.success(request, f'Invited {email} to the {org.name} portal.')
+
+        AuditLog.log(
+            user=request.user, action='create',
+            organization=org,
+            object_type='auth.User', object_id=user.pk,
+            object_repr=f'portal user {email}',
+            description=f'Invited {email} to {org.name} portal (membership=readonly)',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        return redirect('psa:client_account', org_id=org.pk)
+
+    # GET — show the invite form
+    return render(request, 'psa/portal_invite.html', {
+        'org': org,
+    })

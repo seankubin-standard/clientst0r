@@ -64,4 +64,6 @@ urlpatterns = [
     path('members/<int:user_id>/assign-role/', roles_views.member_role_assign, name='member_role_assign'),
     path('members/<int:member_id>/suspend/', views.member_suspend, name='member_suspend'),
     path('members/<int:member_id>/reactivate/', views.member_reactivate, name='member_reactivate'),
+    # Portal user invite — consume the tokenized password-set link.
+    path('portal/set-password/<uidb64>/<token>/', views.portal_set_password, name='portal_set_password'),
 ]
