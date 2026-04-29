@@ -5,6 +5,12 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.144] - 2026-04-29
+
+### Docs
+- README "What's New" section refreshed for v3.17.121 → v3.17.143. Version badge bumped 3.17.120 → 3.17.143. Phases 2 + 3 added; AI Triage, admin assignment, KB perms, dashboards, integration status pills, KB categories tree all called out.
+- FEATURES.md now documents the full Reporting + BI surface (canonical query layer, four profitability reports, effective hourly rate, revenue leakage, SLA trends, margin analytics, custom dashboards with 12 starter widgets), the Resource Management module (skills / certs / working hours / PTO / holidays / billable targets / tech cost rates / capacity report / skill ranking), and the AI Suggestions ticket button.
+
 ## [3.17.143] - 2026-04-29
 
 ### Added — Phase 3.4: SLA trend report + Margin analytics by service line

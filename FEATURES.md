@@ -686,6 +686,88 @@ Workflows (Process templates) and PSA tickets are now tightly coupled. A workflo
 - **One-Click Restore** - Restore from backup via web interface
 - **Data Integrity** - Comprehensive validation, database constraints, ACID transactions, rollback
 
+## 📊 Financial Reporting + BI *(Phase 3 — v3.17.139→v3.17.143)*
+
+### Canonical query layer
+- **`reports/queries.py`** — single source of truth for revenue / hours / costs / margin queries.
+- Functions: `revenue_by_client`, `hours_minutes_by_client`, `hours_minutes_by_tech`, `cost_estimate_by_client`, `profitability_by_client / by_tech / by_contract / by_project`, `effective_hourly_rate_by_client / by_tech`, `revenue_leakage`, `sla_trend_by_priority / by_client`, `margin_analytics_by_service_line`, `hours_minutes_by_contract / by_project`, `revenue_by_contract / by_project`.
+- All take `(start_date, end_date, organization=None)` and return list-of-dicts (no querysets) so JSON / CSV export and template rendering both work.
+- Uses **`resourcing.TechCostRate`** (effective-dated $/hr per tech) for accurate cost rolls — historical reports stay accurate after a raise.
+
+### Profitability reports
+- **By client** *(v3.17.139)* — `/reports/psa/profitability-by-client/`. Date-range picker, summary card (revenue / cost / margin / margin %), sortable table, color-coded margin column, CSV export.
+- **By tech** *(v3.17.140)* — same shape; adds utilization %.
+- **By contract** *(v3.17.140)* — uses `Invoice.source_contract` FK; adds bundled subscriptions.
+- **By project** *(v3.17.140)* — uses `Invoice.source_ticket__project` relationship.
+
+### Revenue + leakage analysis
+- **Effective hourly rate** *(v3.17.141)* — tabbed By Client / By Tech. Per-tech version shows **realization %** (effective_rate ÷ cost_rate × 100; target ≥ 200%).
+- **Revenue leakage** *(v3.17.141)* — three categories on one page:
+  1. Stale unbilled time — billable `TicketTimeEntry` rows ≥ N days old not linked to any non-void invoice (strict invoice-link check via `InvoiceLineItem.source='time'`)
+  2. Expired contract blocks — paid-for hours never used
+  3. Stuck draft invoices — drafts older than 14 days with deep-link "Open invoice" buttons
+- Grand total at the top + per-section subtotals + single combined CSV export.
+
+### SLA + margin analytics
+- **SLA trend report** *(v3.17.143)* — `/reports/psa/sla-trends/`. Two stacked Chart.js line charts (response + resolution breach % per priority over time), bucketed day/week/month. Top-N worst-clients side panel.
+- **Margin analytics by service line** *(v3.17.143)* — tabbed by `ticket_type` / `closure_category` / `queue`. Bar chart + sortable table.
+
+### Custom dashboards with widgets *(v3.17.142)*
+- Per-org or global dashboards (`reports.Dashboard`).
+- **12 starter widgets** in `reports/widget_sources.py` registry:
+  - Metric: revenue this period, open ticket count, SLA-overdue count, unbilled hours at risk, active techs, avg time-to-resolve
+  - Table: top clients by revenue, tickets by priority, my assigned tickets
+  - Chart: revenue trend bar, tickets-opened line, billable-vs-nonbillable pie
+  - Plus: SLA breach trend 30d (chart_line)
+- Widget CRUD: per-dashboard "Add widget" button → form with data-source select + title.
+- Chart.js 4.4.1 (CDN, conditionally loaded only if a chart widget is present).
+- **Seeded "MSP Overview" global dashboard** with all 12 starter widgets — runs on `Apply` via `seed_default_dashboard` mgmt command.
+- Bad widgets render an inline error chip — never crash the whole dashboard.
+
+## 🧑‍💼 Resource Management *(Phase 2 — v3.17.132→v3.17.138)*
+
+### Skills, certifications, working hours *(v3.17.132)*
+- **`UserSkill`** — proficiency tiers (beginner / intermediate / advanced / expert), years of experience, notes.
+- **`UserCertification`** — issuer, credential ID, issued/expires dates, verification URL, attachment upload. `is_expired` and `expires_soon` (within 60 days) flags.
+- **`WorkingHours`** — per user, per weekday, multiple windows allowed (split shifts). Times in user's profile timezone.
+- **`/resourcing/me/`** — three-card self-service profile page.
+- **`/resourcing/roster/`** — staff-only view: every internal user with skill counts, cert counts, "working now" indicator (green/grey dot), expiring-cert warnings.
+- **`UserProfile.is_working_now()`** helper — used by capacity reporting + GPS off-shift suppression (Phase 8.5).
+
+### PTO + holidays + billable targets *(v3.17.137)*
+- **`Holiday`** — org-scoped or global, recurring-yearly flag, `is_holiday(date, org)` classmethod.
+- **`LeaveRequest`** — 8 leave types (vacation / sick / personal / bereavement / jury / parental / unpaid / other); pending → approved/denied workflow with approver, decided_at, decision_note. Half-day flag. `total_days` property. `is_user_on_leave(user, date)` helper.
+- **`BillableTarget`** — per-tech weekly hours goal (default 32h/wk).
+- Pages: `/resourcing/leave/` (my requests), `/resourcing/leave/approvals/` (staff queue), `/resourcing/holidays/` (admin).
+- **`working_days_in_period(user, start, end, org)`** subtracts WorkingHours gaps + holidays + approved leave. Used by capacity reporting and GPS off-shift suppression (Phase 8.5).
+- Audit-logged: every leave decision.
+
+### Tech cost rates *(v3.17.140)*
+- **`TechCostRate`** — effective-dated loaded $/hr per tech.
+- **`rate_for(user, target_date)`** — picks the most-recent `effective_from <= target_date`. Falls back to `DEFAULT_LOADED_RATE = $60/hr`.
+- Cost-rate management UI at `/resourcing/cost-rates/`.
+
+### Capacity report + skill ranking *(v3.17.138)*
+- **Capacity report** at `/resourcing/capacity/` — staff/superuser. Per-tech target / scheduled / actual hours + utilization %; window: 1 / 2 / 4 / 8 / 12 weeks.
+- Color-coded utilization (red <80%, amber 80-95%, green 95-110%, blue >110%).
+- **Skill ranking** on the dispatch board — per-card "Suggest" lightbulb popover ranks candidate techs by:
+  - +30 per matching `UserSkill` keyword in subject/description
+  - +20 client-org membership
+  - +15 on-shift now (`UserProfile.is_working_now()`)
+  - −50 approved `LeaveRequest` covering today
+  - −30 if already 5+ open tickets assigned
+
+## 🔐 AI Suggestions on tickets *(v3.17.125)*
+
+Per-ticket "AI Suggestions" button surfaces handling guidance without acting on the ticket.
+
+- **Read-only advisory output** — not a reply to send, not an action to apply. Renders as markdown with an unmissable amber warning banner.
+- **Reuses existing AI guardrails** from `psa_ai/services/guardrails.py`: subject blocklist, per-user rate limit (10/hr), org token quota, NFKC + ZWJ input sanitization, prompt-injection envelope, vault context **excluded** (no-secrets-leak test still green), tenant isolation at queryset + service layer.
+- **`AISuggestion(kind='triage')`** with `risk_level='low'` (advisory only — nothing is applied).
+- **`RoleTemplate.psa_ai_request_triage`** boolean (default True for all tech roles).
+- **Mark as helpful / Reject** buttons write to `AIActionLog` for feedback.
+- Confidence indicator + model name + generated time-ago shown on each suggestion.
+
 ## 🚀 Performance & Deployment
 - **Optimization** - Database indexing, query optimization, caching, lazy loading, pagination
 - **Scalability** - Horizontal scaling, database replication, CDN integration, minified assets

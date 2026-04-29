@@ -1,7 +1,7 @@
 # Client St0r
 
 [![GitHub Stars](https://img.shields.io/github/stars/agit8or1/clientst0r?style=social)](https://github.com/agit8or1/clientst0r/stargazers)
-[![Version 3.17.120](https://img.shields.io/badge/version-3.17.120-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
+[![Version 3.17.143](https://img.shields.io/badge/version-3.17.143-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green)](https://github.com/agit8or1/clientst0r)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-blue)](https://www.djangoproject.com/)
@@ -344,33 +344,56 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 
 ### Latest Release - v3.17.x (April 2026)
 
-**🎉 New in v3.17 (latest: v3.17.120):**
+**🎉 New in v3.17 (latest: v3.17.143):**
 
-- **🎫 Native PSA / Service Desk** — full ticketing system across **12+ phases** (v3.17.83 → v3.17.120): tickets / queues / SLA engine / time tracking / service catalog / watchers / canned replies / @mentions / similar-tickets / merge / projects with tasks & milestones / recurring tickets / KB linking / approvals / contracts (block-hours, retainer, managed-services with auto-tracked hours and per-priority SLA matrix) / quotes & estimates with line items and convert-to-ticket on accept + **e-signature** / per-ticket expenses / **invoices & payments with branded PDFs / per-client account view + aging report / charges** / **dispatch board with drag-and-drop reassignment** / **workflow rules engine (MSP-wide or per-client) with visual rule builder** / **workflows embedded in tickets with inline checklist + sign-off audit history** / customer portal at `/portal/` **with per-org branding + vault RBAC** / IMAP email-to-ticket / distributor integrations (Ingram Micro, Pax8, TD Synnex) / **QuickBooks Online + Xero accounting push** / AI-assisted reply & action suggestions
+- **🎫 Native PSA / Service Desk** — full ticketing system across **15+ phases** (v3.17.83 → v3.17.143): tickets / queues / SLA engine / time tracking / service catalog / watchers / canned replies / @mentions / similar-tickets / merge / projects with tasks & milestones / recurring tickets / KB linking / approvals / contracts (block-hours, retainer, managed-services with auto-tracked hours and per-priority SLA matrix) / quotes & estimates with line items and convert-to-ticket on accept + **e-signature** / per-ticket expenses / **invoices & payments with branded PDFs / per-client account view + aging report / charges** / **dispatch board with drag-and-drop reassignment** / **workflow rules engine (MSP-wide or per-client) with visual rule builder** / **workflows embedded in tickets with inline checklist + sign-off audit history** / customer portal at `/portal/` **with per-org branding + vault RBAC** / IMAP email-to-ticket / distributor integrations (Ingram Micro, Pax8, TD Synnex) / **QuickBooks Online + Xero accounting push** / AI-assisted reply & action suggestions
+- **📊 Financial reporting + BI** *(Phase 3 — v3.17.139→v3.17.143)*: canonical `reports/queries.py` query layer; profitability reports (by client / tech / contract / project); effective hourly rate (with realization %); revenue leakage (stale unbilled, expired contract blocks, stuck drafts); SLA trends (per-priority breach % over time + worst-clients); margin analytics by service line; 12-widget custom dashboards with Chart.js; seeded "MSP Overview" default dashboard.
+- **🧑‍💼 Resource management** *(Phase 2 — v3.17.132→v3.17.138)*: skills + certifications + working hours; PTO / Holiday / LeaveRequest with approval workflow; BillableTarget; effective-dated TechCostRate ($/hr); tech roster + capacity report (forecast vs scheduled vs actual); skill ranking on dispatch board.
+- **🔐 AI Suggestions on tickets** *(v3.17.125)* — "AI Suggestions" button on every PSA ticket gives techs handling guidance. Full guardrails: subject blocklist, rate limit, daily token quota, NFKC sanitization, prompt-injection envelope, vault excluded, tenant isolation, role-template permission. Prominent advisory warning banner on output.
 
-**🆕 Latest additions (v3.17.113 → v3.17.120):**
+**🆕 Recent additions (v3.17.121 → v3.17.143):**
 
-UI / dashboards:
-- **Quick Actions wizard** on the per-org and global dashboard — large icon tiles for the 8 most-used create flows (New Ticket, Add Asset, New Password, Add Document, Scan Receipt, Run Workflow, New Quote, New Invoice). Feature-flagged.
-- **Grid ⇄ List toggle on the Organizations index** for installs with 1000s of clients — compact table, search, pagination, annotated counts, persisted in localStorage.
-- **~30% page-density reduction site-wide** plus a phase-2 layer that shrinks dashboard tiles, stat cards, and FA icons.
-- **Dark-mode contrast fix** across all 22 PSA + portal list pages — single global CSS rule re-binds Bootstrap table vars under `[data-bs-theme="dark"]`.
-- **Condensed What's New** on Settings → Updates — theme-aware, bullet-list style, no more dark-on-dark.
+Financial reporting + BI (Phase 3):
+- **Canonical `reports/queries.py`** *(v3.17.139)* — single source of truth for revenue / hours / costs / margin queries.
+- **Profitability by client / tech / contract / project** *(v3.17.139–140)* — date-range pickers, summary cards, color-coded margin column, CSV export.
+- **TechCostRate model** *(v3.17.140)* — effective-dated $/hr per tech; historical reports stay accurate after raises.
+- **Effective hourly rate report** *(v3.17.141)* — by client / by tech with realization %; industry-target color coding.
+- **Revenue leakage report** *(v3.17.141)* — stale unbilled time, expired contract blocks, stuck draft invoices; deep-link "Generate invoice" buttons.
+- **SLA trend report** *(v3.17.143)* — per-priority breach % over time (line charts, day/week/month buckets) + worst-clients side panel.
+- **Margin analytics by service line** *(v3.17.143)* — revenue vs cost grouped by ticket_type / closure_category / queue.
+- **Custom dashboards with widgets** *(v3.17.142)* — 12 starter widgets (metric cards, tables, line/bar/pie charts) + per-dashboard CRUD; seeded "MSP Overview" dashboard runs on Apply.
+
+Resource management (Phase 2):
+- **Skills + certifications + working hours** *(v3.17.132)* — `/resourcing/me/` for self-service, `/resourcing/roster/` for staff.
+- **Holidays + LeaveRequest + BillableTarget** *(v3.17.137)* — PTO approval workflow, recurring-yearly holidays, weekly billable targets.
+- **Capacity report + skill ranking** *(v3.17.138)* — utilization % per tech over 1-12 week windows; "Suggest" popover on dispatch board ranks techs by skill match + availability.
 
 PSA workflow integration:
-- **Run Workflow → spawns a ticket** *(v3.17.117)* — running a workflow always creates a PSA ticket and embeds the checklist on it.
-- **Inline stage checklist + AJAX sign-off** *(v3.17.117)* — mark stages complete from the ticket page, no separate execution view needed. Live progress bar.
-- **Sign-off audit history on the ticket** *(v3.17.118)* — collapsible timeline of every audit-log event (who signed off on which stage, when).
-- **Attach a workflow at ticket creation** *(v3.17.120)* — optional picker on the New Ticket form spawns the workflow execution at create time.
-- **Launch workflow on existing tickets** *(v3.17.105)* — button on the ticket page picks any template and embeds it.
+- **Workflows embedded in tickets** *(v3.17.117–120)* — running a workflow spawns a ticket; inline checklist + AJAX sign-off + audit history; pick a workflow at ticket creation.
+- **Run Workflow tile** points to `/processes/` *(v3.17.119)*.
+- **Public roadmap** *(v3.17.136)* — `/core/roadmap/` renders `docs/ROADMAP.md` live; linked from user dropdown.
+
+Permissions / RBAC:
+- **Admins can assign tickets / tasks / projects / workflows / recurring schedules** *(v3.17.129)* — every assignment surface gated to org admins, owners, staff, superusers; eligible-tech queryset includes all org members + staff.
+- **5 KB RoleTemplate permissions** *(v3.17.134)* — `kb_view_articles`, `kb_edit_articles`, `kb_move_articles`, `kb_manage_categories`, `kb_publish_articles`. Assignable from `/accounts/roles/`.
+
+UI / dashboards:
+- **Quick Actions wizard** *(v3.17.114)* — 8-tile create-flow shortcuts on the per-org + global dashboard.
+- **Grid ⇄ List toggle** on Organizations *(v3.17.115)*, Integrations *(v3.17.135)*, Service Catalog *(v3.17.135)*.
+- **Integration status pills** *(v3.17.135)* — OFF / ON·Working / ON·Broken (with error tooltip) / ON·Unknown — most prominent element on each tile.
+- **KB categories sidebar tree** *(v3.17.128)* + bulk move + permission groups *(v3.17.134)*.
+- **30% page-density reduction site-wide** *(v3.17.114)* + phase-2 *(v3.17.116)*.
+- **Dark-mode contrast fix** across all PSA + portal list pages *(v3.17.113)*.
+
+Bugs fixed:
+- **Workflow picker on New Ticket form was empty in Global view** *(v3.17.122)* — list all published workflows, not just current-org-scoped.
+- **`create_default_membership` signal disabled by default** *(v3.17.115)* — new users no longer auto-attach to the first active org as Read-Only.
 
 Other:
-- **Workflow Rules are MSP-wide by default** *(v3.17.111)* — leave "Applies to" on "All clients" for global rules, or scope to one. Cron for recurring tickets / email polling / distributor health probes auto-installed.
-- **Vault RBAC for portal users** *(v3.17.107)* — four access modes; portal users only see vault entries explicitly opened to them.
-- **Per-org portal branding** *(v3.17.112)* — portal navbar shows the client's logo when set.
-- **All 6 PSA forms work in Global view** *(v3.17.117)* — Project / Recurring / Contract / Email Config / Quote / Invoice no longer require a current client; pick one inside the form.
-- **PSA-aware Global KB navbar link** *(v3.17.114)* — hidden when PSA is on (lives under PSA → KB), shown when PSA is off.
-- **`create_default_membership` signal disabled by default** *(v3.17.115)* — new users no longer auto-attach to the first active org as Read-Only members.
+- **Vehicle Receipt Scanning with AI OCR** — Claude vision auto-extracts vendor/date/amount/tax/category/odometer.
+- **Install App / Add to Home Screen** at `/core/install/` — QR code, one-tap PWA install, iOS/Android/desktop guides.
+- **Automated Security Scan Alerts** — opt-in daily scans email superusers on findings.
+- **Active Client Indicator** — amber pill with pulsing dot in navbar.
 - **🧾 Vehicle Receipt Scanning with AI OCR** - Photograph receipts directly from your phone; Claude vision API automatically extracts vendor, date, amount, tax, expense category, and odometer reading; receipts tab on vehicle detail shows per-category cost summary cards (Fuel, Maintenance, Repair, Total); duplicate prevention via SHA-256 image hashing
 - **📱 Install App / Add to Home Screen** - Dedicated install page (`/core/install/`) with QR code of your server URL, downloadable QR PNG, one-tap PWA install button (Android/desktop), and step-by-step instructions for Android Chrome, iPhone/iPad Safari, and desktop; per-vehicle receipt shortcuts also available
 - **🔒 Automated Security Scan Alerts** - Opt-in daily scheduled security scan emails all superusers when vulnerabilities are found; toggle on/off from Security Dashboard
@@ -814,7 +837,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📊 Project Status
 
-- **Version**: 3.17.120
+- **Version**: 3.17.143
 - **Release Date**: April 2026
 - **Status**: Production Ready
 - **Maintained**: Yes
