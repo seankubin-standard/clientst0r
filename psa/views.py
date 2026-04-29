@@ -2283,7 +2283,12 @@ def workflow_rule_form(request, pk=None):
         'trigger_choices': WorkflowRule.TRIGGER_CHOICES,
         'conditions_pretty': _json.dumps(item.conditions if item else {}, indent=2),
         'actions_pretty': _json.dumps(item.actions if item else [], indent=2),
+        'conditions_json': _json.dumps(item.conditions if item else {}),
+        'actions_json': _json.dumps(item.actions if item else []),
         'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
+        'priorities': TicketPriority.objects.all().order_by('sort_order'),
+        'queues': Queue.objects.filter(is_active=True).order_by('name'),
+        'statuses': TicketStatus.objects.all().order_by('sort_order'),
     })
 
 
@@ -3117,4 +3122,59 @@ def portal_invite(request, org_id):
     # GET — show the invite form
     return render(request, 'psa/portal_invite.html', {
         'org': org,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Dispatch board — drag-and-drop reassignment endpoint
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def dispatch_assign(request):
+    """
+    JSON endpoint hit by the dispatch board's drag-and-drop handler.
+    POST: ticket_number, assignee (user pk or 'unassigned').
+    Defence-in-depth: re-checks the ticket is in scope for the user's
+    current org filter.
+    """
+    from django.http import JsonResponse
+    from django.contrib.auth.models import User
+    org = get_request_organization(request)
+    qs = Ticket.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    tn = (request.POST.get('ticket_number') or '').strip()
+    assignee = (request.POST.get('assignee') or '').strip()
+    if not tn:
+        return JsonResponse({'error': 'ticket_number required'}, status=400)
+    try:
+        ticket = qs.get(ticket_number=tn)
+    except Ticket.DoesNotExist:
+        return JsonResponse({'error': 'ticket not found'}, status=404)
+    old_assignee = ticket.assigned_to
+    if assignee in ('', 'unassigned'):
+        ticket.assigned_to = None
+    else:
+        try:
+            ticket.assigned_to = User.objects.get(pk=int(assignee))
+        except (User.DoesNotExist, ValueError):
+            return JsonResponse({'error': 'invalid assignee'}, status=400)
+    ticket.save(update_fields=['assigned_to', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=ticket.organization,
+        object_type='psa.Ticket', object_id=ticket.pk,
+        object_repr=ticket.ticket_number,
+        description=f'Dispatch DnD: {ticket.ticket_number} reassigned '
+                    f'from {old_assignee or "unassigned"} → {ticket.assigned_to or "unassigned"}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    return JsonResponse({
+        'ok': True,
+        'ticket_number': ticket.ticket_number,
+        'assigned_to': ticket.assigned_to.username if ticket.assigned_to else '',
+        'assigned_to_id': ticket.assigned_to_id or 0,
     })

@@ -1960,3 +1960,204 @@ class AccountingConnectionTests(TestCase):
         p = get_accounting_provider(c)
         self.assertEqual(p.provider_name, 'QuickBooks Online')
         self.assertIn('quickbooks.api.intuit.com', p.base_url)
+
+
+class WorkflowOnTicketTests(TestCase):
+    """v3.17.105: Process workflows can attach to native PSA tickets."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ACME WO', slug='acme-wo')
+        self.user = User.objects.create_user('wo', password='pw', email='wo@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status = TicketStatus.objects.filter(slug='new').first()
+
+    def test_processexecution_native_psa_ticket_field_exists(self):
+        from processes.models import ProcessExecution
+        f = ProcessExecution._meta.get_field('native_psa_ticket')
+        self.assertTrue(f.null)
+        self.assertEqual(f.related_model.__name__, 'Ticket')
+
+    def test_workflow_executions_query_for_ticket(self):
+        from processes.models import ProcessExecution, Process
+        from psa.models import Ticket
+        proc = Process.objects.create(
+            organization=self.org, title='Onboarding', slug='wo-onboard',
+            description='',
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='Test ticket',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        ex = ProcessExecution.objects.create(
+            process=proc, organization=self.org,
+            assigned_to=self.user, started_by=self.user,
+            status='in_progress', native_psa_ticket=t,
+        )
+        # Reverse query
+        self.assertEqual(t.process_executions.count(), 1)
+        self.assertEqual(t.process_executions.first().pk, ex.pk)
+
+
+class PortalUserInviteTests(TestCase):
+    """v3.17.106: Invite-portal-user flow + Document.is_client_visible."""
+
+    def test_document_is_client_visible_field_default_false(self):
+        from docs.models import Document
+        from core.models import Organization
+        org = Organization.objects.create(name='ACME PI', slug='acme-pi')
+        d = Document.objects.create(
+            organization=org, title='How to file a ticket',
+            slug='how-to-file', body='steps', content_type='html',
+        )
+        self.assertFalse(d.is_client_visible)
+
+
+class PortalVaultRBACTests(TestCase):
+    """v3.17.107: client_visible + access modes + portal visibility helper."""
+
+    def setUp(self):
+        from core.models import Organization
+        self.org = Organization.objects.create(name='ACME RBAC', slug='acme-rbac')
+        self.client_user = User.objects.create_user('client1', password='pw', email='c1@x.com')
+        self.outsider = User.objects.create_user('outsider', password='pw', email='o@x.com')
+        # The accounts.create_default_membership signal auto-attaches new users
+        # to the first active org. Strip that membership so outsider is truly an outsider.
+        Membership.objects.filter(user=self.outsider).delete()
+        Membership.objects.update_or_create(
+            user=self.client_user, organization=self.org,
+            defaults={'role': Role.READONLY, 'is_active': True},
+        )
+
+    def _make(self, **kwargs):
+        from vault.models import Password
+        defaults = dict(
+            organization=self.org, title='Email server',
+            password_type='email', is_personal=False,
+        )
+        defaults.update(kwargs)
+        p = Password(**defaults)
+        # set_password() requires the encryption helpers; we skip it for visibility tests
+        p.save()
+        return p
+
+    def test_personal_password_never_portal_visible(self):
+        from vault.models import Password
+        p = self._make(is_personal=True, client_visible=True, client_access_mode='all_org')
+        self.assertFalse(p.visible_to_portal_user(self.client_user))
+
+    def test_client_visible_false_blocks_all(self):
+        p = self._make(client_visible=False, client_access_mode='all_org')
+        self.assertFalse(p.visible_to_portal_user(self.client_user))
+
+    def test_mode_none_blocks_even_when_client_visible(self):
+        p = self._make(client_visible=True, client_access_mode='none')
+        self.assertFalse(p.visible_to_portal_user(self.client_user))
+
+    def test_all_org_mode_grants_member(self):
+        p = self._make(client_visible=True, client_access_mode='all_org')
+        self.assertTrue(p.visible_to_portal_user(self.client_user))
+
+    def test_all_org_mode_denies_non_member(self):
+        p = self._make(client_visible=True, client_access_mode='all_org')
+        self.assertFalse(p.visible_to_portal_user(self.outsider))
+
+    def test_specific_users_requires_explicit_grant(self):
+        p = self._make(client_visible=True, client_access_mode='specific_users')
+        # Member but not in allowed_users → denied
+        self.assertFalse(p.visible_to_portal_user(self.client_user))
+        p.client_allowed_users.add(self.client_user)
+        # Now allowed
+        self.assertTrue(p.visible_to_portal_user(self.client_user))
+
+    def test_specific_users_denies_non_member_even_if_in_list(self):
+        p = self._make(client_visible=True, client_access_mode='specific_users')
+        p.client_allowed_users.add(self.outsider)  # bug: outsider not in org
+        self.assertFalse(p.visible_to_portal_user(self.outsider),
+                         'visibility helper must check Membership defence-in-depth')
+
+    def test_org_admin_managed_uses_specific_users_logic(self):
+        p = self._make(client_visible=True, client_access_mode='org_admin_managed')
+        self.assertFalse(p.visible_to_portal_user(self.client_user))
+        p.client_allowed_users.add(self.client_user)
+        self.assertTrue(p.visible_to_portal_user(self.client_user))
+
+    def test_unauthenticated_user_denied(self):
+        from django.contrib.auth.models import AnonymousUser
+        p = self._make(client_visible=True, client_access_mode='all_org')
+        self.assertFalse(p.visible_to_portal_user(AnonymousUser()))
+
+
+class WorkflowRuleMSPWideTests(TestCase):
+    """v3.17.111: Rules with org=None apply to every ticket."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org_a = Organization.objects.create(name='Client A', slug='client-a')
+        self.org_b = Organization.objects.create(name='Client B', slug='client-b')
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status = TicketStatus.objects.filter(slug='new').first()
+
+    def test_msp_wide_rule_fires_on_every_client(self):
+        """A rule with organization=None should match every ticket."""
+        from psa.models import Ticket, WorkflowRule
+        WorkflowRule.objects.create(
+            organization=None,  # MSP-wide
+            name='Tag everything',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'add_tag', 'tag': 'msp-wide-tag'}],
+            is_active=True,
+        )
+        # Ticket on client A
+        t_a = Ticket.objects.create(
+            organization=self.org_a, subject='A ticket',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        # Ticket on client B
+        t_b = Ticket.objects.create(
+            organization=self.org_b, subject='B ticket',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        t_a.refresh_from_db(); t_b.refresh_from_db()
+        self.assertIn('msp-wide-tag', t_a.tags or [])
+        self.assertIn('msp-wide-tag', t_b.tags or [])
+
+    def test_org_scoped_rule_only_fires_for_that_org(self):
+        from psa.models import Ticket, WorkflowRule
+        WorkflowRule.objects.create(
+            organization=self.org_a,
+            name='Tag client A only',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'add_tag', 'tag': 'client-a-only'}],
+            is_active=True,
+        )
+        t_a = Ticket.objects.create(
+            organization=self.org_a, subject='A',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        t_b = Ticket.objects.create(
+            organization=self.org_b, subject='B',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        t_a.refresh_from_db(); t_b.refresh_from_db()
+        self.assertIn('client-a-only', t_a.tags or [])
+        self.assertNotIn('client-a-only', t_b.tags or [])

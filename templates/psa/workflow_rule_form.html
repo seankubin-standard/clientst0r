@@ -2,22 +2,23 @@
 {% block title %}{% if item %}Edit{% else %}New{% endif %} Workflow Rule — PSA{% endblock %}
 {% block content %}
 <nav aria-label="breadcrumb">
-    <ol class="breadcrumb">
+    <ol class="breadcrumb mb-2">
         <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
         <li class="breadcrumb-item"><a href="{% url 'psa:workflow_rule_list' %}">Workflow Rules</a></li>
         <li class="breadcrumb-item active">{% if item %}{{ item.name }}{% else %}New{% endif %}</li>
     </ol>
 </nav>
 
-<h2 class="mb-3">{% if item %}Edit Rule{% else %}New Rule{% endif %}</h2>
+<h4 class="mb-3"><i class="fas fa-bolt me-2"></i>{% if item %}Edit Rule{% else %}New Rule{% endif %}</h4>
 
-<form method="post" class="card">
+<form method="post" class="card" id="rule-form">
     {% csrf_token %}
     <div class="card-body">
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label">Name</label>
-                <input type="text" name="name" class="form-control" required value="{{ item.name|default:'' }}">
+                <input type="text" name="name" class="form-control" required value="{{ item.name|default:'' }}"
+                       placeholder="e.g. Outage keyword auto-escalate">
             </div>
             <div class="col-md-3">
                 <label class="form-label">Trigger</label>
@@ -40,7 +41,6 @@
                 <label class="form-label">Description</label>
                 <input type="text" name="description" class="form-control" value="{{ item.description|default:'' }}">
             </div>
-
             <div class="col-md-6">
                 <label class="form-label">Applies to</label>
                 <select name="organization" class="form-select">
@@ -49,32 +49,46 @@
                     <option value="{{ o.pk }}" {% if item.organization_id == o.pk %}selected{% endif %}>{{ o.name }}</option>
                     {% endfor %}
                 </select>
-                <small class="text-muted d-block">Leave on "All clients" for an MSP-wide rule. Choose a specific client to scope the rule to that client's tickets only.</small>
+                <small class="text-muted d-block">Leave on "All clients" for an MSP-wide rule.</small>
             </div>
+        </div>
 
-            <div class="col-md-6">
-                <label class="form-label">Conditions (JSON)</label>
-                <textarea name="conditions" rows="8" class="form-control font-monospace small">{{ conditions_pretty }}</textarea>
-                <small class="text-muted d-block">Examples:
-                    <code>{}</code> (always), <code>{"priority": "P1"}</code>,
-                    <code>{"priority__in": ["P1","P2"]}</code>,
-                    <code>{"subject_contains": "outage"}</code>,
-                    <code>{"is_unassigned": true}</code>,
-                    <code>{"all": [{"priority":"P1"}, {"queue":"Helpdesk"}]}</code>.
-                </small>
+        <hr>
+
+        <div id="visual-builder" class="rule-builder">
+            <div class="d-flex justify-content-between align-items-baseline mb-2">
+                <h6 class="mb-0"><i class="fas fa-list-check me-1"></i>If <em>all</em> of these are true</h6>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="add-condition">
+                    <i class="fas fa-plus"></i> Add condition
+                </button>
             </div>
-            <div class="col-md-6">
-                <label class="form-label">Actions (JSON list)</label>
-                <textarea name="actions" rows="8" class="form-control font-monospace small">{{ actions_pretty }}</textarea>
-                <small class="text-muted d-block">Action types:
-                    <code>set_priority</code> (<code>code</code>),
-                    <code>set_queue</code> (<code>name</code>),
-                    <code>assign_to</code> (<code>username</code>),
-                    <code>add_watcher</code> (<code>username</code>),
-                    <code>add_internal_note</code> (<code>body</code>),
-                    <code>add_tag</code> (<code>tag</code>).
-                </small>
+            <div id="conditions-rows" class="d-flex flex-column gap-2"></div>
+
+            <div class="d-flex justify-content-between align-items-baseline mt-3 mb-2">
+                <h6 class="mb-0"><i class="fas fa-bolt me-1"></i>Then run these actions in order</h6>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="add-action">
+                    <i class="fas fa-plus"></i> Add action
+                </button>
             </div>
+            <div id="actions-rows" class="d-flex flex-column gap-2"></div>
+
+            <details class="mt-3">
+                <summary class="text-muted small">Advanced — edit raw JSON instead</summary>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label small">Conditions JSON</label>
+                        <textarea name="conditions" id="json-conditions" rows="6" class="form-control font-monospace small">{{ conditions_pretty }}</textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small">Actions JSON</label>
+                        <textarea name="actions" id="json-actions" rows="6" class="form-control font-monospace small">{{ actions_pretty }}</textarea>
+                    </div>
+                </div>
+                <small class="text-muted d-block mt-1">
+                    The visual builder above writes into these textareas on save. Editing raw JSON is for combinators
+                    (<code>any</code>/<code>all</code>) or operators the builder doesn't expose.
+                </small>
+            </details>
         </div>
     </div>
     <div class="card-footer">
@@ -82,4 +96,218 @@
         <a href="{% url 'psa:workflow_rule_list' %}" class="btn btn-outline-secondary">Cancel</a>
     </div>
 </form>
+
+<template id="cond-row-template">
+    <div class="rule-row card border-0 bg-body-tertiary">
+        <div class="card-body p-2 d-flex flex-wrap gap-2 align-items-center small">
+            <select class="cond-field form-select form-select-sm" style="width:auto;">
+                <option value="priority">Priority</option>
+                <option value="queue">Queue</option>
+                <option value="status">Status</option>
+                <option value="subject_contains">Subject contains</option>
+                <option value="is_unassigned">Is unassigned</option>
+                <option value="is_paused">SLA paused</option>
+            </select>
+            <span class="text-muted">=</span>
+            <span class="cond-value-wrap"><input type="text" class="cond-value form-control form-control-sm" style="width:240px;"></span>
+            <button type="button" class="btn btn-sm btn-link text-danger ms-auto cond-remove" tabindex="-1">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+</template>
+
+<template id="action-row-template">
+    <div class="rule-row card border-0 bg-body-tertiary">
+        <div class="card-body p-2 d-flex flex-wrap gap-2 align-items-center small">
+            <select class="action-type form-select form-select-sm" style="width:auto;">
+                <option value="set_priority">Set priority</option>
+                <option value="set_queue">Set queue</option>
+                <option value="assign_to">Assign to user</option>
+                <option value="add_watcher">Add watcher</option>
+                <option value="add_internal_note">Add internal note</option>
+                <option value="add_tag">Add tag</option>
+            </select>
+            <span class="text-muted">→</span>
+            <span class="action-value-wrap"><input type="text" class="action-value form-control form-control-sm" style="width:280px;"></span>
+            <button type="button" class="btn btn-sm btn-link text-danger ms-auto action-remove" tabindex="-1">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+</template>
+
+<script>
+(function() {
+    const PRIORITIES = [{% for p in priorities %}{value:'{{ p.code|escapejs }}', label:'{{ p.code|escapejs }} — {{ p.name|escapejs }}'},{% endfor %}];
+    const QUEUES     = [{% for q in queues %}{value:'{{ q.name|escapejs }}', label:'{{ q.name|escapejs }}'},{% endfor %}];
+    const STATUSES   = [{% for s in statuses %}{value:'{{ s.slug|escapejs }}', label:'{{ s.name|escapejs }}'},{% endfor %}];
+
+    const condRows = document.getElementById('conditions-rows');
+    const actionRows = document.getElementById('actions-rows');
+    const condTpl = document.getElementById('cond-row-template');
+    const actionTpl = document.getElementById('action-row-template');
+    const condJSON = document.getElementById('json-conditions');
+    const actionJSON = document.getElementById('json-actions');
+
+    function fillSelect(sel, options) {
+        sel.innerHTML = '';
+        options.forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.value; opt.textContent = o.label;
+            sel.appendChild(opt);
+        });
+    }
+
+    function renderCondValue(row, currentVal) {
+        const wrap = row.querySelector('.cond-value-wrap');
+        const field = row.querySelector('.cond-field').value;
+        wrap.innerHTML = '';
+        let el;
+        if (field === 'priority') {
+            el = document.createElement('select'); el.className = 'cond-value form-select form-select-sm'; el.style.width = '240px';
+            fillSelect(el, PRIORITIES); el.value = currentVal || '';
+        } else if (field === 'queue') {
+            el = document.createElement('select'); el.className = 'cond-value form-select form-select-sm'; el.style.width = '240px';
+            fillSelect(el, QUEUES); el.value = currentVal || '';
+        } else if (field === 'status') {
+            el = document.createElement('select'); el.className = 'cond-value form-select form-select-sm'; el.style.width = '240px';
+            fillSelect(el, STATUSES); el.value = currentVal || '';
+        } else if (field === 'is_unassigned' || field === 'is_paused') {
+            el = document.createElement('select'); el.className = 'cond-value form-select form-select-sm'; el.style.width = '120px';
+            fillSelect(el, [{value:'true', label:'Yes'}, {value:'false', label:'No'}]);
+            el.value = currentVal === false ? 'false' : 'true';
+        } else {
+            el = document.createElement('input'); el.type = 'text';
+            el.className = 'cond-value form-control form-control-sm'; el.style.width = '280px';
+            el.placeholder = field === 'subject_contains' ? 'e.g. outage' : '';
+            el.value = currentVal || '';
+        }
+        wrap.appendChild(el);
+    }
+
+    function renderActionValue(row, currentVal) {
+        const wrap = row.querySelector('.action-value-wrap');
+        const type = row.querySelector('.action-type').value;
+        wrap.innerHTML = '';
+        let el;
+        if (type === 'set_priority') {
+            el = document.createElement('select'); el.className = 'action-value form-select form-select-sm'; el.style.width = '240px';
+            fillSelect(el, PRIORITIES); el.value = currentVal || '';
+        } else if (type === 'set_queue') {
+            el = document.createElement('select'); el.className = 'action-value form-select form-select-sm'; el.style.width = '240px';
+            fillSelect(el, QUEUES); el.value = currentVal || '';
+        } else if (type === 'add_internal_note') {
+            el = document.createElement('textarea');
+            el.className = 'action-value form-control form-control-sm';
+            el.rows = 2; el.style.width = '420px';
+            el.placeholder = 'Note text…'; el.value = currentVal || '';
+        } else {
+            el = document.createElement('input'); el.type = 'text';
+            el.className = 'action-value form-control form-control-sm'; el.style.width = '240px';
+            el.placeholder = type === 'add_tag' ? 'tag name' : 'username';
+            el.value = currentVal || '';
+        }
+        wrap.appendChild(el);
+    }
+
+    function addConditionRow(field, value) {
+        const frag = condTpl.content.cloneNode(true);
+        const row = frag.querySelector('.rule-row');
+        const sel = row.querySelector('.cond-field');
+        if (field) sel.value = field;
+        sel.addEventListener('change', () => renderCondValue(row, ''));
+        row.querySelector('.cond-remove').addEventListener('click', () => row.remove());
+        condRows.appendChild(frag);
+        renderCondValue(row, value);
+    }
+
+    function addActionRow(type, value) {
+        const frag = actionTpl.content.cloneNode(true);
+        const row = frag.querySelector('.rule-row');
+        const sel = row.querySelector('.action-type');
+        if (type) sel.value = type;
+        sel.addEventListener('change', () => renderActionValue(row, ''));
+        row.querySelector('.action-remove').addEventListener('click', () => row.remove());
+        actionRows.appendChild(frag);
+        renderActionValue(row, value);
+    }
+
+    document.getElementById('add-condition').addEventListener('click', () => addConditionRow('priority', ''));
+    document.getElementById('add-action').addEventListener('click', () => addActionRow('set_priority', ''));
+
+    function isSimpleConditions(conds) {
+        if (typeof conds !== 'object' || conds === null) return false;
+        const keys = Object.keys(conds);
+        if (keys.includes('any') || keys.includes('all')) return false;
+        if (keys.some(k => k.endsWith('__in') || k.endsWith('__not'))) return false;
+        const allowed = new Set(['priority', 'queue', 'status', 'subject_contains', 'is_unassigned', 'is_paused']);
+        return keys.every(k => allowed.has(k));
+    }
+
+    function hydrate() {
+        try {
+            const conds = JSON.parse(condJSON.value || '{}');
+            const acts = JSON.parse(actionJSON.value || '[]');
+            if (isSimpleConditions(conds)) {
+                Object.entries(conds).forEach(([k, v]) => addConditionRow(k, v));
+            } else if (Object.keys(conds).length) {
+                document.querySelector('#visual-builder').classList.add('builder-locked');
+            }
+            if (Array.isArray(acts)) {
+                acts.forEach(a => {
+                    const t = a.type;
+                    let v = '';
+                    if (t === 'set_priority') v = a.code;
+                    else if (t === 'set_queue') v = a.name;
+                    else if (t === 'assign_to' || t === 'add_watcher') v = a.username;
+                    else if (t === 'add_internal_note') v = a.body;
+                    else if (t === 'add_tag') v = a.tag;
+                    addActionRow(t, v);
+                });
+            }
+        } catch (e) { /* keep raw JSON visible */ }
+    }
+    hydrate();
+
+    document.getElementById('rule-form').addEventListener('submit', () => {
+        if (document.querySelector('#visual-builder').classList.contains('builder-locked')) return;
+        const conds = {};
+        condRows.querySelectorAll('.rule-row').forEach(r => {
+            const field = r.querySelector('.cond-field').value;
+            const valEl = r.querySelector('.cond-value');
+            const v = valEl ? valEl.value : '';
+            if (field === 'is_unassigned' || field === 'is_paused') {
+                conds[field] = (v === 'true');
+            } else if (v !== '') {
+                conds[field] = v;
+            }
+        });
+        condJSON.value = JSON.stringify(conds, null, 2);
+
+        const acts = [];
+        actionRows.querySelectorAll('.rule-row').forEach(r => {
+            const type = r.querySelector('.action-type').value;
+            const valEl = r.querySelector('.action-value');
+            const v = valEl ? valEl.value.trim() : '';
+            const obj = {type};
+            if (type === 'set_priority') obj.code = v;
+            else if (type === 'set_queue') obj.name = v;
+            else if (type === 'assign_to' || type === 'add_watcher') obj.username = v;
+            else if (type === 'add_internal_note') obj.body = v;
+            else if (type === 'add_tag') obj.tag = v;
+            acts.push(obj);
+        });
+        actionJSON.value = JSON.stringify(acts, null, 2);
+    });
+})();
+</script>
+
+<style>
+.rule-row .form-select-sm, .rule-row .form-control-sm { font-size: .85rem; }
+.rule-builder.builder-locked #conditions-rows,
+.rule-builder.builder-locked #actions-rows,
+.rule-builder.builder-locked #add-condition,
+.rule-builder.builder-locked #add-action { display: none; }
+</style>
 {% endblock %}

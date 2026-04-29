@@ -18,8 +18,13 @@
 <body>
     <nav class="portal-nav py-3">
         <div class="portal-content d-flex justify-content-between align-items-center">
-            <span class="portal-brand">
-                <i class="fas fa-life-ring me-2"></i>{{ organization.name|default:"Support Portal" }}
+            <span class="portal-brand d-flex align-items-center gap-2">
+                {% if organization.logo %}
+                    <img src="{{ organization.logo.url }}" alt="{{ organization.name }}" style="height: 36px; max-width: 200px; object-fit: contain;">
+                {% else %}
+                    <i class="fas fa-life-ring"></i>
+                    <span>{{ organization.name|default:"Support Portal" }}</span>
+                {% endif %}
             </span>
             <div>
                 <a href="{% url 'portal:ticket_list' %}" class="btn btn-link">My Tickets</a>

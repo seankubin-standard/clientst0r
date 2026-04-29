@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.112] - 2026-04-28
+
+### Added — Per-org client portal branding
+The portal navbar and login page now show the client organization's logo (`Organization.logo`) when one is set on the org row, instead of the default life-ring icon. Falls back to the icon + org name when no logo is configured. No new model fields — uses the existing `Organization.logo` ImageField.
+
+### Added — Drag-and-drop on the dispatch board
+The dispatch board (`/psa/dispatch/`) now supports HTML5 drag-and-drop reassignment. Drag a ticket card from one technician's column to another to reassign — the change persists to the database via a new `POST /psa/dispatch/assign/` endpoint with optimistic UI and a Bootstrap toast on success/error. Failed reassignments roll back the card and reload the page. Every drag generates an audit-log entry (`assigned_to` field change) just like a manual edit would.
+
+### Added — Visual workflow rule builder
+The "New / Edit Workflow Rule" form (`/psa/workflow-rules/new/`) is now a visual builder with click-to-add condition rows and action rows — pick a field from a dropdown, get a typed value picker (priority codes, queue names, status slugs, ticket-type slugs, boolean for is_unassigned/is_paused, free text for subject_contains). The legacy raw-JSON textareas are still present in an "Advanced raw JSON" collapsible block, and existing rules with combinators (`any` / `all` / `__in` / `__not`) auto-fall-back to raw-JSON mode so they remain editable without data loss.
+
+### Added — Test coverage for v3.17.105–107 + v3.17.111
+14 new unit tests in `psa/tests.py`:
+- `WorkflowOnTicketTests` — `ProcessExecution.native_psa_ticket` FK + reverse-query (v3.17.105)
+- `PortalUserInviteTests` — `Document.is_client_visible` default-false (v3.17.106)
+- `PortalVaultRBACTests` — `Password.visible_to_portal_user` across all four `client_access_mode` values + the personal/anonymous edge cases (v3.17.107)
+- `WorkflowRuleMSPWideTests` — `WorkflowRule(organization=None)` fires on every client's tickets (v3.17.111)
+
 ## [3.17.111] - 2026-04-29
 
 ### Changed — Workflow Rules are MSP-wide by default

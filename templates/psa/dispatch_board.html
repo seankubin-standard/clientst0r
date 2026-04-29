@@ -10,7 +10,7 @@
 
 <div class="d-flex justify-content-between align-items-baseline mb-2">
     <h4 class="mb-0"><i class="fas fa-table-list me-2"></i>Dispatch Board</h4>
-    <small class="text-muted">7-day grid of open tickets, bucketed by due date</small>
+    <small class="text-muted"><i class="fas fa-arrows-alt me-1"></i>Drag a ticket card to a tech row to reassign</small>
 </div>
 
 {% if overdue %}
@@ -43,14 +43,14 @@
             </tr>
         </thead>
         <tbody>
-            <tr>
+            <tr data-tech="unassigned">
                 <td class="dispatch-row-label">
                     <span class="badge text-bg-warning">Unassigned</span>
                 </td>
                 {% for day_tickets in unassigned_by_day %}
-                <td class="dispatch-cell">
+                <td class="dispatch-cell" data-tech="unassigned">
                     {% for t in day_tickets %}
-                    <div class="dispatch-card">
+                    <div class="dispatch-card" draggable="true" data-ticket="{{ t.ticket_number }}">
                         <span class="badge text-bg-secondary">{{ t.priority.code }}</span>
                         <a href="{% url 'psa:ticket_detail' t.ticket_number %}" class="dispatch-card-link">{{ t.ticket_number }}</a>
                         <div class="dispatch-card-subject">{{ t.subject|truncatechars:35 }}</div>
@@ -60,9 +60,9 @@
                     {% endfor %}
                 </td>
                 {% endfor %}
-                <td class="dispatch-cell">
+                <td class="dispatch-cell" data-tech="unassigned">
                     {% for t in unassigned_other %}
-                    <div class="dispatch-card">
+                    <div class="dispatch-card" draggable="true" data-ticket="{{ t.ticket_number }}">
                         <span class="badge text-bg-secondary">{{ t.priority.code }}</span>
                         <a href="{% url 'psa:ticket_detail' t.ticket_number %}" class="dispatch-card-link">{{ t.ticket_number }}</a>
                         <div class="dispatch-card-subject">{{ t.subject|truncatechars:35 }}</div>
@@ -73,12 +73,12 @@
                 </td>
             </tr>
             {% for row in rows %}
-            <tr>
+            <tr data-tech="{{ row.tech.id }}">
                 <td class="dispatch-row-label"><strong>{{ row.tech.username }}</strong></td>
                 {% for cell in row.cells %}
-                <td class="dispatch-cell">
+                <td class="dispatch-cell" data-tech="{{ row.tech.id }}">
                     {% for t in cell %}
-                    <div class="dispatch-card">
+                    <div class="dispatch-card" draggable="true" data-ticket="{{ t.ticket_number }}">
                         <span class="badge {% if t.status.is_terminal %}text-bg-secondary{% else %}text-bg-info{% endif %}">{{ t.priority.code }}</span>
                         <a href="{% url 'psa:ticket_detail' t.ticket_number %}" class="dispatch-card-link">{{ t.ticket_number }}</a>
                         <div class="dispatch-card-subject">{{ t.subject|truncatechars:35 }}</div>
@@ -88,9 +88,9 @@
                     {% endfor %}
                 </td>
                 {% endfor %}
-                <td class="dispatch-cell">
+                <td class="dispatch-cell" data-tech="{{ row.tech.id }}">
                     {% for t in row.other %}
-                    <div class="dispatch-card">
+                    <div class="dispatch-card" draggable="true" data-ticket="{{ t.ticket_number }}">
                         <span class="badge {% if t.status.is_terminal %}text-bg-secondary{% else %}text-bg-info{% endif %}">{{ t.priority.code }}</span>
                         <a href="{% url 'psa:ticket_detail' t.ticket_number %}" class="dispatch-card-link">{{ t.ticket_number }}</a>
                         <div class="dispatch-card-subject">{{ t.subject|truncatechars:35 }}</div>
@@ -109,44 +109,119 @@
     </table>
 </div>
 
+<div class="dispatch-toast" id="dispatch-toast" role="status"></div>
+
 <style>
-.dispatch-grid {
-    font-size: .8rem;
-    table-layout: fixed;
-}
+.dispatch-grid { font-size: .8rem; table-layout: fixed; }
 .dispatch-grid thead th {
-    font-size: .8rem;
-    padding: .35rem .4rem;
-    background: var(--bs-tertiary-bg);
-    border-color: var(--bs-border-color);
+    font-size: .8rem; padding: .35rem .4rem;
+    background: var(--bs-tertiary-bg); border-color: var(--bs-border-color);
 }
 .dispatch-grid td {
-    padding: .25rem .35rem;
-    vertical-align: top;
+    padding: .25rem .35rem; vertical-align: top;
     border-color: var(--bs-border-color);
 }
 .dispatch-tech-col { width: 110px; }
-.dispatch-row-label {
-    background: var(--bs-tertiary-bg);
-    font-size: .8rem;
+.dispatch-row-label { background: var(--bs-tertiary-bg); font-size: .8rem; }
+.dispatch-cell { min-height: 36px; transition: background 120ms; }
+.dispatch-cell.drop-target {
+    background: rgba(13, 110, 253, .12);
+    outline: 2px dashed var(--bs-primary);
+    outline-offset: -3px;
 }
-.dispatch-cell { min-height: 36px; }
 .dispatch-card {
-    margin-bottom: .25rem;
-    line-height: 1.2;
-    font-size: .75rem;
+    margin-bottom: .25rem; line-height: 1.2; font-size: .75rem;
+    cursor: grab; user-select: none;
 }
+.dispatch-card:active { cursor: grabbing; }
+.dispatch-card.dragging { opacity: .4; }
 .dispatch-card:last-child { margin-bottom: 0; }
-.dispatch-card .badge {
-    font-size: .65rem;
-    padding: .15em .4em;
-}
+.dispatch-card .badge { font-size: .65rem; padding: .15em .4em; }
 .dispatch-card-link { font-family: var(--bs-font-monospace, monospace); }
 .dispatch-card-subject {
-    color: var(--bs-secondary-color);
-    font-size: .7rem;
-    line-height: 1.15;
-    margin-top: .1rem;
+    color: var(--bs-secondary-color); font-size: .7rem;
+    line-height: 1.15; margin-top: .1rem;
 }
+.dispatch-toast {
+    position: fixed; bottom: 24px; right: 24px;
+    padding: .6rem 1rem; border-radius: 6px;
+    background: var(--bs-success); color: #fff;
+    font-size: .85rem; z-index: 1080;
+    transform: translateY(120%); transition: transform 200ms;
+    box-shadow: 0 4px 12px rgba(0,0,0,.2);
+}
+.dispatch-toast.show { transform: translateY(0); }
+.dispatch-toast.error { background: var(--bs-danger); }
 </style>
+
+<script>
+(function() {
+    const csrf = '{{ csrf_token }}';
+    const toast = document.getElementById('dispatch-toast');
+    function showToast(msg, isError) {
+        toast.textContent = msg;
+        toast.classList.toggle('error', !!isError);
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2400);
+    }
+
+    let dragged = null;
+
+    document.querySelectorAll('.dispatch-card[draggable="true"]').forEach(card => {
+        card.addEventListener('dragstart', (e) => {
+            dragged = card;
+            card.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', card.dataset.ticket);
+        });
+        card.addEventListener('dragend', () => {
+            if (dragged) dragged.classList.remove('dragging');
+            dragged = null;
+        });
+    });
+
+    document.querySelectorAll('.dispatch-cell[data-tech]').forEach(cell => {
+        cell.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            cell.classList.add('drop-target');
+        });
+        cell.addEventListener('dragleave', () => cell.classList.remove('drop-target'));
+        cell.addEventListener('drop', (e) => {
+            e.preventDefault();
+            cell.classList.remove('drop-target');
+            const ticketNumber = e.dataTransfer.getData('text/plain');
+            const targetTech = cell.dataset.tech;
+            if (!ticketNumber || !dragged) return;
+
+            const fromTech = dragged.closest('tr').dataset.tech;
+            if (fromTech === targetTech) return;  // no-op
+
+            // Optimistic UI: move the card to the new cell immediately
+            cell.appendChild(dragged);
+
+            // POST the change
+            const fd = new FormData();
+            fd.append('csrfmiddlewaretoken', csrf);
+            fd.append('ticket_number', ticketNumber);
+            fd.append('assignee', targetTech);
+            fetch('{% url "psa:dispatch_assign" %}', {method: 'POST', body: fd})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.ok) {
+                        showToast(`✓ ${ticketNumber} → ${data.assigned_to || 'unassigned'}`);
+                    } else {
+                        showToast('Reassign failed: ' + (data.error || 'unknown'), true);
+                        // Reload to restore truth
+                        setTimeout(() => location.reload(), 1500);
+                    }
+                })
+                .catch(err => {
+                    showToast('Network error', true);
+                    setTimeout(() => location.reload(), 1500);
+                });
+        });
+    });
+})();
+</script>
 {% endblock %}
