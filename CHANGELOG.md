@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.124] - 2026-04-29
+
+### Docs
+- README "Native PSA / Service Desk" caption was a 200-word run-on prose paragraph — converted to four scannable bullet groups (Ticketing & service desk / Projects, contracts & schedules / Quoting, billing & accounting / Automation & integrations) plus added the workflow-on-tickets feature.
+
 ## [3.17.123] - 2026-04-29
 
 ### Docs / repo

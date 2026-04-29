@@ -137,7 +137,38 @@ Client St0r is commonly evaluated as an **open-source IT Glue alternative** and 
 ![Distributors — Ingram / Pax8 / Synnex](docs/screenshots/integrations-distributors.png)
 ![Accounting — QuickBooks / Xero](docs/screenshots/integrations-accounting.png)
 
-A complete in-house ticketing system. Tickets, queues, statuses, priorities, SLA targets with per-contract overrides, time tracking, service catalog with structured fields, watchers, canned replies, @mentions, similar-tickets detection, ticket merge, projects with tasks/milestones, recurring tickets, KB linking, approvals, contracts (block-hours / retainer / managed-services with auto-tracked usage), quotes & estimates with line items and **e-signature for customers**, per-ticket expenses, invoices (auto-numbered with branded PDF + email + accounting push), payments, **client account view with aging report**, charges (one-time + recurring), workflow rules engine, dispatch board, customer portal, IMAP email-to-ticket, distributor catalog/pricing/orders (Ingram Micro, Pax8, TD Synnex), QuickBooks Online + Xero accounting integrations, AI-assisted reply/action suggestions with strict guardrails.
+A complete in-house ticketing system:
+
+**Ticketing & service desk**
+- Tickets, queues, statuses, priorities, ticket types
+- SLA engine with per-contract overrides + pause logic
+- Time tracking (timer + manual entries; auto-tracked contract hours)
+- Service catalog with structured-field templates
+- Watchers, canned replies, @mentions, similar-tickets detection, merge
+- Workflow runbooks **embedded directly on tickets** with inline checklist + sign-off audit history
+- Vault context surfaced inline on every ticket
+
+**Projects, contracts & schedules**
+- Projects with tasks, milestones, and parent-task hierarchy
+- Recurring tickets (preventive maintenance) with cron runner
+- Contracts: block-hours / retainer / managed-services with auto-tracked usage + per-priority SLA matrix
+- Approvals queue (time / expense / quote / change requests)
+- Per-ticket expenses with receipts + categories
+
+**Quoting, billing & accounting**
+- Quotes/estimates with line items + **customer e-signature**
+- Invoices: auto-numbered, branded PDF, email-to-customer, push to QuickBooks Online or Xero
+- Payments with method/reference + auto-recompute
+- Client account view: net balance, **aging report (0–30/31–60/61–90/90+)**, payment history
+- Charges (one-time + recurring credits)
+
+**Automation & integrations**
+- Workflow rules engine (MSP-wide or per-client) with visual rule builder
+- Dispatch board with drag-and-drop reassignment
+- Customer portal (per-org branding + vault RBAC + KB visibility)
+- IMAP email-to-ticket with reply threading
+- Distributors: Ingram Micro, Pax8, TD Synnex (catalog / pricing / orders / HMAC webhooks)
+- AI-assisted reply + action suggestions with strict guardrails (subject blocklist, rate limits, prompt-injection envelope, role-based permissions)
 
 </td>
 </tr>
