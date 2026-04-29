@@ -70,5 +70,9 @@ urlpatterns = [
     path('psa/sla-trends/', views.psa_sla_trends, name='psa_sla_trends'),
     path('psa/margin-analytics/', views.psa_margin_analytics,
          name='psa_margin_analytics'),
+    # Phase 3.6 wave A — Wallboard + Executive scorecard
+    path('wallboard/', views.wallboard, name='wallboard'),
+    path('wallboard/data/', views.wallboard_data, name='wallboard_data'),
+    path('exec-scorecard/', views.exec_scorecard, name='exec_scorecard'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

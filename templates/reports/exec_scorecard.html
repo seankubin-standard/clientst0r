@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Executive Scorecard{% endblock %}
+{% block extra_css %}
+<style>
+.es-kpi-card { border: 1px solid rgba(0,0,0,.075); border-radius: .75rem; padding: 1rem 1.25rem; background: #fff; height: 100%; }
+.es-kpi-icon { font-size: 1.4rem; opacity: .55; }
+.es-kpi-value { font-size: 2.2rem; font-weight: 700; line-height: 1.1; }
+.es-kpi-label { font-size: .85rem; color: #6c757d; text-transform: uppercase; letter-spacing: .03em; }
+.es-trend-up { color: #198754; font-weight: 600; }
+.es-trend-down { color: #dc3545; font-weight: 600; }
+.es-trend-flat { color: #6c757d; font-weight: 500; }
+.es-section-h { font-size: 1.05rem; font-weight: 600; margin-bottom: .5rem; }
+@media print {
+  .es-noprint, nav, .navbar, .footer, header, .breadcrumb { display: none !important; }
+  body { background: white !important; }
+  .container-fluid { padding: 0 !important; }
+  .es-kpi-card { box-shadow: none !important; border: 1px solid #ddd !important; }
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Executive Scorecard</h2>
+      <small class="text-muted">
+        Rolling 30 days &middot; {{ window_start|date:"M j, Y" }} &mdash; {{ window_end|date:"M j, Y" }}
+        &middot; as of {{ as_of|date:"M j, Y H:i" }}
+      </small>
+    </div>
+    <div class="es-noprint">
+      <button class="btn btn-outline-secondary" onclick="window.print()">
+        <i class="fas fa-print me-1"></i>Print / Export PDF
+      </button>
+    </div>
+  </div>
+
+  {# ---- Hero KPI cards ---- #}
+  <div class="row g-3 mb-4">
+    {% for kpi in kpis %}
+    <div class="col-6 col-md-4 col-xl-3">
+      <div class="es-kpi-card d-flex flex-column h-100">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <span class="es-kpi-label">{{ kpi.label }}</span>
+          <i class="fas {{ kpi.icon }} es-kpi-icon"></i>
+        </div>
+        <div class="es-kpi-value">{{ kpi.value }}</div>
+        {% if kpi.trend_pct is not None %}
+          {% if kpi.trend_pct > 0 %}
+            <div class="es-trend-up mt-1"><i class="fas fa-arrow-up me-1"></i>{{ kpi.trend_pct }}% vs prior 30d</div>
+          {% elif kpi.trend_pct < 0 %}
+            <div class="es-trend-down mt-1"><i class="fas fa-arrow-down me-1"></i>{{ kpi.trend_pct }}% vs prior 30d</div>
+          {% else %}
+            <div class="es-trend-flat mt-1"><i class="fas fa-minus me-1"></i>flat vs prior 30d</div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ---- Mid section: dual-axis line chart ---- #}
+  <div class="card mb-4">
+    <div class="card-header bg-white">
+      <span class="es-section-h">Revenue &amp; Tickets &mdash; Last 30 Days</span>
+    </div>
+    <div class="card-body">
+      <canvas id="esTrendChart" height="100"></canvas>
+    </div>
+  </div>
+
+  {# ---- Bottom section: 3 columns ---- #}
+  <div class="row g-3">
+    <div class="col-12 col-lg-4">
+      <div class="card h-100">
+        <div class="card-header bg-white"><span class="es-section-h">Top 5 Clients by Revenue</span></div>
+        <div class="card-body p-0">
+          <table class="table mb-0 table-sm">
+            <thead class="table-light">
+              <tr><th>Client</th><th class="text-end">Invoiced</th></tr>
+            </thead>
+            <tbody>
+              {% for c in top_clients %}
+              <tr>
+                <td>{{ c.client_name }}</td>
+                <td class="text-end">${{ c.invoiced|floatformat:0 }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="2" class="text-muted text-center py-3">No revenue in window.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <div class="card h-100">
+        <div class="card-header bg-white"><span class="es-section-h">Top 5 Techs by Billable Hours</span></div>
+        <div class="card-body p-0">
+          <table class="table mb-0 table-sm">
+            <thead class="table-light">
+              <tr><th>Tech</th><th class="text-end">Billable hrs</th></tr>
+            </thead>
+            <tbody>
+              {% for t in top_techs %}
+              <tr>
+                <td>{{ t.tech_username }}</td>
+                <td class="text-end">{{ t.billable_hours }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="2" class="text-muted text-center py-3">No billable hours logged.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <div class="card h-100">
+        <div class="card-header bg-white"><span class="es-section-h">Margin by Service Line</span></div>
+        <div class="card-body">
+          {% if pie_data %}
+            <canvas id="esMarginPie" height="220"></canvas>
+          {% else %}
+            <p class="text-muted text-center mb-0">No margin data in window.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="es-chart-data" type="application/json">{{ chart_json|safe }}</script>
+<script id="es-pie-data" type="application/json">{{ pie_json|safe }}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const chartData = JSON.parse(document.getElementById('es-chart-data').textContent);
+  const pieData = JSON.parse(document.getElementById('es-pie-data').textContent);
+
+  const trendCtx = document.getElementById('esTrendChart');
+  if (trendCtx && window.Chart) {
+    new Chart(trendCtx, {
+      type: 'line',
+      data: {
+        labels: chartData.labels,
+        datasets: [
+          {
+            label: 'Revenue ($)', data: chartData.revenue,
+            borderColor: '#198754', backgroundColor: 'rgba(25,135,84,.15)',
+            yAxisID: 'y', tension: .3,
+          },
+          {
+            label: 'Tickets opened', data: chartData.tickets,
+            borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,.15)',
+            yAxisID: 'y1', tension: .3,
+          },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          y: { type: 'linear', position: 'left',
+               title: { display: true, text: 'Revenue ($)' } },
+          y1: { type: 'linear', position: 'right', grid: { drawOnChartArea: false },
+                title: { display: true, text: 'Tickets' } },
+        },
+      },
+    });
+  }
+
+  const pieCtx = document.getElementById('esMarginPie');
+  if (pieCtx && window.Chart && pieData.length) {
+    new Chart(pieCtx, {
+      type: 'pie',
+      data: {
+        labels: pieData.map(r => r.label),
+        datasets: [{
+          data: pieData.map(r => r.value),
+          backgroundColor: ['#0d6efd', '#198754', '#ffc107', '#dc3545', '#6610f2', '#6c757d'],
+        }],
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
+    });
+  }
+})();
+</script>
+{% endblock %}

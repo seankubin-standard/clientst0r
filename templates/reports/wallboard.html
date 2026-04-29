@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Wallboard{% endblock %}
+{% block extra_css %}
+<style>
+body { background: linear-gradient(135deg, #0a0e1a, #1a1f2e) !important; color: #e6edf3; }
+.wb-tile { padding: 2rem; border-radius: 1rem; min-height: 200px; display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden; }
+.wb-tile .wb-value { font-size: 6rem; font-weight: 800; line-height: 1; }
+.wb-tile .wb-label { font-size: 1.4rem; opacity: 0.85; margin-top: 0.5rem; }
+.wb-tile .wb-icon { font-size: 2.5rem; opacity: 0.5; align-self: flex-end; position: absolute; right: 1.25rem; top: 1.25rem; }
+.wb-bg-success { background: linear-gradient(135deg, #1a7c3a, #0d5523); color: white; }
+.wb-bg-warning { background: linear-gradient(135deg, #c97f00, #8b5a00); color: white; }
+.wb-bg-danger { background: linear-gradient(135deg, #b32a3a, #7a1925); color: white; animation: pulse 2s infinite; }
+.wb-bg-info { background: linear-gradient(135deg, #1d6caa, #134d80); color: white; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.5); } 50% { box-shadow: 0 0 30px 10px rgba(220, 53, 69, 0.2); } }
+.wb-marquee { overflow: hidden; white-space: nowrap; }
+.wb-marquee-inner { display: inline-block; padding-left: 100%; animation: scroll 60s linear infinite; }
+@keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+.wb-shift { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.wb-tech-pill { background: rgba(34, 197, 94, 0.18); border: 1px solid rgba(34, 197, 94, 0.4); color: #6ee7b7; padding: 0.4rem 0.8rem; border-radius: 999px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid py-3" data-bs-theme="dark">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0 text-white"><i class="fas fa-tv me-2"></i>Wallboard</h2>
+    <small class="text-white-50" id="wb-asof">refreshing&hellip;</small>
+  </div>
+
+  <div class="row g-3 mb-3" id="wb-tiles">
+    {# Filled by JS #}
+  </div>
+
+  <div class="card bg-dark text-white-50 border-0 mb-3">
+    <div class="card-body py-2 wb-marquee">
+      <div class="wb-marquee-inner" id="wb-recent">Loading recent tickets&hellip;</div>
+    </div>
+  </div>
+
+  <div class="card bg-dark text-white border-0">
+    <div class="card-body py-2">
+      <small class="text-white-50">On-shift now:</small>
+      <div class="wb-shift mt-1" id="wb-techs"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const REFRESH_MS = {{ refresh_interval_seconds }} * 1000;
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  async function poll() {
+    try {
+      const r = await fetch('{% url "reports:wallboard_data" %}');
+      const data = await r.json();
+      // Render tiles
+      const tilesEl = document.getElementById('wb-tiles');
+      tilesEl.innerHTML = data.tiles.map(t => `
+        <div class="col-6 col-lg-4">
+          <div class="wb-tile wb-bg-${escapeHtml(t.color)}">
+            <i class="fas ${escapeHtml(t.icon)} wb-icon"></i>
+            <div class="wb-value">${escapeHtml(t.value)}</div>
+            <div class="wb-label">${escapeHtml(t.label)}</div>
+          </div>
+        </div>`).join('');
+      // Recent ticker
+      const recentEl = document.getElementById('wb-recent');
+      if (data.recent_tickets && data.recent_tickets.length) {
+        recentEl.innerHTML = data.recent_tickets.map(t =>
+          `<span class="me-4"><strong>${escapeHtml(t.ticket_number)}</strong> [<span class="text-${escapeHtml(t.priority_color)}">${escapeHtml(t.priority)}</span>] ${escapeHtml(t.subject)} &mdash; <em>${escapeHtml(t.organization)}</em> &middot; ${escapeHtml(t.created_ago_min)}m ago</span>`
+        ).join(' &bull; ');
+      } else {
+        recentEl.innerHTML = '<span class="text-white-50">No recent tickets.</span>';
+      }
+      // Techs on shift
+      const techsEl = document.getElementById('wb-techs');
+      techsEl.innerHTML = (data.techs_on_shift && data.techs_on_shift.length)
+        ? data.techs_on_shift.map(u => `<span class="wb-tech-pill"><i class="fas fa-user me-1"></i>${escapeHtml(u.username)}</span>`).join('')
+        : '<span class="text-white-50">No techs on-shift right now.</span>';
+      document.getElementById('wb-asof').textContent = 'as of ' + (data.as_of || '');
+    } catch (e) { console.error(e); }
+  }
+  poll();
+  setInterval(poll, REFRESH_MS);
+})();
+</script>
+{% endblock %}

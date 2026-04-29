@@ -790,3 +790,95 @@ class MarginAnalyticsViewTests(TestCase):
         self.client.force_login(u)
         r = self.client.get('/reports/psa/margin-analytics/')
         self.assertEqual(r.status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.6 wave A — Wallboard + Executive scorecard
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WallboardTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from accounts.models import Membership, RoleTemplate
+        from core.models import Organization
+        # Dashboard-only user (no financial perm)
+        self.user = User.objects.create_user('wb_user', 'w@x.com', 'pw')
+        self.org = Organization.objects.create(name='WB Co', slug='wb-co')
+        rt = RoleTemplate.objects.create(
+            name='WBDashUser',
+            reports_view_dashboards=True,
+            reports_view_financial=False,
+        )
+        Membership.objects.create(
+            user=self.user, organization=self.org,
+            role='editor', role_template=rt, is_active=True,
+        )
+
+    def test_wallboard_renders_for_dashboard_user(self):
+        self.client.force_login(self.user)
+        r = self.client.get('/reports/wallboard/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'Wallboard', r.content)
+
+    def test_wallboard_data_returns_json(self):
+        self.client.force_login(self.user)
+        r = self.client.get('/reports/wallboard/data/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'].split(';')[0].strip(),
+                         'application/json')
+        import json
+        data = json.loads(r.content)
+        self.assertIn('tiles', data)
+        self.assertIn('recent_tickets', data)
+        self.assertIn('techs_on_shift', data)
+        self.assertIn('as_of', data)
+        # Six mega-tiles always present
+        self.assertEqual(len(data['tiles']), 6)
+        labels = [t['label'] for t in data['tiles']]
+        self.assertIn('Open Tickets', labels)
+        self.assertIn('SLA Overdue', labels)
+
+    def test_wallboard_blocked_without_dashboards_perm(self):
+        """A user with no membership / no perms should be 403'd."""
+        from django.contrib.auth.models import User
+        nobody = User.objects.create_user('nobody', 'n@x.com', 'pw')
+        self.client.force_login(nobody)
+        r = self.client.get('/reports/wallboard/')
+        self.assertIn(r.status_code, [302, 403])
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ExecScorecardTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from accounts.models import Membership, RoleTemplate
+        from core.models import Organization
+        self.org = Organization.objects.create(name='ES Co', slug='es-co')
+        # User with dashboards but NO financial perm
+        self.dash_only = User.objects.create_user('dashonly', 'd@x.com', 'pw')
+        rt_dash = RoleTemplate.objects.create(
+            name='DashOnly',
+            reports_view_dashboards=True,
+            reports_view_financial=False,
+        )
+        Membership.objects.create(
+            user=self.dash_only, organization=self.org,
+            role='editor', role_template=rt_dash, is_active=True,
+        )
+        # Owner / superuser
+        self.owner = User.objects.create_user(
+            'owner', 'o@x.com', 'pw',
+            is_staff=True, is_superuser=True,
+        )
+
+    def test_scorecard_blocked_without_financial_perm(self):
+        self.client.force_login(self.dash_only)
+        r = self.client.get('/reports/exec-scorecard/')
+        self.assertIn(r.status_code, [302, 403])
+
+    def test_scorecard_renders_for_owner(self):
+        self.client.force_login(self.owner)
+        r = self.client.get('/reports/exec-scorecard/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'Executive Scorecard', r.content)

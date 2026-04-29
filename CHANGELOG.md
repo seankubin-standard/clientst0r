@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.146] - 2026-04-29
+
+### Added — Phase 3.6 wave A: Wallboard + Executive Scorecard
+- **Wallboard** at `/reports/wallboard/` — TV-ready big-number live display. 6 mega-tiles (open tickets / SLA overdue / unassigned / P1 open / opened-today / closed-today), bottom marquee of 5 most recent tickets, on-shift techs row. Auto-refreshes every 30s via JSON poll to `/reports/wallboard/data/`. Pulsing red animation on the SLA-overdue tile if non-zero. Permission: `reports_view_dashboards`.
+- **Executive Scorecard** at `/reports/exec-scorecard/` — single-page rolling 30-day MSP KPI summary. 8 hero cards (revenue with trend vs prior period, billable hours, realized rate, open tickets, SLA breach %, MTTR, active clients, tech utilization), 30d revenue + tickets dual-line chart, top 5 clients / top 5 techs / margin-by-service-line pie. Print-friendly. Permission: `reports_view_financial`.
+- Both linked from Reports Home with conditional gating.
+
+### Phase 3 status
+- Sub-phases 3.1, 3.2, 3.3, 3.4, 3.5, 3.6A shipped. **Wave B** (scheduled reports + client-health score) closes Phase 3 next.
+
 ## [3.17.145] - 2026-04-29
 
 ### Added — Reports + sensitive-feature permission groups (RoleTemplate)

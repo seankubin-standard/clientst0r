@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse, FileResponse, JsonResponse
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -1506,4 +1506,264 @@ def psa_margin_analytics(request):
         'total_cost': total_cost,
         'total_margin': total_margin,
         'blended_margin_pct': round(blended_margin_pct, 1),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.6 wave A — Wallboard + Executive scorecard
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_perm('reports_view_dashboards')
+def wallboard(request):
+    """TV-ready wallboard view. Refreshes via JS poll to /reports/wallboard/data/."""
+    try:
+        refresh = int(request.GET.get('refresh') or 30)
+    except (TypeError, ValueError):
+        refresh = 30
+    refresh = max(5, min(refresh, 600))
+    return render(request, 'reports/wallboard.html', {
+        'refresh_interval_seconds': refresh,
+    })
+
+
+@login_required
+@require_perm('reports_view_dashboards')
+def wallboard_data(request):
+    """JSON endpoint polled by the wallboard page every N seconds."""
+    from psa.models import Ticket
+    from django.contrib.auth.models import User
+
+    today = timezone.now().date()
+
+    # Mega-tile counts
+    open_qs = Ticket.objects.filter(status__is_terminal=False)
+    sla_overdue = open_qs.filter(resolution_due_at__lt=timezone.now()).count()
+    unassigned = open_qs.filter(assigned_to__isnull=True).count()
+    p1 = open_qs.filter(priority__code='P1').count()
+    opened_today = Ticket.objects.filter(created_at__date=today).count()
+    closed_today = Ticket.objects.filter(
+        closed_at__date=today, status__is_terminal=True
+    ).count()
+    open_total = open_qs.count()
+
+    # Tile color logic — green/amber/red banding
+    def color(n, low, high):
+        if n < low:
+            return 'success'
+        if n < high:
+            return 'warning'
+        return 'danger'
+
+    tiles = [
+        {'label': 'Open Tickets', 'value': open_total,
+         'color': color(open_total, 50, 100), 'icon': 'fa-ticket'},
+        {'label': 'SLA Overdue', 'value': sla_overdue,
+         'color': color(sla_overdue, 1, 5), 'icon': 'fa-triangle-exclamation'},
+        {'label': 'Unassigned', 'value': unassigned,
+         'color': color(unassigned, 5, 15), 'icon': 'fa-circle-question'},
+        {'label': 'P1 Open', 'value': p1,
+         'color': color(p1, 1, 3), 'icon': 'fa-fire'},
+        {'label': 'Opened Today', 'value': opened_today,
+         'color': 'info', 'icon': 'fa-arrow-up'},
+        {'label': 'Closed Today', 'value': closed_today,
+         'color': 'success', 'icon': 'fa-check'},
+    ]
+
+    # Recent tickets ticker (5 most recent)
+    recent = (
+        Ticket.objects
+        .select_related('priority', 'organization')
+        .order_by('-created_at')[:5]
+    )
+    recent_data = []
+    for t in recent:
+        pcode = t.priority.code if t.priority_id else ''
+        priority_color = {
+            'P1': 'danger', 'P2': 'warning', 'P3': 'info',
+            'P4': 'secondary', 'P5': 'light',
+        }.get(pcode, 'secondary')
+        recent_data.append({
+            'ticket_number': t.ticket_number,
+            'subject': (t.subject or '')[:80],
+            'priority': pcode,
+            'priority_color': priority_color,
+            'organization': t.organization.name if t.organization_id else '—',
+            'created_ago_min': int(
+                (timezone.now() - t.created_at).total_seconds() / 60
+            ),
+        })
+
+    # On-shift techs — uses UserProfile.is_working_now()
+    techs_on_shift = []
+    for u in User.objects.filter(
+        is_active=True, is_staff=True
+    ).exclude(username='AnonymousUser'):
+        profile = getattr(u, 'profile', None)
+        if profile is None:
+            continue
+        try:
+            if profile.is_working_now():
+                techs_on_shift.append({'username': u.username})
+        except Exception:
+            # Be defensive — never let a bad profile break the wallboard.
+            continue
+
+    return JsonResponse({
+        'tiles': tiles,
+        'recent_tickets': recent_data,
+        'techs_on_shift': techs_on_shift,
+        'as_of': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+    })
+
+
+@login_required
+@require_perm('reports_view_financial')
+def exec_scorecard(request):
+    """Rolling 30d executive scorecard for the owner.
+
+    Single-page MSP KPI summary — hero cards + trend chart + top-clients
+    / top-techs tables + service-line margin pie. Print-friendly.
+    """
+    from datetime import date as _date, timedelta as _td
+    from psa.models import Ticket, TicketTimeEntry, Invoice
+    from .queries import (
+        revenue_by_client, hours_minutes_by_client, hours_minutes_by_tech,
+        sla_trend_by_priority, margin_analytics_by_service_line,
+    )
+
+    today = _date.today()
+    start_30 = today - _td(days=29)
+    prior_start = today - _td(days=59)
+    prior_end = start_30 - _td(days=1)
+
+    # --- Hero KPIs ----------------------------------------------------------
+    rev_30 = sum(r['invoiced'] for r in revenue_by_client(start_30, today))
+    rev_prior = sum(r['invoiced'] for r in revenue_by_client(prior_start, prior_end))
+    rev_trend_pct = ((rev_30 - rev_prior) / rev_prior * 100) if rev_prior else 0.0
+
+    hrs_rows = hours_minutes_by_client(start_30, today)
+    total_billable_min = sum(r['billable_minutes'] for r in hrs_rows)
+    total_billable_hrs = total_billable_min / 60.0
+    realized_rate = (rev_30 / total_billable_hrs) if total_billable_hrs else 0.0
+
+    open_tickets = Ticket.objects.filter(status__is_terminal=False).count()
+
+    # SLA breach %
+    sla = sla_trend_by_priority(start_30, today, bucket='month')
+    total_tix = sum(t['tickets'] for t in sla['totals_by_priority'].values())
+    total_breach = sum(t['resolution_breaches']
+                       for t in sla['totals_by_priority'].values())
+    sla_breach_pct = (total_breach / total_tix * 100) if total_tix else 0.0
+
+    # MTTR — avg close time over 30d
+    closed = Ticket.objects.filter(
+        closed_at__gte=timezone.now() - timedelta(days=30),
+        status__is_terminal=True,
+    ).exclude(closed_at__isnull=True)
+    mttr_secs = 0
+    cnt = 0
+    for t in closed:
+        mttr_secs += (t.closed_at - t.created_at).total_seconds()
+        cnt += 1
+    mttr_hours = (mttr_secs / cnt / 3600) if cnt else 0.0
+
+    active_clients = (
+        Ticket.objects
+        .filter(created_at__date__gte=start_30)
+        .values('organization').distinct().count()
+    )
+
+    # Tech utilization (avg actual hrs / target hrs across all techs with targets)
+    from resourcing.models import BillableTarget
+    util_pcts = []
+    for bt in BillableTarget.objects.filter(is_active=True).select_related('user'):
+        target_hrs = float(bt.target_hours_per_week) * 4.3  # ~30 days
+        actual_min = TicketTimeEntry.objects.filter(
+            user=bt.user, started_at__date__gte=start_30,
+        ).aggregate(s=Sum('duration_minutes'))['s'] or 0
+        actual_hrs = actual_min / 60.0
+        if target_hrs:
+            util_pcts.append((actual_hrs / target_hrs) * 100)
+    avg_util = sum(util_pcts) / len(util_pcts) if util_pcts else 0.0
+
+    kpis = [
+        {'label': 'Revenue (30d)', 'value': f'${rev_30:,.0f}',
+         'trend_pct': round(rev_trend_pct, 1), 'icon': 'fa-dollar-sign'},
+        {'label': 'Billable Hours', 'value': f'{total_billable_hrs:,.0f}h',
+         'trend_pct': None, 'icon': 'fa-clock'},
+        {'label': 'Realized Rate', 'value': f'${realized_rate:,.0f}/hr',
+         'trend_pct': None, 'icon': 'fa-tachometer-alt'},
+        {'label': 'Open Tickets', 'value': str(open_tickets),
+         'trend_pct': None, 'icon': 'fa-ticket'},
+        {'label': 'SLA Breach %', 'value': f'{sla_breach_pct:.1f}%',
+         'trend_pct': None, 'icon': 'fa-triangle-exclamation'},
+        {'label': 'Avg MTTR', 'value': f'{mttr_hours:.1f}h',
+         'trend_pct': None, 'icon': 'fa-stopwatch'},
+        {'label': 'Active Clients', 'value': str(active_clients),
+         'trend_pct': None, 'icon': 'fa-building'},
+        {'label': 'Tech Utilization', 'value': f'{avg_util:.0f}%',
+         'trend_pct': None, 'icon': 'fa-users-gear'},
+    ]
+
+    # Top 5 clients by revenue
+    top_clients = sorted(
+        revenue_by_client(start_30, today),
+        key=lambda r: r['invoiced'], reverse=True,
+    )[:5]
+    # Top 5 techs by billable hours
+    top_techs = sorted(
+        hours_minutes_by_tech(start_30, today),
+        key=lambda r: r['billable_minutes'], reverse=True,
+    )[:5]
+    for r in top_techs:
+        r['billable_hours'] = round(r['billable_minutes'] / 60.0, 1)
+
+    # Margin by service line — top 5 + Other
+    margin_rows = margin_analytics_by_service_line(
+        start_30, today, dimension='ticket_type'
+    )
+    pie_data = []
+    for r in margin_rows[:5]:
+        pie_data.append({'label': r['label'], 'value': r['margin']})
+    if len(margin_rows) > 5:
+        other_total = sum(r['margin'] for r in margin_rows[5:])
+        pie_data.append({'label': 'Other', 'value': other_total})
+
+    # 30d daily revenue + ticket counts for the dual-line chart
+    days = [start_30 + timedelta(days=i) for i in range(30)]
+    rev_by_day = {d: 0.0 for d in days}
+    for inv in Invoice.objects.filter(
+        invoice_date__gte=start_30, invoice_date__lte=today,
+        status__in=['sent', 'partial', 'paid', 'overdue'],
+    ):
+        if inv.invoice_date in rev_by_day:
+            rev_by_day[inv.invoice_date] += float(inv.total or 0)
+    tix_by_day = {d: 0 for d in days}
+    for t in Ticket.objects.filter(
+        created_at__date__gte=start_30, created_at__date__lte=today,
+    ):
+        d = t.created_at.date()
+        if d in tix_by_day:
+            tix_by_day[d] += 1
+
+    chart = {
+        'labels': [d.strftime('%m/%d') for d in days],
+        'revenue': [round(rev_by_day[d], 2) for d in days],
+        'tickets': [tix_by_day[d] for d in days],
+    }
+    chart_json = json.dumps(chart).replace('</', '<\\/')
+    pie_json = json.dumps(pie_data).replace('</', '<\\/')
+
+    return render(request, 'reports/exec_scorecard.html', {
+        'kpis': kpis,
+        'top_clients': top_clients,
+        'top_techs': top_techs,
+        'pie_data': pie_data,
+        'pie_json': pie_json,
+        'chart': chart,
+        'chart_json': chart_json,
+        'as_of': timezone.now(),
+        'window_start': start_30,
+        'window_end': today,
     })

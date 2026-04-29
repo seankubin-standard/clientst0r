@@ -113,6 +113,21 @@
                                 <i class="bi bi-graph-up me-2"></i>Analytics
                             </a>
                         </div>
+                        {# v3.17.146 — Phase 3.6 wave A: Wallboard + Executive Scorecard #}
+                        {% if perm.view_dashboards %}
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'reports:wallboard' %}" class="btn btn-outline-dark w-100">
+                                <i class="fas fa-tv me-2"></i>Wallboard
+                            </a>
+                        </div>
+                        {% endif %}
+                        {% if perm.view_financial %}
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'reports:exec_scorecard' %}" class="btn btn-outline-dark w-100">
+                                <i class="fas fa-chart-pie me-2"></i>Executive Scorecard
+                            </a>
+                        </div>
+                        {% endif %}
                         {% if psa_enabled %}
                         <div class="col-md-3 mb-2">
                             <a href="{% url 'reports:psa_reports_list' %}" class="btn btn-outline-danger w-100">
