@@ -336,3 +336,152 @@ def kb_detail(request, slug):
         'article': article,
         'organization': m.organization,
     })
+
+
+# ---------------------------------------------------------------------------
+# Customer portal — Vault access (Password reveal + Org-admin management)
+# ---------------------------------------------------------------------------
+
+@portal_required
+def vault_list(request):
+    """List passwords this portal user is allowed to see."""
+    from vault.models import Password
+    m = request.portal_membership
+    qs = Password.objects.filter(
+        organization=m.organization,
+        is_personal=False,
+        client_visible=True,
+    ).exclude(client_access_mode='none')
+    # Filter to actually-visible: cheap way is iterate with the helper.
+    visible = [p for p in qs.order_by('title')[:1000] if p.visible_to_portal_user(request.user)]
+    return render(request, 'portal/vault_list.html', {
+        'passwords': visible,
+        'organization': m.organization,
+        'is_org_admin': bool(m.is_org_admin),
+    })
+
+
+@portal_required
+@require_http_methods(['POST'])
+def vault_reveal(request, pk):
+    """Audit-logged password reveal — returns the plaintext as JSON."""
+    from django.http import JsonResponse
+    from vault.models import Password
+    from audit.models import AuditLog
+    m = request.portal_membership
+    pwd = get_object_or_404(Password, pk=pk, organization=m.organization,
+                            is_personal=False, client_visible=True)
+    if not pwd.visible_to_portal_user(request.user):
+        return JsonResponse({'error': 'Not authorised.'}, status=403)
+    try:
+        plaintext = pwd.password
+    except Exception as exc:
+        return JsonResponse({'error': f'decrypt failed: {exc}'}, status=500)
+    try:
+        AuditLog.log(
+            user=request.user, action='view',
+            organization=pwd.organization,
+            object_type='vault.Password', object_id=pwd.pk,
+            object_repr=pwd.title,
+            description=f'Portal reveal of {pwd.title} by {request.user.email}',
+            path=request.path,
+        )
+    except Exception:
+        pass
+    return JsonResponse({'password': plaintext, 'title': pwd.title,
+                         'username': pwd.username})
+
+
+# --- Org Admin management UI -----------------------------------------------
+
+def _require_org_admin(view_func):
+    """Decorator: portal_required + must have is_org_admin on the membership."""
+    from functools import wraps
+
+    @wraps(view_func)
+    @portal_required
+    def wrapped(request, *args, **kwargs):
+        if not request.portal_membership.is_org_admin:
+            raise Http404()
+        return view_func(request, *args, **kwargs)
+
+    return wrapped
+
+
+@_require_org_admin
+def org_admin_vault(request):
+    """
+    Org admin landing — list every password in this org that's in
+    `org_admin_managed` mode plus a count of how many users currently
+    have access. Click a row to manage individual users.
+    """
+    from vault.models import Password
+    m = request.portal_membership
+    items = (Password.objects
+             .filter(organization=m.organization, is_personal=False,
+                     client_visible=True, client_access_mode='org_admin_managed')
+             .prefetch_related('client_allowed_users')
+             .order_by('title'))
+    return render(request, 'portal/org_admin_vault.html', {
+        'items': items,
+        'organization': m.organization,
+    })
+
+
+@_require_org_admin
+@require_http_methods(['GET', 'POST'])
+def org_admin_vault_item(request, pk):
+    """Per-item access management — add/remove individual users."""
+    from accounts.models import Membership
+    from vault.models import Password
+    m = request.portal_membership
+    pwd = get_object_or_404(
+        Password, pk=pk, organization=m.organization,
+        is_personal=False, client_visible=True,
+        client_access_mode='org_admin_managed',
+    )
+    if request.method == 'POST':
+        # Replace allowed_users with the posted set (only members of the org).
+        org_member_ids = set(Membership.objects.filter(
+            organization=m.organization, is_active=True,
+        ).values_list('user_id', flat=True))
+        try:
+            posted = {int(x) for x in request.POST.getlist('allowed_user_ids')}
+        except ValueError:
+            posted = set()
+        clean = posted & org_member_ids
+        pwd.client_allowed_users.set(list(clean))
+
+        try:
+            from audit.models import AuditLog
+            AuditLog.log(
+                user=request.user, action='update',
+                organization=pwd.organization,
+                object_type='vault.Password', object_id=pwd.pk,
+                object_repr=pwd.title,
+                description=f'Org admin {request.user.email} updated access list '
+                            f'for {pwd.title} (now {len(clean)} users)',
+                path=request.path,
+                extra_data={'allowed_user_ids': sorted(clean)},
+            )
+        except Exception:
+            pass
+        messages.success(request, f'Updated access for "{pwd.title}".')
+        return redirect('portal:org_admin_vault')
+
+    # Prefetch every active org member with their grant state
+    members = (Membership.objects
+               .filter(organization=m.organization, is_active=True)
+               .select_related('user')
+               .order_by('user__username'))
+    granted_ids = set(pwd.client_allowed_users.values_list('pk', flat=True))
+    rows = [
+        {'user': mb.user, 'granted': mb.user_id in granted_ids,
+         'is_self': mb.user_id == request.user.pk}
+        for mb in members
+    ]
+    return render(request, 'portal/org_admin_vault_item.html', {
+        'pwd': pwd,
+        'rows': rows,
+        'organization': m.organization,
+    })

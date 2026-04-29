@@ -1,0 +1,110 @@
+{% extends "portal/base.html" %}
+{% block title %}Shared Credentials{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0"><i class="fas fa-key me-2"></i>Shared Credentials</h1>
+    {% if is_org_admin %}
+    <a href="{% url 'portal:org_admin_vault' %}" class="btn btn-outline-primary btn-sm">
+        <i class="fas fa-user-shield"></i> Manage access for my team
+    </a>
+    {% endif %}
+</div>
+
+<p class="text-muted small">Credentials your support team has shared with you. Reveals are audit-logged.</p>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr><th>Title</th><th>Username</th><th>URL</th><th>Updated</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for p in passwords %}
+                <tr>
+                    <td><strong>{{ p.title }}</strong>
+                        {% if p.client_access_mode == 'all_org' %}
+                            <span class="badge text-bg-secondary" title="All org members">org-wide</span>
+                        {% elif p.client_access_mode == 'specific_users' %}
+                            <span class="badge text-bg-info" title="Specific users">specific</span>
+                        {% elif p.client_access_mode == 'org_admin_managed' %}
+                            <span class="badge text-bg-info" title="Managed by org admin">managed</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ p.username|default:'—' }}</td>
+                    <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.url|truncatechars:50 }}</a>{% else %}—{% endif %}</td>
+                    <td><small data-utc="{{ p.updated_at|date:'c' }}">{{ p.updated_at|date:'Y-m-d' }}</small></td>
+                    <td class="text-nowrap">
+                        <button class="btn btn-sm btn-outline-primary reveal-btn" data-pk="{{ p.pk }}" data-title="{{ p.title }}">
+                            <i class="fas fa-eye"></i> Reveal
+                        </button>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-4">No credentials shared with you.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="revealModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reveal-title"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label class="form-label small">Username</label>
+                    <input type="text" id="reveal-username" class="form-control font-monospace" readonly>
+                </div>
+                <div>
+                    <label class="form-label small">Password</label>
+                    <div class="input-group">
+                        <input type="text" id="reveal-password" class="form-control font-monospace" readonly>
+                        <button class="btn btn-outline-secondary" id="copy-password" type="button"><i class="fas fa-copy"></i></button>
+                    </div>
+                </div>
+                <p class="small text-muted mt-2 mb-0">Your reveal of this credential has been logged.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const modal = new bootstrap.Modal(document.getElementById('revealModal'));
+    document.querySelectorAll('.reveal-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const pk = btn.dataset.pk;
+            document.getElementById('reveal-title').textContent = btn.dataset.title;
+            document.getElementById('reveal-password').value = 'loading...';
+            document.getElementById('reveal-username').value = '';
+            modal.show();
+            const fd = new FormData();
+            fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+            fetch(`/portal/vault/${pk}/reveal/`, {method: 'POST', body: fd})
+                .then(r => r.json())
+                .then(d => {
+                    if (d.error) {
+                        document.getElementById('reveal-password').value = 'Error: ' + d.error;
+                    } else {
+                        document.getElementById('reveal-username').value = d.username || '';
+                        document.getElementById('reveal-password').value = d.password;
+                    }
+                })
+                .catch(e => { document.getElementById('reveal-password').value = 'Error: ' + e; });
+        });
+    });
+    document.getElementById('copy-password').addEventListener('click', () => {
+        const inp = document.getElementById('reveal-password');
+        inp.select();
+        navigator.clipboard.writeText(inp.value).then(() => {
+            document.getElementById('copy-password').innerHTML = '<i class="fas fa-check"></i>';
+            setTimeout(() => document.getElementById('copy-password').innerHTML = '<i class="fas fa-copy"></i>', 1500);
+        });
+    });
+})();
+</script>
+{% endblock %}

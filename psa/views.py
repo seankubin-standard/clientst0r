@@ -3062,9 +3062,11 @@ def portal_invite(request, org_id):
             user.username = email[:150]
             user.save(update_fields=['username'])
 
+        is_org_admin = request.POST.get('is_org_admin') == 'on'
         Membership.objects.update_or_create(
             user=user, organization=org,
             defaults={'role': Role.READONLY, 'is_active': True,
+                      'is_org_admin': is_org_admin,
                       'invited_by': request.user},
         )
 

@@ -15,4 +15,10 @@ urlpatterns = [
     # Knowledge base for portal users
     path('kb/', views.kb_list, name='kb_list'),
     path('kb/<slug:slug>/', views.kb_detail, name='kb_detail'),
+    # Vault access for portal users
+    path('vault/', views.vault_list, name='vault_list'),
+    path('vault/<int:pk>/reveal/', views.vault_reveal, name='vault_reveal'),
+    # Org admin — manage which users in this org see which org-admin-managed items
+    path('vault/admin/', views.org_admin_vault, name='org_admin_vault'),
+    path('vault/admin/<int:pk>/', views.org_admin_vault_item, name='org_admin_vault_item'),
 ]

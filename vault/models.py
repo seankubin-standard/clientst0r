@@ -532,3 +532,80 @@ def is_breached(self):
 # Attach methods to Password model
 Password.get_latest_breach_check = get_latest_breach_check
 Password.is_breached = property(is_breached)
+
+
+# ---------------------------------------------------------------------------
+# Client portal access — extends Password with portal-visibility flags.
+# Defined as a separate "extension" to avoid touching Password's main field
+# layout. Migrations add the columns onto the password table directly.
+# ---------------------------------------------------------------------------
+
+# These fields are attached via add_to_class so existing Password rows
+# remain untouched; only new behaviour is layered on.
+
+CLIENT_ACCESS_MODES = [
+    ('none', 'Staff only — never shown in client portal'),
+    ('all_org', 'All members of the client organization'),
+    ('specific_users', 'Specific portal users (explicit list)'),
+    ('org_admin_managed', 'Delegated — the client org admin manages access'),
+]
+
+
+Password.add_to_class(
+    'client_visible',
+    models.BooleanField(
+        default=False,
+        help_text='If False, this password never appears in the customer portal — '
+                  'regardless of access mode.',
+    ),
+)
+Password.add_to_class(
+    'client_access_mode',
+    models.CharField(
+        max_length=20, choices=CLIENT_ACCESS_MODES, default='none',
+        help_text='Who within the client org can see this password in the portal.',
+    ),
+)
+Password.add_to_class(
+    'client_allowed_users',
+    models.ManyToManyField(
+        User, blank=True, related_name='vault_passwords_granted',
+        help_text='Explicit user list — only honoured when access_mode="specific_users".',
+    ),
+)
+
+
+def password_visible_to_portal_user(self, user):
+    """Return True if `user` should see this password in the customer portal.
+
+    Rules:
+      * `is_personal=True` is never portal-visible
+      * `client_visible=False` is never portal-visible
+      * Mode `none`            → False
+      * Mode `all_org`         → user has Membership in this Password.organization
+      * Mode `specific_users`  → user in `client_allowed_users` AND has Membership
+      * Mode `org_admin_managed` → handled like `specific_users` (the org_admin
+        is responsible for adding users to `client_allowed_users`)
+
+    Always denies if the user has no active membership in this org.
+    """
+    if not user or not user.is_authenticated or self.is_personal or not self.client_visible:
+        return False
+    try:
+        from accounts.models import Membership
+        is_member = Membership.objects.filter(
+            user=user, organization=self.organization, is_active=True,
+        ).exists()
+    except Exception:
+        is_member = False
+    if not is_member:
+        return False
+    mode = self.client_access_mode or 'none'
+    if mode == 'all_org':
+        return True
+    if mode in ('specific_users', 'org_admin_managed'):
+        return self.client_allowed_users.filter(pk=user.pk).exists()
+    return False
+
+
+Password.add_to_class('visible_to_portal_user', password_visible_to_portal_user)

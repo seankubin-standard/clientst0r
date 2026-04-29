@@ -1,0 +1,45 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ pwd.title }} — Manage access{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-2">
+        <li class="breadcrumb-item"><a href="{% url 'portal:vault_list' %}">Shared Credentials</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'portal:org_admin_vault' %}">Manage access</a></li>
+        <li class="breadcrumb-item active">{{ pwd.title }}</li>
+    </ol>
+</nav>
+
+<h1 class="mb-3">{{ pwd.title }}</h1>
+<p class="text-muted small">Tick the colleagues who should be able to see this credential in their portal.</p>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr><th style="width:30px;"></th><th>User</th><th>Email</th></tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>
+                        <input type="checkbox" class="form-check-input" name="allowed_user_ids" value="{{ r.user.pk }}"
+                               {% if r.granted %}checked{% endif %}
+                               {% if r.is_self %}disabled checked title="You manage this — you keep access by default"{% endif %}>
+                        {% if r.is_self %}<input type="hidden" name="allowed_user_ids" value="{{ r.user.pk }}">{% endif %}
+                    </td>
+                    <td>{{ r.user.get_full_name|default:r.user.username }}{% if r.is_self %} <span class="badge text-bg-secondary">you</span>{% endif %}</td>
+                    <td><small>{{ r.user.email }}</small></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" class="text-center text-muted py-3">No other members in your organization yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary">Save access list</button>
+        <a href="{% url 'portal:org_admin_vault' %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

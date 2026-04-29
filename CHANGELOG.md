@@ -5,6 +5,38 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.107] - 2026-04-29
+
+### Added — Vault items for the customer portal + per-org RBAC
+- **`vault.Password.client_visible`** boolean — gates whether a credential ever appears in the portal at all (default off).
+- **`vault.Password.client_access_mode`** with four modes:
+  - `none` — staff only (default)
+  - `all_org` — every active member of the client org sees it
+  - `specific_users` — explicit list (M2M `client_allowed_users`)
+  - `org_admin_managed` — delegates the per-user list to a portal user marked **org admin**
+- **`vault.Password.client_allowed_users`** M2M to User — only honoured for `specific_users` and `org_admin_managed` modes; the staff form filters this picker to active members of the credential's org.
+- **`Password.visible_to_portal_user(user)`** helper — single source of truth for visibility rules. Always denies if the user has no active Membership in this org.
+- **`accounts.Membership.is_org_admin`** boolean — independent of the staff Admin role; lets a portal user manage which colleagues see `org_admin_managed` items in their own org.
+
+### Customer portal additions
+- **`/portal/vault/`** — list of credentials this user can see, with reveal modal. Reveals are audit-logged via `audit.AuditLog`.
+- **`/portal/vault/<pk>/reveal/`** — POST-only JSON endpoint, defence-in-depth re-checks visibility before returning plaintext.
+- **Org admin pages** at `/portal/vault/admin/` and `/portal/vault/admin/<pk>/` — per-item user-checkbox grid; org admins flip access for their colleagues. Self-grant cannot be removed by accident (checkbox is disabled-but-hidden-input on the row).
+- **Credentials nav entry** on the portal layout, plus a "Manage access for my team" button on the vault list when `is_org_admin=True`.
+
+### Staff additions
+- **Vault password form** gets a "Client portal access" card (visible flag + access mode + allowed users picker scoped to org members).
+- **Portal invite form** gets an `is_org_admin` checkbox so the inviting MSP admin can mark the recipient as the client's org admin in one step.
+
+### Migrations
+- `vault.0011_password_client_access_mode_and_more`
+- `accounts.0016_membership_is_org_admin`
+
+### Notes
+- Audit-logging on every reveal: `view` action with `object_type=vault.Password`, plus the user's email in the description.
+- `is_personal=True` (My Vault) passwords are unconditionally NOT portal-visible.
+- A user must have an active Membership in the password's organization OR they get denied even if their User pk is in `client_allowed_users` (defence in depth — prevents stale grants).
+
 ## [3.17.106] - 2026-04-29
 
 ### Added — Client portal users + KB articles for clients

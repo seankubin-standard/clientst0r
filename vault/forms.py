@@ -44,9 +44,14 @@ class PasswordForm(forms.ModelForm):
         fields = [
             'title', 'password_type', 'username', 'url', 'otp_issuer', 'notes', 'expires_at', 'tags',
             'email_server', 'email_port', 'domain', 'database_type', 'database_host', 'database_port',
-            'database_name', 'ssh_host', 'ssh_port', 'license_key'
+            'database_name', 'ssh_host', 'ssh_port', 'license_key',
+            # Client portal access (RBAC — see vault.models for semantics)
+            'client_visible', 'client_access_mode', 'client_allowed_users',
         ]
         widgets = {
+            'client_visible': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'client_access_mode': forms.Select(attrs={'class': 'form-select'}),
+            'client_allowed_users': forms.SelectMultiple(attrs={'class': 'form-select', 'size': '6'}),
             'title': forms.TextInput(attrs={'class': 'form-control'}),
             'password_type': forms.Select(attrs={'class': 'form-control', 'id': 'id_password_type'}),
             'username': forms.TextInput(attrs={'class': 'form-control'}),
@@ -92,6 +97,27 @@ class PasswordForm(forms.ModelForm):
         # Filter tags by organization
         if self.organization:
             self.fields['tags'].queryset = self.organization.tags.all()
+
+        # Limit `client_allowed_users` to active members of this org so an
+        # MSP admin can't accidentally grant access to a user who has no
+        # business being in the picker.
+        if self.organization:
+            from accounts.models import Membership
+            self.fields['client_allowed_users'].queryset = (
+                self.organization.memberships
+                .filter(is_active=True)
+                .select_related('user')
+                .values_list('user', flat=True)
+            )
+            # Convert to a real User queryset
+            from django.contrib.auth.models import User
+            member_ids = list(
+                Membership.objects.filter(organization=self.organization, is_active=True)
+                .values_list('user_id', flat=True)
+            )
+            self.fields['client_allowed_users'].queryset = User.objects.filter(pk__in=member_ids).order_by('username')
+        self.fields['client_allowed_users'].required = False
+        self.fields['client_visible'].required = False
 
         # If editing existing password, populate OTP secret if it exists
         if self.instance and self.instance.pk:

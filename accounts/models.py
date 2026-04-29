@@ -34,6 +34,13 @@ class Membership(BaseModel):
         help_text='Granular role template (overrides simple role if set)'
     )
     is_active = models.BooleanField(default=True)
+    is_org_admin = models.BooleanField(
+        default=False,
+        help_text='Org Admin: lets a portal user manage which other members of '
+                  'the same organization can access vault items shared in '
+                  '`org_admin_managed` mode. Independent of the staff Admin '
+                  'role; only meaningful for client portal users.'
+    )
     invited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='invited_memberships')
     invited_at = models.DateTimeField(auto_now_add=True)
 

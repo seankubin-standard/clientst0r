@@ -25,6 +25,16 @@
             <label class="form-label">Full name (optional)</label>
             <input type="text" name="full_name" class="form-control" maxlength="200">
         </div>
+        <div class="form-check mb-2">
+            <input type="checkbox" id="is_org_admin" name="is_org_admin" class="form-check-input">
+            <label for="is_org_admin" class="form-check-label">
+                <strong>Make this user the organization admin</strong>
+            </label>
+            <small class="form-text d-block text-muted">
+                Org admins manage which other users in their org see vault items shared
+                in <code>org_admin_managed</code> access mode.
+            </small>
+        </div>
         <div class="alert alert-info small mb-0">
             <strong>What this does:</strong>
             <ul class="mb-0">
