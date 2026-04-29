@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.108] - 2026-04-29
+
+### Fixed — CodeQL java-kotlin / c-cpp failures
+Untracked `clientst0r-android/` (37 files of Kotlin source + Gradle wrapper). The Default-setup CodeQL was auto-detecting Kotlin from those files and trying to build them in CI without an Android SDK, which failed every push. With no Kotlin / Java / C / C++ files left in the repo, GitHub's auto-detect should fall back to scanning only Python, JS/TS, and Actions — all of which currently pass.
+
+The Android source is preserved on disk locally; just no longer in this repo. Recommended next step: push it to a separate repo (e.g. `agit8or1/clientst0r-android`) so it can have its own CI with the Android SDK installed.
+
+`.gitignore` now excludes `clientst0r-android/` so it doesn't get re-added accidentally.
+
 ## [3.17.107] - 2026-04-29
 
 ### Added — Vault items for the customer portal + per-org RBAC

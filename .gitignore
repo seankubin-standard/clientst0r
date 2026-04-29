@@ -196,3 +196,6 @@ deploy/*-sudoers
 
 # Local-only side projects (not part of clientst0r)
 projects/
+
+# Android app — separate stack, in its own repo or unpublished
+clientst0r-android/
