@@ -167,7 +167,7 @@ class UserProfileForm(forms.ModelForm):
     
     class Meta:
         model = UserProfile
-        fields = ['phone', 'title', 'department', 'timezone', 'time_format', 'locale', 'theme', 'background_mode', 'background_color', 'preset_background', 'background_image', 'email_notifications', 'notification_frequency', 'tooltips_enabled', 'preferred_organization']
+        fields = ['phone', 'title', 'department', 'timezone', 'time_format', 'locale', 'theme', 'background_mode', 'background_color', 'preset_background', 'background_image', 'email_notifications', 'notification_frequency', 'notify_assigned_email', 'notify_assigned_sms', 'notify_scheduled_email', 'notify_scheduled_sms', 'tooltips_enabled', 'preferred_organization']
         widgets = {
             'phone': forms.TextInput(attrs={
                 'class': 'form-control',
@@ -223,6 +223,22 @@ class UserProfileForm(forms.ModelForm):
             }),
             'notification_frequency': forms.Select(attrs={
                 'class': 'form-select',
+                'autocomplete': 'off'
+            }),
+            'notify_assigned_email': forms.CheckboxInput(attrs={
+                'class': 'form-check-input',
+                'autocomplete': 'off'
+            }),
+            'notify_assigned_sms': forms.CheckboxInput(attrs={
+                'class': 'form-check-input',
+                'autocomplete': 'off'
+            }),
+            'notify_scheduled_email': forms.CheckboxInput(attrs={
+                'class': 'form-check-input',
+                'autocomplete': 'off'
+            }),
+            'notify_scheduled_sms': forms.CheckboxInput(attrs={
+                'class': 'form-check-input',
                 'autocomplete': 'off'
             }),
             'tooltips_enabled': forms.CheckboxInput(attrs={

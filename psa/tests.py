@@ -2227,3 +2227,59 @@ class ContractEnginePhase1Tests(TestCase):
         snap = self.contract.profitability_snapshot()
         for k in ('revenue', 'cost', 'margin', 'margin_pct', 'hours_used', 'overage_hours'):
             self.assertIn(k, snap)
+
+
+class TechNotificationTests(TestCase):
+    """v3.17.127: assignment + schedule notifications respect per-user prefs."""
+
+    def setUp(self):
+        _setup_seed()  # Existing helper that seeds defaults
+        self.org = Organization.objects.create(name='Notify Co', slug='notify-co')
+        self.tech = User.objects.create_user('alice', email='alice@x.com', password='pw')
+        Membership.objects.create(user=self.tech, organization=self.org, role=Role.OWNER, is_active=True)
+        self.tech.profile.phone = '+15551234567'
+        self.tech.profile.notify_assigned_email = True
+        self.tech.profile.notify_assigned_sms = False
+        self.tech.profile.save()
+
+    def _ticket_kwargs(self):
+        return dict(
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first() or TicketStatus.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+
+    def test_unassigned_ticket_no_notify(self):
+        from psa.notifications import notify_tech_assigned
+        t = Ticket.objects.create(
+            organization=self.org, subject='X',
+            **self._ticket_kwargs(),
+        )
+        result = notify_tech_assigned(t)
+        self.assertEqual(result, {'email': None, 'sms': None})
+
+    def test_self_assignment_skips_notify(self):
+        from psa.notifications import notify_tech_assigned
+        t = Ticket.objects.create(
+            organization=self.org, subject='X', assigned_to=self.tech,
+            **self._ticket_kwargs(),
+        )
+        result = notify_tech_assigned(t, by_user=self.tech)
+        self.assertEqual(result['email'], 'self')
+
+    def test_email_pref_respected(self):
+        from psa.notifications import notify_tech_assigned
+        from django.core import mail
+        t = Ticket.objects.create(
+            organization=self.org, subject='X', assigned_to=self.tech,
+            **self._ticket_kwargs(),
+        )
+        # Clear any mail captured during create-time signal fan-out
+        mail.outbox = []
+        # Assigner is a different user
+        other = User.objects.create_user('bob', email='bob@x.com', password='pw')
+        notify_tech_assigned(t, by_user=other)
+        # 1 email should have been sent (Django test backend captures it)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(t.ticket_number, mail.outbox[0].subject)

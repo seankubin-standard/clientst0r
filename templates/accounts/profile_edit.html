@@ -211,6 +211,41 @@
                     </div>
 
                     <hr class="my-4">
+                    <h6><i class="fas fa-bell"></i> {% trans "PSA notifications" %}</h6>
+                    <p class="small text-muted">Choose how you want to be notified about tickets assigned to you.</p>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <h6 class="small fw-semibold mb-2">When a ticket is assigned to me</h6>
+                            <div class="form-check">
+                                {{ form.notify_assigned_email }}
+                                <label class="form-check-label" for="{{ form.notify_assigned_email.id_for_label }}">Email me</label>
+                            </div>
+                            <div class="form-check">
+                                {{ form.notify_assigned_sms }}
+                                <label class="form-check-label" for="{{ form.notify_assigned_sms.id_for_label }}">Text me</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <h6 class="small fw-semibold mb-2">When an assigned ticket gets a due date</h6>
+                            <div class="form-check">
+                                {{ form.notify_scheduled_email }}
+                                <label class="form-check-label" for="{{ form.notify_scheduled_email.id_for_label }}">Email me</label>
+                            </div>
+                            <div class="form-check">
+                                {{ form.notify_scheduled_sms }}
+                                <label class="form-check-label" for="{{ form.notify_scheduled_sms.id_for_label }}">Text me</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <small class="d-block text-muted mt-2">
+                        SMS requires a phone number on this profile and SMS to be configured globally
+                        (Settings &rarr; SMS). Email uses the address on this account.
+                    </small>
+
+                    <hr class="my-4">
                     <h6><i class="fas fa-question-circle"></i> {% trans "Interface Help" %}</h6>
 
                     <div class="mb-3 form-check">

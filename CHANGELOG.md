@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.127] - 2026-04-29
+
+### Added — Auto-notify techs on ticket assignment / schedule
+- New per-user preferences in **Profile**: email me / text me when a ticket is assigned to me; email me / text me when an assigned ticket gets a due date.
+- Email defaults ON, SMS defaults OFF. SMS requires a phone number on the profile + SMS configured globally.
+- Reuses existing SMS plumbing (Twilio/Plivo/Vonage/Telnyx/AWS SNS) and Django SMTP.
+- Dispatch board cards show small envelope / mobile icons next to each assignee — at-a-glance "will this tech actually hear about the assignment?"
+- Trigger hooks live in `psa/signals.py`: `pre_save` captures prior `assigned_to_id` + `resolution_due_at`, `post_save` fires `notify_tech_assigned` on change and `notify_tech_scheduled` on due-date change.
+- Notification failures are caught + logged; they never block ticket save.
+
+### Migration
+`accounts.0018_userprofile_notify_assigned_email_and_more` — adds 4 boolean prefs to UserProfile.
+
 ## [3.17.126] - 2026-04-29
 
 ### Added — Contract engine deepening (Phase 1, part 1 of 2)

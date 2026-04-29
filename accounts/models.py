@@ -309,6 +309,27 @@ class UserProfile(BaseModel):
         ('weekly', 'Weekly Digest'),
     ], default='realtime')
 
+    # Tech notification preferences (PSA dispatch)
+    notify_assigned_email = models.BooleanField(
+        default=True,
+        help_text='Send me an email when a PSA ticket is assigned to me.',
+    )
+    notify_assigned_sms = models.BooleanField(
+        default=False,
+        help_text='Text my UserProfile.phone when a PSA ticket is assigned to me. '
+                  'Requires SMS to be configured globally and a phone number on '
+                  'this profile.',
+    )
+    notify_scheduled_email = models.BooleanField(
+        default=True,
+        help_text='Send me an email when an assigned ticket gets a due date '
+                  '(or a new one).',
+    )
+    notify_scheduled_sms = models.BooleanField(
+        default=False,
+        help_text='Text me when an assigned ticket gets a due date.',
+    )
+
     # Organization Preferences
     preferred_organization = models.ForeignKey(
         'core.Organization',

@@ -22,7 +22,7 @@
             <a href="{% url 'psa:ticket_detail' t.ticket_number %}"><code>{{ t.ticket_number }}</code></a>
             <span class="badge text-bg-danger">{{ t.priority.code }}</span>
             {{ t.subject|truncatechars:60 }}
-            {% if t.assigned_to %}<span class="text-muted">— {{ t.assigned_to.username }}</span>{% else %}<span class="text-warning">— unassigned</span>{% endif %}
+            {% if t.assigned_to %}<span class="text-muted">— {{ t.assigned_to.username }}{% if t.assigned_to.profile.notify_assigned_email %}<i class="fas fa-envelope text-muted ms-1" title="Tech will be emailed on assignment" data-bs-toggle="tooltip"></i>{% endif %}{% if t.assigned_to.profile.notify_assigned_sms and t.assigned_to.profile.phone %}<i class="fas fa-mobile-alt text-muted ms-1" title="Tech will be texted on assignment" data-bs-toggle="tooltip"></i>{% endif %}</span>{% else %}<span class="text-warning">— unassigned</span>{% endif %}
         </li>
         {% endfor %}
     </ul>
@@ -74,7 +74,16 @@
             </tr>
             {% for row in rows %}
             <tr data-tech="{{ row.tech.id }}">
-                <td class="dispatch-row-label"><strong>{{ row.tech.username }}</strong></td>
+                <td class="dispatch-row-label">
+                    <strong>{{ row.tech.username }}</strong>
+                    {# Notification status icons - visual confirmation that the tech will be reachable #}
+                    {% if row.tech.profile.notify_assigned_email %}
+                    <i class="fas fa-envelope text-muted ms-1" title="Tech will be emailed on assignment" data-bs-toggle="tooltip"></i>
+                    {% endif %}
+                    {% if row.tech.profile.notify_assigned_sms and row.tech.profile.phone %}
+                    <i class="fas fa-mobile-alt text-muted ms-1" title="Tech will be texted on assignment" data-bs-toggle="tooltip"></i>
+                    {% endif %}
+                </td>
                 {% for cell in row.cells %}
                 <td class="dispatch-cell" data-tech="{{ row.tech.id }}">
                     {% for t in cell %}
