@@ -2205,15 +2205,12 @@ def project_task_delete(request, task_pk):
 @login_required
 @require_psa_enabled
 def workflow_rule_list(request):
+    """Workflow rules are MSP-level config — they apply to ANY ticket. No
+    client filter, even when a client is currently in scope."""
     from .models import WorkflowRule
-    org = get_request_organization(request)
-    qs = WorkflowRule.objects.all()
-    if org is not None:
-        qs = qs.filter(organization=org)
-    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
-        qs = qs.none()
+    qs = WorkflowRule.objects.select_related('organization').order_by('sort_order', 'name')
     return render(request, 'psa/workflow_rule_list.html', {
-        'rules': qs.order_by('sort_order', 'name')[:200],
+        'rules': qs[:200],
     })
 
 
@@ -2222,13 +2219,13 @@ def workflow_rule_list(request):
 @require_psa_enabled
 @require_http_methods(['GET', 'POST'])
 def workflow_rule_form(request, pk=None):
+    """Create/edit an MSP-level workflow rule. The rule's organization is
+    optional — leave blank to apply to every client's tickets, or pick a
+    specific client to scope it. No 'pick a client first' requirement."""
     from .models import WorkflowRule
+    from core.models import Organization
     import json as _json
-    org = get_request_organization(request)
-    if org is None:
-        messages.error(request, 'Pick a client first.')
-        return redirect('psa:workflow_rule_list')
-    item = get_object_or_404(WorkflowRule, pk=pk, organization=org) if pk else None
+    item = get_object_or_404(WorkflowRule, pk=pk) if pk else None
 
     if request.method == 'POST':
         name = (request.POST.get('name') or '').strip()
@@ -2253,12 +2250,22 @@ def workflow_rule_form(request, pk=None):
             messages.error(request, 'Actions must be a JSON list.')
             return redirect(request.path)
 
+        # Optional client scope
+        scoped_org = None
+        org_id = (request.POST.get('organization') or '').strip()
+        if org_id:
+            try:
+                scoped_org = Organization.objects.get(pk=int(org_id))
+            except (Organization.DoesNotExist, ValueError):
+                scoped_org = None
+
         if item is None:
-            item = WorkflowRule(organization=org, name=name, trigger=trigger,
-                                created_by=request.user)
+            item = WorkflowRule(name=name, trigger=trigger, created_by=request.user,
+                                organization=scoped_org)
         else:
             item.name = name
             item.trigger = trigger
+            item.organization = scoped_org
         item.description = (request.POST.get('description') or '').strip()
         item.conditions = conditions
         item.actions = actions
@@ -2276,6 +2283,7 @@ def workflow_rule_form(request, pk=None):
         'trigger_choices': WorkflowRule.TRIGGER_CHOICES,
         'conditions_pretty': _json.dumps(item.conditions if item else {}, indent=2),
         'actions_pretty': _json.dumps(item.actions if item else [], indent=2),
+        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
     })
 
 

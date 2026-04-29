@@ -44,8 +44,10 @@
     </div>
 </div>
 
-<div class="alert alert-secondary mt-3">
-    <strong>Cron setup:</strong> add to crontab to poll every 5 minutes:
-    <code>*/5 * * * * /home/administrator/venv/bin/python /home/administrator/manage.py psa_poll_email</code>
+<div class="alert alert-success mt-3 small mb-0">
+    <i class="fas fa-check-circle me-1"></i>
+    <strong>Cron auto-installed.</strong> The update script registers
+    <code>*/5 * * * * psa_poll_email</code> in your user's crontab. Verify with:
+    <code>crontab -l | grep psa_poll_email</code>
 </div>
 {% endblock %}

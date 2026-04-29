@@ -152,13 +152,16 @@ def fire(trigger: str, ticket, *, prior_status=None) -> int:
     AND whose conditions evaluate true. Returns the number of rules fired.
     Errors per rule are captured to WorkflowRule.last_error.
     """
+    from django.db.models import Q
     from .models import WorkflowRule
 
     if ticket is None or not ticket.organization_id:
         return 0
 
+    # Match MSP-wide rules (organization IS NULL) AND rules scoped to this
+    # ticket's client organization.
     rules = WorkflowRule.objects.filter(
-        organization_id=ticket.organization_id,
+        Q(organization__isnull=True) | Q(organization_id=ticket.organization_id),
         trigger=trigger,
         is_active=True,
     ).order_by('sort_order', 'pk')

@@ -1467,8 +1467,10 @@ class WorkflowRule(models.Model):
 
     organization = models.ForeignKey(
         'core.Organization', on_delete=models.CASCADE,
+        null=True, blank=True,
         related_name='psa_workflow_rules',
-        help_text='MSP tenant; rules apply only to tickets within this tenant',
+        help_text='Leave blank to apply this rule to tickets from EVERY client. '
+                  'Set to a specific client organization to scope it to that client only.',
     )
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)

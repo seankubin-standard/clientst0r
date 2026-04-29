@@ -183,6 +183,30 @@ if ! crontab -l 2>/dev/null | grep -q "check_update_trigger.sh"; then
         || log "[WARN] Cron job setup failed (non-critical)"
 fi
 
+# PSA recurring tickets — every 15 minutes
+PSA_RECURRING="*/15 * * * * $VENV_DIR/bin/python $BASE_DIR/manage.py psa_run_recurring_tickets >/dev/null 2>&1"
+if ! crontab -l 2>/dev/null | grep -q "psa_run_recurring_tickets"; then
+    ( (crontab -l 2>/dev/null; echo "$PSA_RECURRING") | crontab - \
+        && log "Cron job configured for PSA recurring tickets" ) \
+        || log "[WARN] PSA recurring-tickets cron setup failed (non-critical)"
+fi
+
+# PSA email-to-ticket — every 5 minutes
+PSA_EMAIL="*/5 * * * * $VENV_DIR/bin/python $BASE_DIR/manage.py psa_poll_email >/dev/null 2>&1"
+if ! crontab -l 2>/dev/null | grep -q "psa_poll_email"; then
+    ( (crontab -l 2>/dev/null; echo "$PSA_EMAIL") | crontab - \
+        && log "Cron job configured for PSA email-to-ticket polling" ) \
+        || log "[WARN] PSA email-poll cron setup failed (non-critical)"
+fi
+
+# Distributors health probe — hourly
+PSA_DIST="0 * * * * $VENV_DIR/bin/python $BASE_DIR/manage.py sync_distributors >/dev/null 2>&1"
+if ! crontab -l 2>/dev/null | grep -q "sync_distributors"; then
+    ( (crontab -l 2>/dev/null; echo "$PSA_DIST") | crontab - \
+        && log "Cron job configured for distributor health probe" ) \
+        || log "[WARN] Distributor cron setup failed (non-critical)"
+fi
+
 # =====================================================================
 # Step 5: Clear Python bytecode cache + graceful reload
 # =====================================================================

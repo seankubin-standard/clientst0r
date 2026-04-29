@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.111] - 2026-04-29
+
+### Changed — Workflow Rules are MSP-wide by default
+- **`psa.WorkflowRule.organization`** is now **nullable** (was required). A NULL organization means "applies to every ticket regardless of client". Existing rules with an org are still respected — they scope to that client only.
+- **No more "Pick a client first" redirect** when creating or editing a workflow rule. The form has an "Applies to" picker that defaults to "All clients (every ticket)".
+- **Engine** (`psa.workflow_engine.fire`) now matches `Q(organization__isnull=True) | Q(organization=ticket.organization)` — both MSP-wide and tenant-scoped rules fire for the right tickets.
+- **Rule list** shows an "Applies to" column with a green "All clients" badge for global rules, grey badge for client-scoped.
+
+### Changed — Cron jobs auto-installed by the update script
+The `deploy/update_instructions.sh` now registers three cron jobs in the running user's crontab if they aren't already present (idempotent — checked by string match):
+- `*/15 * * * * psa_run_recurring_tickets` — preventive maintenance ticket creation
+- `*/5 * * * * psa_poll_email` — email-to-ticket IMAP poller
+- `0 * * * * sync_distributors` — distributor health probe (Ingram / Pax8 / Synnex)
+
+The "Cron setup" instruction boxes on the Recurring Tickets and Email Ingestion pages were rewritten to a green "Cron auto-installed" indicator with a `crontab -l | grep ...` verification snippet.
+
+### Migration
+`psa.0017_alter_workflowrule_organization`.
+
 ## [3.17.110] - 2026-04-29
 
 ### Fixed — Proper Advanced-setup CodeQL workflow

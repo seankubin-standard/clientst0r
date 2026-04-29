@@ -42,6 +42,17 @@
             </div>
 
             <div class="col-md-6">
+                <label class="form-label">Applies to</label>
+                <select name="organization" class="form-select">
+                    <option value="" {% if not item.organization_id %}selected{% endif %}>All clients (every ticket)</option>
+                    {% for o in client_orgs %}
+                    <option value="{{ o.pk }}" {% if item.organization_id == o.pk %}selected{% endif %}>{{ o.name }}</option>
+                    {% endfor %}
+                </select>
+                <small class="text-muted d-block">Leave on "All clients" for an MSP-wide rule. Choose a specific client to scope the rule to that client's tickets only.</small>
+            </div>
+
+            <div class="col-md-6">
                 <label class="form-label">Conditions (JSON)</label>
                 <textarea name="conditions" rows="8" class="form-control font-monospace small">{{ conditions_pretty }}</textarea>
                 <small class="text-muted d-block">Examples:

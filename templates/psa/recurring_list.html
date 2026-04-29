@@ -43,8 +43,10 @@
     </div>
 </div>
 
-<div class="alert alert-secondary mt-3">
-    <strong>Cron setup:</strong> add to crontab to run every 15 minutes:
-    <code>*/15 * * * * /home/administrator/venv/bin/python /home/administrator/manage.py psa_run_recurring_tickets</code>
+<div class="alert alert-success mt-3 small mb-0">
+    <i class="fas fa-check-circle me-1"></i>
+    <strong>Cron auto-installed.</strong> The update script registers
+    <code>*/15 * * * * psa_run_recurring_tickets</code> in your user's crontab. Verify with:
+    <code>crontab -l | grep psa_run_recurring_tickets</code>
 </div>
 {% endblock %}
