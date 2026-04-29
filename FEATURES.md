@@ -506,10 +506,33 @@ A complete in-house ticketing system, separate from the PSA *integrations* below
 - **Defence-in-depth** — `Password.visible_to_portal_user(user)` checks `Membership` even if a user is in the allowed-users list. Personal vault entries (`is_personal=True`) are never portal-visible regardless of mode.
 - **Test coverage** — 9 unit tests in `psa.tests.PortalVaultRBACTests` cover every mode, the personal-vault carve-out, and the unauthenticated case.
 
-### Process Workflows on PSA Tickets *(v3.17.105)*
-- **`ProcessExecution.native_psa_ticket`** FK lets a Process workflow attach to a native PSA ticket (in addition to the existing `psa_ticket` link for third-party PSAs)
-- **Reverse query** — `ticket.process_executions.all()` lists every workflow run against that ticket
-- Useful for onboarding/offboarding/change-management runbooks that need to live on the same record as the ticket they were spawned from
+### Process Workflows Embedded in PSA Tickets *(v3.17.105 → v3.17.120)*
+Workflows (Process templates) and PSA tickets are now tightly coupled. A workflow is never a "free-floating execution" page — every running workflow has a parent ticket that owns its checklist + sign-off history.
+
+**Three ways to attach a workflow:**
+- **At ticket creation** *(v3.17.120)* — the `/psa/new/` form has an "Attach a workflow" picker. Pick a Process template; the new ticket opens with the embedded checklist already populated.
+- **From an existing ticket** *(v3.17.105)* — "Launch workflow" button on the ticket detail page picks any active template and embeds it.
+- **Run from the workflows page** *(v3.17.117)* — `/processes/` shows the templates list; clicking Run asks for a Client and creates a brand-new ticket titled `Workflow: <Process title>` with the workflow attached.
+
+**On the ticket detail page:**
+- **Inline stage checklist** *(v3.17.117)* — every stage shows as a list item with a checkbox toggle, title, description, and any linked entities (KB doc / vault password / asset / secure note).
+- **AJAX sign-off** — click the checkbox to mark a stage complete; POSTs to `/processes/completion/<pk>/complete/` (or `/uncomplete/`), updates the icon, the line-through, and the live progress bar — no page reload.
+- **Live progress bar** — `<percent>% · N stages` text + Bootstrap progress bar updates in place as stages flip.
+- **Sign-off audit history** *(v3.17.118)* — collapsible "Sign-off history" disclosure under each workflow shows the last 25 audit-log events (stage_completed / stage_uncompleted / execution_created / execution_completed / cancelled / failed) with username, stage title, and time-ago. Coloured icons per action.
+- **Full audit log** — "View full audit log →" link goes to `/processes/execution/<pk>/audit-log/` for the unabridged history.
+
+**Backend:**
+- **`ProcessExecution.native_psa_ticket`** FK to `psa.Ticket` (in addition to the older `psa_ticket` FK for third-party PSAs).
+- **Reverse query** — `ticket.process_executions.all()` lists every workflow run against the ticket.
+- **`ProcessExecutionAuditLog.log_action(execution, action_type, user, description, stage=None, request=None)`** writes one row per stage event with IP/user-agent metadata and stores the username + stage_title for history (so the audit row survives even if the user or stage is later renamed/deleted).
+- **Eager-loaded** — the ticket detail view prefetches `stage_completions` (with stage + linked entities + completed_by) and `audit_logs` (last 25, with user + stage) in two `Prefetch()` calls, no N+1.
+- **Legacy `/processes/execution/<pk>/`** — auto-redirects to the linked ticket if `native_psa_ticket_id` is set; superusers can still hit the old page via `?legacy=1`.
+
+### Workflow Templates Page *(v3.17.117)*
+- **`/processes/`** — CRUD + Run page for Process templates. List, create, edit, archive, delete.
+- **Run button** — opens a form asking for a Client; on submit creates a PSA ticket and a `ProcessExecution` linked to it, then redirects to the ticket.
+- **Operations → Workflows** in the top menu is the entry point. Same destination as the dashboard "Run Workflow" Quick Action tile.
+- **Audit-log access** — superusers can still hit `/processes/executions/` for orphan/legacy executions; non-superusers don't see the link.
 
 ### Email-to-Ticket
 - **IMAP poller** - `psa_poll_email` management command (cron every 5 min)

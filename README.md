@@ -1,7 +1,7 @@
 # Client St0r
 
 [![GitHub Stars](https://img.shields.io/github/stars/agit8or1/clientst0r?style=social)](https://github.com/agit8or1/clientst0r/stargazers)
-[![Version 3.17.112](https://img.shields.io/badge/version-3.17.112-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
+[![Version 3.17.120](https://img.shields.io/badge/version-3.17.120-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green)](https://github.com/agit8or1/clientst0r)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-blue)](https://www.djangoproject.com/)
@@ -120,7 +120,7 @@ Client St0r is commonly evaluated as an **open-source IT Glue alternative** and 
 ![Install App Page](docs/screenshots/install-app.png)
 ![PWA Phone Shortcut](docs/screenshots/pwa-shortcut.png)
 
-### 🎫 Native PSA / Service Desk *(v3.17 — 11 phases)*
+### 🎫 Native PSA / Service Desk *(v3.17 — 12+ phases)*
 ![PSA — Tickets](docs/screenshots/psa-tickets.png)
 ![PSA — Ticket detail](docs/screenshots/psa-ticket-detail.png)
 ![PSA — Client account](docs/screenshots/psa-client-account.png)
@@ -313,16 +313,33 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 
 ### Latest Release - v3.17.x (April 2026)
 
-**🎉 New in v3.17 (latest: v3.17.112):**
+**🎉 New in v3.17 (latest: v3.17.120):**
 
-- **🎫 Native PSA / Service Desk** - Full-featured ticketing system across **11 phases** (v3.17.83 → v3.17.112): tickets / queues / SLA engine / time tracking / service catalog with structured fields / watchers / canned replies / @mentions / similar-tickets / merge / projects with tasks & milestones / recurring tickets / KB linking / approvals / contracts (block-hours, retainer, managed-services with auto-tracked hours and per-priority SLA matrix) / quotes & estimates with line items and convert-to-ticket on accept + **e-signature** / per-ticket expenses / **invoices & payments with branded PDFs / per-client account view + aging report / charges (one-time + recurring credits)** / **dispatch board with drag-and-drop reassignment** / **workflow rules engine (MSP-wide or per-client) with visual rule builder** / customer portal at `/portal/` **with per-org branding + vault RBAC** / IMAP email-to-ticket / distributor integrations (Ingram Micro, Pax8, TD Synnex) with HMAC-signed webhooks / **QuickBooks Online + Xero accounting push** / AI-assisted reply & action suggestions with strict guardrails and granular role-based permissions
+- **🎫 Native PSA / Service Desk** — full ticketing system across **12+ phases** (v3.17.83 → v3.17.120): tickets / queues / SLA engine / time tracking / service catalog / watchers / canned replies / @mentions / similar-tickets / merge / projects with tasks & milestones / recurring tickets / KB linking / approvals / contracts (block-hours, retainer, managed-services with auto-tracked hours and per-priority SLA matrix) / quotes & estimates with line items and convert-to-ticket on accept + **e-signature** / per-ticket expenses / **invoices & payments with branded PDFs / per-client account view + aging report / charges** / **dispatch board with drag-and-drop reassignment** / **workflow rules engine (MSP-wide or per-client) with visual rule builder** / **workflows embedded in tickets with inline checklist + sign-off audit history** / customer portal at `/portal/` **with per-org branding + vault RBAC** / IMAP email-to-ticket / distributor integrations (Ingram Micro, Pax8, TD Synnex) / **QuickBooks Online + Xero accounting push** / AI-assisted reply & action suggestions
 
-**🆕 Latest PSA additions (v3.17.105 → v3.17.112):**
-- **Process workflows on tickets** *(v3.17.105)* — onboarding/offboarding runbooks attach directly to a native PSA ticket via `ProcessExecution.native_psa_ticket`
-- **Portal user invites + KB visibility** *(v3.17.106)* — invite contacts to the portal, gate KB articles with `Document.is_client_visible`
-- **Vault RBAC for portal users** *(v3.17.107)* — four access modes (`none` / `all_org` / `specific_users` / `org_admin_managed`); portal users only see vault entries explicitly opened to them
-- **MSP-wide workflow rules** *(v3.17.111)* — leave "Applies to" on "All clients" to fire a rule globally; per-client scoping still supported. Auto-installed cron for recurring tickets, email polling, and distributor health probes.
-- **Per-org portal branding + drag-and-drop dispatch + visual rule builder + 14 unit tests** *(v3.17.112)* — portal navbar shows the client's logo, dispatch board supports DnD reassignment with optimistic UI + audit logging, and the workflow rule form is a click-to-add visual builder (raw JSON kept under "Advanced")
+**🆕 Latest additions (v3.17.113 → v3.17.120):**
+
+UI / dashboards:
+- **Quick Actions wizard** on the per-org and global dashboard — large icon tiles for the 8 most-used create flows (New Ticket, Add Asset, New Password, Add Document, Scan Receipt, Run Workflow, New Quote, New Invoice). Feature-flagged.
+- **Grid ⇄ List toggle on the Organizations index** for installs with 1000s of clients — compact table, search, pagination, annotated counts, persisted in localStorage.
+- **~30% page-density reduction site-wide** plus a phase-2 layer that shrinks dashboard tiles, stat cards, and FA icons.
+- **Dark-mode contrast fix** across all 22 PSA + portal list pages — single global CSS rule re-binds Bootstrap table vars under `[data-bs-theme="dark"]`.
+- **Condensed What's New** on Settings → Updates — theme-aware, bullet-list style, no more dark-on-dark.
+
+PSA workflow integration:
+- **Run Workflow → spawns a ticket** *(v3.17.117)* — running a workflow always creates a PSA ticket and embeds the checklist on it.
+- **Inline stage checklist + AJAX sign-off** *(v3.17.117)* — mark stages complete from the ticket page, no separate execution view needed. Live progress bar.
+- **Sign-off audit history on the ticket** *(v3.17.118)* — collapsible timeline of every audit-log event (who signed off on which stage, when).
+- **Attach a workflow at ticket creation** *(v3.17.120)* — optional picker on the New Ticket form spawns the workflow execution at create time.
+- **Launch workflow on existing tickets** *(v3.17.105)* — button on the ticket page picks any template and embeds it.
+
+Other:
+- **Workflow Rules are MSP-wide by default** *(v3.17.111)* — leave "Applies to" on "All clients" for global rules, or scope to one. Cron for recurring tickets / email polling / distributor health probes auto-installed.
+- **Vault RBAC for portal users** *(v3.17.107)* — four access modes; portal users only see vault entries explicitly opened to them.
+- **Per-org portal branding** *(v3.17.112)* — portal navbar shows the client's logo when set.
+- **All 6 PSA forms work in Global view** *(v3.17.117)* — Project / Recurring / Contract / Email Config / Quote / Invoice no longer require a current client; pick one inside the form.
+- **PSA-aware Global KB navbar link** *(v3.17.114)* — hidden when PSA is on (lives under PSA → KB), shown when PSA is off.
+- **`create_default_membership` signal disabled by default** *(v3.17.115)* — new users no longer auto-attach to the first active org as Read-Only members.
 - **🧾 Vehicle Receipt Scanning with AI OCR** - Photograph receipts directly from your phone; Claude vision API automatically extracts vendor, date, amount, tax, expense category, and odometer reading; receipts tab on vehicle detail shows per-category cost summary cards (Fuel, Maintenance, Repair, Total); duplicate prevention via SHA-256 image hashing
 - **📱 Install App / Add to Home Screen** - Dedicated install page (`/core/install/`) with QR code of your server URL, downloadable QR PNG, one-tap PWA install button (Android/desktop), and step-by-step instructions for Android Chrome, iPhone/iPad Safari, and desktop; per-vehicle receipt shortcuts also available
 - **🔒 Automated Security Scan Alerts** - Opt-in daily scheduled security scan emails all superusers when vulnerabilities are found; toggle on/off from Security Dashboard
@@ -766,7 +783,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📊 Project Status
 
-- **Version**: 3.17.112
+- **Version**: 3.17.120
 - **Release Date**: April 2026
 - **Status**: Production Ready
 - **Maintained**: Yes

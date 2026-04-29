@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.121] - 2026-04-29
+
+### Docs
+- README + FEATURES refreshed for v3.17.113 → v3.17.120: badge bumped, "What's New" rewritten as scannable bullet groups (UI / dashboards, PSA workflow integration, other), expanded the *Process Workflows Embedded in PSA Tickets* section to cover all three attach paths + inline checklist + AJAX sign-off + audit history, added a *Workflow Templates Page* section.
+
+### Known follow-up
+- Screenshots in `docs/screenshots/` are stale — they don't show Quick Actions tiles, the inline workflow checklist on tickets, the sign-off history timeline, or the org list-view toggle. They need to be re-shot manually after applying this release.
+
 ## [3.17.120] - 2026-04-29
 
 ### Added — Attach a workflow at ticket creation
