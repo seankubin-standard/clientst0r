@@ -2283,3 +2283,73 @@ class TechNotificationTests(TestCase):
         # 1 email should have been sent (Django test backend captures it)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn(t.ticket_number, mail.outbox[0].subject)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class KBCategoryBrowseTests(TestCase):
+    """v3.17.128: KB browse page filters articles by category + descendants."""
+
+    def setUp(self):
+        from docs.models import Document, DocumentCategory
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.user = User.objects.create_superuser('su', 'su@x.com', 'pw')
+        # Build a 2-level category tree: Networking > Wireless
+        self.cat_net = DocumentCategory.objects.create(
+            organization=None, name='Networking', slug='networking', order=1,
+        )
+        self.cat_wifi = DocumentCategory.objects.create(
+            organization=None, parent=self.cat_net, name='Wireless', slug='wireless', order=2,
+        )
+        self.cat_other = DocumentCategory.objects.create(
+            organization=None, name='Email', slug='email', order=3,
+        )
+        # Articles
+        Document.objects.create(
+            organization=None, is_global=True,
+            title='ATAK SSID setup', slug='atak-ssid', body='steps',
+            content_type='html', category=self.cat_wifi,
+        )
+        Document.objects.create(
+            organization=None, is_global=True,
+            title='OSPF basics', slug='ospf-basics', body='steps',
+            content_type='html', category=self.cat_net,
+        )
+        Document.objects.create(
+            organization=None, is_global=True,
+            title='M365 mailbox', slug='m365-mb', body='steps',
+            content_type='html', category=self.cat_other,
+        )
+
+    def test_filter_by_parent_returns_descendants(self):
+        self.client.force_login(self.user)
+        r = self.client.get('/psa/kb/?category=networking')
+        self.assertEqual(r.status_code, 200)
+        body = r.content.decode()
+        self.assertIn('OSPF basics', body)
+        self.assertIn('ATAK SSID setup', body)  # via descendant inclusion
+        self.assertNotIn('M365 mailbox', body)  # different branch
+
+    def test_filter_by_leaf_returns_only_that_category(self):
+        self.client.force_login(self.user)
+        r = self.client.get('/psa/kb/?category=wireless')
+        body = r.content.decode()
+        self.assertIn('ATAK SSID setup', body)
+        self.assertNotIn('OSPF basics', body)
+        self.assertNotIn('M365 mailbox', body)
+
+    def test_no_filter_returns_all(self):
+        self.client.force_login(self.user)
+        r = self.client.get('/psa/kb/')
+        body = r.content.decode()
+        self.assertIn('OSPF basics', body)
+        self.assertIn('ATAK SSID setup', body)
+        self.assertIn('M365 mailbox', body)
+
+    def test_breadcrumb_shows_path(self):
+        self.client.force_login(self.user)
+        r = self.client.get('/psa/kb/?category=wireless')
+        body = r.content.decode()
+        # Both parent and leaf should appear in breadcrumb
+        self.assertIn('Networking', body)
+        self.assertIn('Wireless', body)

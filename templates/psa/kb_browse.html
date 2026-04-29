@@ -4,36 +4,91 @@
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
-        <li class="breadcrumb-item active">Knowledge Base</li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:kb_browse' %}">Knowledge Base</a></li>
+        {% for c in selected_breadcrumb %}
+        <li class="breadcrumb-item{% if forloop.last %} active{% endif %}">
+            {% if forloop.last %}{{ c.name }}{% else %}<a href="?category={{ c.slug }}">{{ c.name }}</a>{% endif %}
+        </li>
+        {% endfor %}
     </ol>
 </nav>
 
-<h2 class="mb-3"><i class="fas fa-book me-2"></i>Knowledge Base</h2>
-<p class="text-muted">Searchable global articles from the docs library. Link any article to a ticket from the ticket detail page.</p>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0"><i class="fas fa-book me-2"></i>Knowledge Base</h2>
+    {% if request.user.is_superuser or request.user.is_staff %}
+    <a href="{% url 'docs:category_list' %}?global=1" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-folder-tree me-1"></i>Manage categories
+    </a>
+    {% endif %}
+</div>
 
 <form method="get" class="mb-3">
+    {# preserve current category filter on search #}
+    {% if selected_cat %}<input type="hidden" name="category" value="{{ selected_cat.slug }}">{% endif %}
     <div class="input-group">
         <input type="search" name="q" class="form-control" placeholder="Search title or body..." value="{{ query }}">
         <button class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
     </div>
 </form>
 
-<div class="card">
-    <div class="card-body p-0">
-        <table class="table table-hover mb-0">
-            <thead class="table-light"><tr><th>Title</th><th>Updated</th><th>Author</th></tr></thead>
-            <tbody>
-                {% for a in articles %}
-                <tr>
-                    <td><a href="{% url 'docs:document_detail' a.slug %}"><strong>{{ a.title }}</strong></a></td>
-                    <td><span data-utc="{{ a.updated_at|date:'c' }}">{{ a.updated_at|date:'Y-m-d' }}</span></td>
-                    <td>{% if a.author %}{{ a.author.username }}{% else %}—{% endif %}</td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="3" class="text-center text-muted py-4">{% if query %}No matches.{% else %}No KB articles yet — create one in the Docs section with "global" enabled.{% endif %}</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+<div class="row g-3">
+    <aside class="col-md-3">
+        <div class="card">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <strong><i class="fas fa-folder-tree me-1"></i>Categories</strong>
+                <span class="badge bg-secondary">{{ all_categories_count }}</span>
+            </div>
+            <div class="list-group list-group-flush small">
+                <a href="{% url 'psa:kb_browse' %}{% if query %}?q={{ query }}{% endif %}"
+                   class="list-group-item list-group-item-action {% if not selected_cat %}active{% endif %}">
+                    <i class="fas fa-folder-open me-1"></i>All articles
+                </a>
+                {% include 'psa/_kb_cat_tree.html' with nodes=category_roots depth=0 %}
+            </div>
+            {% if not category_roots %}
+            <div class="card-body small text-muted">
+                No categories yet.
+                {% if request.user.is_superuser or request.user.is_staff %}
+                <a href="{% url 'docs:category_create' %}?global=1">Create one →</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </aside>
+    <main class="col-md-9">
+        <div class="card">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <span>
+                    {% if selected_cat %}
+                        <i class="fas {{ selected_cat.icon|default:'fa-folder' }} me-1"></i>
+                        <strong>{{ selected_cat.name }}</strong>
+                        {% if selected_cat.description %}<small class="text-muted ms-2">{{ selected_cat.description }}</small>{% endif %}
+                    {% else %}
+                        <strong>All KB articles</strong>
+                    {% endif %}
+                </span>
+                <span class="badge bg-info">{{ articles|length }} article{{ articles|length|pluralize }}</span>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light"><tr><th>Title</th><th>Category</th><th>Updated</th><th>Author</th></tr></thead>
+                    <tbody>
+                    {% for a in articles %}
+                        <tr>
+                            <td><a href="{% url 'docs:document_detail' a.slug %}"><strong>{{ a.title }}</strong></a></td>
+                            <td>{% if a.category %}<a href="?category={{ a.category.slug }}" class="text-decoration-none"><span class="badge bg-light text-dark border">{{ a.category.name }}</span></a>{% else %}<span class="text-muted small">—</span>{% endif %}</td>
+                            <td><small><span data-utc="{{ a.updated_at|date:'c' }}">{{ a.updated_at|date:'Y-m-d' }}</span></small></td>
+                            <td><small>{% if a.created_by %}{{ a.created_by.username }}{% else %}—{% endif %}</small></td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">
+                        {% if query %}No matches.{% elif selected_cat %}No articles in this category yet.{% else %}No KB articles yet — create one in the Docs section with "global" enabled.{% endif %}
+                        </td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
 </div>
 {% endblock %}

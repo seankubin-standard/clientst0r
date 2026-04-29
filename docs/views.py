@@ -4,6 +4,7 @@ Docs views
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.utils.text import slugify
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
@@ -1082,19 +1083,43 @@ def diagram_template_delete(request, pk):
 # Document Category Management
 # ============================================================================
 
+def _resolve_category_scope(request):
+    """Resolve whether this request operates on global or org-scoped categories.
+
+    Returns ``(target_org, is_global)``. ``target_org`` is ``None`` for global
+    scope. Superusers in global view (no current org) implicitly land in
+    global scope; ``?global=1`` lets them switch from any org context.
+    """
+    org = get_request_organization(request)
+    explicit_global = request.GET.get('global') == '1'
+    if explicit_global or (org is None and request.user.is_superuser):
+        return None, True
+    return org, False
+
+
 @login_required
 @require_admin
 def category_list(request):
     """
-    List all document categories for current organization.
+    List document categories — either for the current organization or for
+    the global KB (when ``?global=1`` or a superuser is in global view).
     """
     from .models import DocumentCategory
 
-    org = get_request_organization(request)
-    categories = DocumentCategory.objects.filter(organization=org).order_by('order', 'name')
+    target_org, is_global = _resolve_category_scope(request)
+    if is_global:
+        categories = DocumentCategory.objects.filter(
+            organization__isnull=True
+        ).order_by('order', 'name')
+    else:
+        categories = DocumentCategory.objects.filter(
+            organization=target_org
+        ).order_by('order', 'name')
 
     return render(request, 'docs/category_list.html', {
         'categories': categories,
+        'is_global': is_global,
+        'request_org': target_org,
     })
 
 
@@ -1102,27 +1127,33 @@ def category_list(request):
 @require_admin
 def category_create(request):
     """
-    Create new document category.
+    Create new document category — global or org-scoped depending on context.
     """
     from .models import DocumentCategory
     from .forms import DocumentCategoryForm
 
-    org = get_request_organization(request)
+    target_org, is_global = _resolve_category_scope(request)
+    if is_global and not request.user.is_superuser:
+        raise PermissionDenied
 
     if request.method == 'POST':
-        form = DocumentCategoryForm(request.POST, organization=org)
+        form = DocumentCategoryForm(request.POST, organization=target_org)
         if form.is_valid():
             category = form.save(commit=False)
-            category.organization = org
+            category.organization = target_org  # may be None for global
             category.save()
             messages.success(request, f"Category '{category.name}' created successfully.")
-            return redirect('docs:category_list')
+            response = redirect('docs:category_list')
+            if is_global:
+                response['Location'] += '?global=1'
+            return response
     else:
-        form = DocumentCategoryForm(organization=org)
+        form = DocumentCategoryForm(organization=target_org)
 
     return render(request, 'docs/category_form.html', {
         'form': form,
         'action': 'Create',
+        'is_global': is_global,
     })
 
 
@@ -1130,27 +1161,36 @@ def category_create(request):
 @require_admin
 def category_edit(request, pk):
     """
-    Edit existing document category.
+    Edit existing document category — superusers may also edit global ones.
     """
     from .models import DocumentCategory
     from .forms import DocumentCategoryForm
 
-    org = get_request_organization(request)
-    category = get_object_or_404(DocumentCategory, pk=pk, organization=org)
+    target_org, is_global = _resolve_category_scope(request)
+    if is_global:
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        category = get_object_or_404(DocumentCategory, pk=pk, organization__isnull=True)
+    else:
+        category = get_object_or_404(DocumentCategory, pk=pk, organization=target_org)
 
     if request.method == 'POST':
-        form = DocumentCategoryForm(request.POST, instance=category, organization=org)
+        form = DocumentCategoryForm(request.POST, instance=category, organization=target_org)
         if form.is_valid():
             form.save()
             messages.success(request, f"Category '{category.name}' updated successfully.")
-            return redirect('docs:category_list')
+            response = redirect('docs:category_list')
+            if is_global:
+                response['Location'] += '?global=1'
+            return response
     else:
-        form = DocumentCategoryForm(instance=category, organization=org)
+        form = DocumentCategoryForm(instance=category, organization=target_org)
 
     return render(request, 'docs/category_form.html', {
         'form': form,
         'category': category,
         'action': 'Edit',
+        'is_global': is_global,
     })
 
 
@@ -1158,12 +1198,17 @@ def category_edit(request, pk):
 @require_admin
 def category_delete(request, pk):
     """
-    Delete document category.
+    Delete document category — superusers may also delete global ones.
     """
     from .models import DocumentCategory
 
-    org = get_request_organization(request)
-    category = get_object_or_404(DocumentCategory, pk=pk, organization=org)
+    target_org, is_global = _resolve_category_scope(request)
+    if is_global:
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        category = get_object_or_404(DocumentCategory, pk=pk, organization__isnull=True)
+    else:
+        category = get_object_or_404(DocumentCategory, pk=pk, organization=target_org)
 
     # Check if category is in use
     doc_count = category.documents.count()
@@ -1172,11 +1217,15 @@ def category_delete(request, pk):
         name = category.name
         category.delete()
         messages.success(request, f"Category '{name}' deleted successfully.")
-        return redirect('docs:category_list')
+        url = redirect('docs:category_list')
+        if is_global:
+            url['Location'] += '?global=1'
+        return url
 
     return render(request, 'docs/category_confirm_delete.html', {
         'category': category,
         'doc_count': doc_count,
+        'is_global': is_global,
     })
 
 

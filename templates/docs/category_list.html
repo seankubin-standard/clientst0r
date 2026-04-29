@@ -5,16 +5,24 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h1><i class="fas fa-folder"></i> Document Categories</h1>
+        <h2><i class="fas fa-folder-tree me-1"></i>
+            {% if is_global %}Global KB Categories{% elif request_org %}{{ request_org.name }} — Document Categories{% else %}Document Categories{% endif %}
+        </h2>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="{% url 'docs:document_list' %}">Documents</a></li>
-                <li class="breadcrumb-item active">Categories</li>
+                <li class="breadcrumb-item active">{% if is_global %}Global Categories{% else %}Categories{% endif %}</li>
             </ol>
         </nav>
+        {% if is_global %}<p class="text-muted small mb-0">These categories appear in the PSA KB browser. Used to organize global runbooks across all clients.</p>{% endif %}
     </div>
     <div>
-        <a href="{% url 'docs:category_create' %}" class="btn btn-primary">
+        {% if request.user.is_superuser %}
+        <a href="?{% if is_global %}{% else %}global=1{% endif %}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-exchange-alt me-1"></i>Switch to {% if is_global %}org-scoped{% else %}global{% endif %}
+        </a>
+        {% endif %}
+        <a href="{% url 'docs:category_create' %}{% if is_global %}?global=1{% endif %}" class="btn btn-primary">
             <i class="fas fa-plus"></i> New Category
         </a>
         <a href="{% url 'docs:document_list' %}" class="btn btn-outline-secondary">
@@ -55,10 +63,10 @@
                     </td>
                     <td>
                         <div class="btn-group btn-group-sm">
-                            <a href="{% url 'docs:category_edit' category.pk %}" class="btn btn-outline-primary" title="Edit">
+                            <a href="{% url 'docs:category_edit' category.pk %}{% if is_global %}?global=1{% endif %}" class="btn btn-outline-primary" title="Edit">
                                 <i class="fas fa-edit"></i> Edit
                             </a>
-                            <a href="{% url 'docs:category_delete' category.pk %}" class="btn btn-outline-danger" title="Delete">
+                            <a href="{% url 'docs:category_delete' category.pk %}{% if is_global %}?global=1{% endif %}" class="btn btn-outline-danger" title="Delete">
                                 <i class="fas fa-trash"></i>
                             </a>
                         </div>
@@ -74,7 +82,7 @@
     <i class="fas fa-folder fa-3x mb-3 text-muted"></i>
     <h5>No Categories Yet</h5>
     <p class="text-muted">Create your first category to organize your documents.</p>
-    <a href="{% url 'docs:category_create' %}" class="btn btn-primary">
+    <a href="{% url 'docs:category_create' %}{% if is_global %}?global=1{% endif %}" class="btn btn-primary">
         <i class="fas fa-plus"></i> Create Category
     </a>
 </div>

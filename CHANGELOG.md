@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.128] - 2026-04-29
+
+### Added — KB categories + sub-categories on the PSA browse page
+- The `/psa/kb/` page now has a left-sidebar **category tree** with unlimited hierarchy. Click a parent to see its articles + every descendant's articles; click a leaf to scope to just that category.
+- Article rows show their category as a clickable badge — one click jumps to that category's filtered view.
+- Category breadcrumb at the top reflects the selected path (Networking → Wireless).
+- Search now respects the selected category — searches within the filtered subset.
+- Empty-tree state links straight to "Manage categories" for superusers.
+- **Superusers can now manage GLOBAL categories** from `/docs/categories/?global=1` — previously only org-scoped categories were editable. New "Switch to global / org-scoped" toggle on the category list page.
+
+### No new schema
+The data model already supported this (`DocumentCategory.parent` self-FK, `Document.category` FK) — this release is pure UI.
+
 ## [3.17.127] - 2026-04-29
 
 ### Added — Auto-notify techs on ticket assignment / schedule

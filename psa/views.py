@@ -1779,15 +1779,64 @@ def recurring_form(request, pk=None):
 @login_required
 @require_psa_enabled
 def kb_browse(request):
-    """KB browser — wraps docs.Document filtered to global KB articles."""
-    from docs.models import Document
-    qs = Document.objects.filter(is_global=True).order_by('-updated_at')
+    """KB browser — wraps docs.Document filtered to global KB articles.
+    Shows a category tree sidebar; ?category=<slug> filters to that
+    category and all its descendants.
+    """
+    from docs.models import Document, DocumentCategory
+
+    # Global categories tree (parent first, then children)
+    cats_qs = DocumentCategory.objects.filter(
+        organization__isnull=True
+    ).order_by('order', 'name')
+    cats = list(cats_qs)
+    # Build a parent_id → [children] map for cheap recursive rendering
+    cats_by_parent = {}
+    for c in cats:
+        cats_by_parent.setdefault(c.parent_id, []).append(c)
+    roots = cats_by_parent.get(None, [])
+
+    # Resolve ?category=<slug> selection
+    cat_slug = (request.GET.get('category') or '').strip()
+    selected_cat = None
+    selected_breadcrumb = []
+    descendant_ids = []
+    if cat_slug:
+        selected_cat = next((c for c in cats if c.slug == cat_slug), None)
+        if selected_cat:
+            # Walk up the tree to build breadcrumbs
+            walk = selected_cat
+            while walk:
+                selected_breadcrumb.insert(0, walk)
+                walk = walk.parent if walk.parent_id else None
+            # Walk down to gather all descendant IDs (inclusive)
+            stack = [selected_cat.id]
+            descendant_ids = [selected_cat.id]
+            while stack:
+                pid = stack.pop()
+                for child in cats_by_parent.get(pid, []):
+                    descendant_ids.append(child.id)
+                    stack.append(child.id)
+
+    # Articles
+    qs = Document.objects.filter(is_global=True, is_archived=False)
+    if descendant_ids:
+        qs = qs.filter(category_id__in=descendant_ids)
+
     q = (request.GET.get('q') or '').strip()
     if q:
-        qs = qs.filter(models.Q(title__icontains=q) | models.Q(content__icontains=q))
+        qs = qs.filter(models.Q(title__icontains=q) | models.Q(body__icontains=q))
+
+    articles = qs.select_related('category', 'created_by').order_by('-updated_at')[:100]
+
     return render(request, 'psa/kb_browse.html', {
-        'articles': qs[:50],
+        'articles': articles,
         'query': q,
+        'category_roots': roots,
+        'cats_by_parent': cats_by_parent,
+        'selected_cat': selected_cat,
+        'selected_breadcrumb': selected_breadcrumb,
+        'all_categories_count': cats_qs.count(),
     })
 
 

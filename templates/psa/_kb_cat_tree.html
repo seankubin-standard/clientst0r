@@ -1,0 +1,17 @@
+{% load docs_extras %}
+{# Recursive category tree node. Variables: nodes, depth, cats_by_parent, selected_cat #}
+{% for node in nodes %}
+<a href="?category={{ node.slug }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}"
+   class="list-group-item list-group-item-action d-flex justify-content-between align-items-center{% if selected_cat and selected_cat.id == node.id %} active{% endif %}">
+    <span style="padding-left: {{ depth }}rem;">
+        <i class="fas {{ node.icon|default:'fa-folder' }} me-1 text-muted"></i>
+        {{ node.name }}
+    </span>
+    {% if node.documents.count %}<span class="badge bg-secondary rounded-pill">{{ node.documents.count }}</span>{% endif %}
+</a>
+{% with children=cats_by_parent|get_item:node.id %}
+{% if children %}
+{% include 'psa/_kb_cat_tree.html' with nodes=children depth=depth|add:1 %}
+{% endif %}
+{% endwith %}
+{% endfor %}
