@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.123] - 2026-04-29
+
+### Docs / repo
+- **Refreshed screenshots** in `docs/screenshots/` for the v3.17.113 → v3.17.122 feature surface: dashboard Quick Actions tile row, PSA tickets list / new-ticket form (with workflow picker) / ticket detail / aging / recurring / workflow rules / dispatch / quotes / invoices / contracts / client account, organizations list-view + grid-view toggle, processes (workflow templates) page, and the new condensed "What's New" on `/core/settings/updates/`.
+- **New screenshot generator** at `scripts/generate_screenshots_v2.py` — authenticates by injecting a Django session cookie (no login form, 2FA-safe), drives Chromium via Selenium, full-page captures up to 4000px tall, keeps going on per-page failures.
+- **Removed stale top-level docs** that were one-off generated reports superseded by `README.md` / `CHANGELOG.md` / `FEATURES.md`: `CHANGES_SUMMARY.md`, `DEPLOYMENT_VERIFIED.md`, `FEATURES_UPDATE.md`, `IMPLEMENTATION_STATUS.md`, `README_ADDITIONS.md`, `README_CONTRIBUTORS.md`, `ROADMAP_IMPLEMENTATION_COMPLETE.md`, `SECURITY_SCAN_REPORT.md`, `QUICK_START_AUTO_UPDATE.md`, `MOBILE_APP_DEVELOPMENT.md`.
+- **Updated GitHub About** — new description ("Open-source self-hosted MSP platform — IT documentation + native PSA / service desk + workflow engine. …") and added topics: `psa`, `service-desk`, `ticketing`, `workflow-engine`.
+
 ## [3.17.122] - 2026-04-29
 
 ### Fixed
