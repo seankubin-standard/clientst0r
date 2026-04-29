@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.109] - 2026-04-29
+
+### Fixed — CodeQL workflow file removed (was broken + now redundant)
+The custom `.github/workflows/codeql.yml` added in v3.17.102 had `paths-ignore` as a top-level input, which is NOT valid on `github/codeql-action/init@v3` — the proper place is inside a `config:` block or a separate `codeql-config.yml` file. That broken syntax caused all three jobs (python / javascript-typescript / actions) to fail on the v3.17.108 push.
+
+With `clientst0r-android/` untracked in v3.17.108, the custom workflow is also redundant: Default setup auto-detects only the languages still in the repo (python / javascript-typescript / actions) — exactly what we want. Removing the custom workflow lets Default setup handle CodeQL again. Same scan coverage, no failing jobs.
+
 ## [3.17.108] - 2026-04-29
 
 ### Fixed — CodeQL java-kotlin / c-cpp failures
