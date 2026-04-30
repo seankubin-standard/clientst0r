@@ -798,6 +798,16 @@ class RoleTemplate(BaseModel):
     outsourcing_share_tickets = models.BooleanField(default=False,
         help_text='Share a ticket with an outsourcing partner via HMAC-signed webhook.')
 
+    # --- Phase 9 security alert ingestion — v3.17.168 ---
+    security_alerts_view = models.BooleanField(default=True,
+        help_text='View the security alert triage list and alert detail.')
+    security_alerts_manage_connections = models.BooleanField(default=False,
+        help_text='Create / edit / delete EDR / AV / firewall connections.')
+    security_alerts_acknowledge = models.BooleanField(default=False,
+        help_text='Acknowledge / dismiss / resolve alerts and convert to PSA tickets.')
+    security_alerts_create_rules = models.BooleanField(default=False,
+        help_text='Create / edit / delete auto-ticket rules + suppression windows.')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -930,6 +940,11 @@ class RoleTemplate(BaseModel):
                 'catalog_approve_change': True,
                 # Phase 7 outsourcing — Owner: True
                 'outsourcing_share_tickets': True,
+                # Phase 9 security alerts — Owner: all True
+                'security_alerts_view': True,
+                'security_alerts_manage_connections': True,
+                'security_alerts_acknowledge': True,
+                'security_alerts_create_rules': True,
             },
             {
                 'name': 'Administrator',
@@ -1033,6 +1048,11 @@ class RoleTemplate(BaseModel):
                 'catalog_approve_change': True,
                 # Phase 7 outsourcing — Administrator: True
                 'outsourcing_share_tickets': True,
+                # Phase 9 security alerts — Administrator: all True
+                'security_alerts_view': True,
+                'security_alerts_manage_connections': True,
+                'security_alerts_acknowledge': True,
+                'security_alerts_create_rules': True,
             },
             {
                 'name': 'Editor',
@@ -1135,6 +1155,11 @@ class RoleTemplate(BaseModel):
                 'release_freeze': False,
                 'catalog_propose_change': True,
                 'catalog_approve_change': False,
+                # Phase 9 security alerts — Editor: view + acknowledge.
+                'security_alerts_view': True,
+                'security_alerts_manage_connections': False,
+                'security_alerts_acknowledge': True,
+                'security_alerts_create_rules': False,
             },
             {
                 'name': 'Help Desk',
@@ -1237,6 +1262,11 @@ class RoleTemplate(BaseModel):
                 'release_freeze': False,
                 'catalog_propose_change': True,
                 'catalog_approve_change': False,
+                # Phase 9 security alerts — Help Desk: view + acknowledge.
+                'security_alerts_view': True,
+                'security_alerts_manage_connections': False,
+                'security_alerts_acknowledge': True,
+                'security_alerts_create_rules': False,
             },
             {
                 'name': 'IT Manager',
@@ -1340,6 +1370,11 @@ class RoleTemplate(BaseModel):
                 'release_freeze': True,
                 'catalog_propose_change': True,
                 'catalog_approve_change': True,
+                # Phase 9 security alerts — IT Manager: all True
+                'security_alerts_view': True,
+                'security_alerts_manage_connections': True,
+                'security_alerts_acknowledge': True,
+                'security_alerts_create_rules': True,
             },
             {
                 'name': 'Documentation Writer',
@@ -1441,6 +1476,11 @@ class RoleTemplate(BaseModel):
                 'release_freeze': False,
                 'catalog_propose_change': False,
                 'catalog_approve_change': False,
+                # Phase 9 security alerts — Documentation Writer: view only.
+                'security_alerts_view': True,
+                'security_alerts_manage_connections': False,
+                'security_alerts_acknowledge': False,
+                'security_alerts_create_rules': False,
             },
             {
                 'name': 'Read-Only',
@@ -1542,6 +1582,11 @@ class RoleTemplate(BaseModel):
                 'release_freeze': False,
                 'catalog_propose_change': False,
                 'catalog_approve_change': False,
+                # Phase 9 security alerts — Read-Only: view only.
+                'security_alerts_view': True,
+                'security_alerts_manage_connections': False,
+                'security_alerts_acknowledge': False,
+                'security_alerts_create_rules': False,
             },
             # --- MSP-named sample roles (v3.17.164) -----------------------
             # Built via _build() so they only flip the listed perms; every
@@ -1621,6 +1666,9 @@ class RoleTemplate(BaseModel):
                 # Phase 6.3 — Technician: view + propose only
                 release_view=True,
                 catalog_propose_change=True,
+                # Phase 9 — Technician: view + acknowledge
+                security_alerts_view=True,
+                security_alerts_acknowledge=True,
             ),
             _build(
                 'Tech Manager',
@@ -1681,6 +1729,11 @@ class RoleTemplate(BaseModel):
                 catalog_approve_change=True,
                 # Phase 7 outsourcing — Tech Manager: True
                 outsourcing_share_tickets=True,
+                # Phase 9 — Tech Manager: full
+                security_alerts_view=True,
+                security_alerts_manage_connections=True,
+                security_alerts_acknowledge=True,
+                security_alerts_create_rules=True,
             ),
             _build(
                 'Office Manager',
@@ -1763,6 +1816,11 @@ class RoleTemplate(BaseModel):
                 catalog_approve_change=True,
                 # Phase 7 outsourcing — Office Manager: True
                 outsourcing_share_tickets=True,
+                # Phase 9 — Office Manager: full
+                security_alerts_view=True,
+                security_alerts_manage_connections=True,
+                security_alerts_acknowledge=True,
+                security_alerts_create_rules=True,
             ),
             _build(
                 'Full Admin',

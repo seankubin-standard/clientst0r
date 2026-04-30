@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Security Alert — {{ alert.title|truncatechars:60 }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'security_alerts:alert_list' %}">Security</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'security_alerts:alert_list' %}">Alerts</a></li>
+        <li class="breadcrumb-item active">#{{ alert.pk }}</li>
+    </ol>
+</nav>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+            <div>
+                <h3>
+                    {% if alert.severity == 'critical' %}<span class="badge bg-danger">Critical</span>
+                    {% elif alert.severity == 'high' %}<span class="badge bg-warning text-dark">High</span>
+                    {% elif alert.severity == 'medium' %}<span class="badge bg-info text-dark">Medium</span>
+                    {% elif alert.severity == 'low' %}<span class="badge bg-secondary">Low</span>
+                    {% else %}<span class="badge bg-light text-dark border">Info</span>{% endif %}
+                    {{ alert.title }}
+                </h3>
+                <p class="text-muted mb-1">{{ alert.connection.get_provider_display }} — {{ alert.connection.name }}</p>
+                <p class="text-muted mb-1">Client: {{ alert.client_org.name|default:"(unscoped)" }}</p>
+                <p class="text-muted mb-1">Asset hint: <code>{{ alert.asset_hint|default:"—" }}</code></p>
+                <p class="text-muted mb-1">External ID: <code>{{ alert.external_id }}</code></p>
+                <p class="text-muted mb-1">Seen: {{ alert.seen_at }}{% if alert.acknowledged_at %} · Acknowledged: {{ alert.acknowledged_at }} ({{ alert.acknowledge_minutes }} min){% endif %}</p>
+                {% if alert.auto_ticket %}
+                <p>Ticket: <a href="/psa/tickets/{{ alert.auto_ticket_id }}/">{{ alert.auto_ticket.ticket_number }}</a></p>
+                {% endif %}
+            </div>
+            {% if can_acknowledge and alert.status == 'new' %}
+            <form method="post" action="{% url 'security_alerts:alert_decide' alert.pk %}" class="d-flex gap-1">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <button name="decision" value="acknowledge" class="btn btn-success btn-sm">Acknowledge</button>
+                <button name="decision" value="dismiss" class="btn btn-secondary btn-sm">Dismiss</button>
+                {% if not alert.auto_ticket %}
+                <button name="decision" value="convert" class="btn btn-primary btn-sm">Convert to Ticket</button>
+                {% endif %}
+                <button name="decision" value="resolve" class="btn btn-outline-success btn-sm">Resolve</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if alert.description %}
+<div class="card mb-3"><div class="card-body">
+    <h5>Description</h5>
+    <pre style="white-space:pre-wrap;">{{ alert.description }}</pre>
+</div></div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header"><strong>Raw payload</strong></div>
+    <div class="card-body">
+        <pre class="small" style="max-height:60vh; overflow:auto;">{{ pretty_payload }}</pre>
+    </div>
+</div>
+{% endblock %}

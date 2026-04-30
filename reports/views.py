@@ -1849,3 +1849,44 @@ def crm_sales_funnel(request):
         'start': start,
         'end': today,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 9.4 — Security alert MTTA report
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_perm('reports_view_sla')
+def security_alert_mtta_report(request):
+    """
+    Mean Time To Acknowledge for security alerts in a date window,
+    bucketed per (client × vendor). CSV via ?format=csv.
+    """
+    from .queries import security_alert_mtta
+
+    today = date.today()
+    default_start = today - timedelta(days=29)
+    start_date = _parse_date(request.GET.get('start'), default_start)
+    end_date = _parse_date(request.GET.get('end'), today)
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    rows = security_alert_mtta(start_date, end_date)
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        return _csv_response(
+            f'security-alert-mtta-{start_date.isoformat()}-{end_date.isoformat()}.csv',
+            ['Client', 'Vendor', 'Count', 'Avg MTTA (min)', 'Unacked'],
+            [[
+                r['client_name'], r['vendor'], r['count'],
+                f"{r['avg_mtta_minutes']:.1f}" if r['avg_mtta_minutes'] is not None else '—',
+                r['unack_count'],
+            ] for r in rows],
+        )
+
+    return render(request, 'reports/security_alert_mtta.html', {
+        'rows': rows,
+        'start_date': start_date,
+        'end_date': end_date,
+    })

@@ -87,6 +87,7 @@ INSTALLED_APPS = [
     'portal.apps.PortalConfig',
     'resourcing.apps.ResourcingConfig',
     'crm.apps.CrmConfig',
+    'security_alerts.apps.SecurityAlertsConfig',
 ]
 
 # Optional apps - only add if installed (allows updates without dependencies)

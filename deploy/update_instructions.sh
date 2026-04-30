@@ -238,6 +238,14 @@ if ! crontab -l 2>/dev/null | grep -q "psa_auto_replenish_suggestions"; then
         || log "[WARN] Stock-minimum scan cron setup failed (non-critical)"
 fi
 
+# Security alert polling — every 5 minutes (v3.17.168 — Phase 9.2)
+PSA_SEC="*/5 * * * * $VENV_DIR/bin/python $BASE_DIR/manage.py poll_security_alerts >/dev/null 2>&1"
+if ! crontab -l 2>/dev/null | grep -q "poll_security_alerts"; then
+    ( (crontab -l 2>/dev/null; echo "$PSA_SEC") | crontab - \
+        && log "Cron job configured for security alert polling" ) \
+        || log "[WARN] Security alert polling cron setup failed (non-critical)"
+fi
+
 # =====================================================================
 # Step 5: Clear Python bytecode cache + graceful reload
 # =====================================================================

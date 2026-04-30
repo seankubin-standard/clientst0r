@@ -289,6 +289,40 @@ def low_stock_items(params):
     return {'columns': ['Item', 'In stock', 'Minimum'], 'rows': rows}
 
 
+# ---- Phase 9 security alerts ----------------------------------------------
+
+def security_alerts_24h(params):
+    """Count of new security alerts in the last 24h, broken down by severity."""
+    from datetime import timedelta
+    from django.utils import timezone
+    try:
+        from security_alerts.models import SecurityAlert
+        cutoff = timezone.now() - timedelta(hours=24)
+        rows = []
+        for sev in ['critical', 'high', 'medium', 'low', 'info']:
+            n = SecurityAlert.objects.filter(severity=sev, status='new', seen_at__gte=cutoff).count()
+            if n:
+                rows.append([sev.upper(), str(n)])
+        return {'columns': ['Severity', 'New (24h)'], 'rows': rows or [['—', '0']]}
+    except Exception:
+        return {'columns': [], 'rows': []}
+
+
+def security_alerts_open_critical(params):
+    """Single metric: count of open critical+high alerts."""
+    try:
+        from security_alerts.models import SecurityAlert
+        n = SecurityAlert.objects.filter(severity__in=['critical', 'high'], status='new').count()
+        return {
+            'value': str(n),
+            'subtitle': 'Open critical / high security alerts',
+            'icon': 'fa-shield-halved',
+            'color': 'danger' if n > 0 else 'success',
+        }
+    except Exception:
+        return {'value': '0', 'subtitle': 'Security', 'icon': 'fa-shield-halved', 'color': 'secondary'}
+
+
 # ---- Registry --------------------------------------------------------------
 
 REGISTRY = {
@@ -314,6 +348,9 @@ REGISTRY = {
     'low_stock_items': low_stock_items,
     # phase 5.3
     'recent_sales_activity': recent_sales_activity,
+    # phase 9
+    'security_alerts_24h': security_alerts_24h,
+    'security_alerts_open_critical': security_alerts_open_critical,
 }
 
 DATA_SOURCE_CHOICES = [
@@ -335,6 +372,8 @@ DATA_SOURCE_CHOICES = [
     ('client_health_breakdown', 'Client health breakdown (pie)', 'chart_pie'),
     ('low_stock_items', 'Low stock items (table)', 'table'),
     ('recent_sales_activity', 'Recent sales activity (table)', 'table'),
+    ('security_alerts_24h', 'Security alerts last 24h by severity (table)', 'table'),
+    ('security_alerts_open_critical', 'Open critical/high alerts (metric)', 'metric'),
 ]
 
 

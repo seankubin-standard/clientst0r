@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Security Alert MTTA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">Security Alert MTTA</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-stopwatch me-2"></i>Security Alert MTTA</h2>
+    <a class="btn btn-sm btn-outline-secondary" href="?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&format=csv">
+        <i class="fas fa-download me-1"></i>CSV
+    </a>
+</div>
+
+<form method="get" class="d-flex gap-2 mb-3 align-items-center flex-wrap">
+    <label>From <input type="date" name="start" value="{{ start_date|date:'Y-m-d' }}" class="form-control form-control-sm" style="width:auto;"></label>
+    <label>To <input type="date" name="end" value="{{ end_date|date:'Y-m-d' }}" class="form-control form-control-sm" style="width:auto;"></label>
+    <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 small">
+            <thead class="table-light">
+                <tr>
+                    <th>Client</th>
+                    <th>Vendor</th>
+                    <th class="text-end">Alerts</th>
+                    <th class="text-end">Avg MTTA (min)</th>
+                    <th class="text-end">Unacked</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in rows %}
+                <tr>
+                    <td>{{ r.client_name }}</td>
+                    <td>{{ r.vendor }}</td>
+                    <td class="text-end">{{ r.count }}</td>
+                    <td class="text-end">{% if r.avg_mtta_minutes is None %}—{% else %}{{ r.avg_mtta_minutes|floatformat:1 }}{% endif %}</td>
+                    <td class="text-end">{% if r.unack_count > 0 %}<span class="badge bg-warning text-dark">{{ r.unack_count }}</span>{% else %}{{ r.unack_count }}{% endif %}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-4">No alerts in this window.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

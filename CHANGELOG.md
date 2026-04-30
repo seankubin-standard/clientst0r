@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.168] - 2026-04-30
+
+### Added — Phase 9: Security alert ingestion (EDR / AV / Firewall)
+- New `security_alerts/` Django app with three models:
+  - `SecurityVendorConnection` — per-MSP-tenant + optionally per-client connection to an EDR / AV / firewall provider. 16 provider choices spanning CrowdStrike Falcon, SentinelOne, Microsoft Defender, Sophos Central, Huntress, ThreatLocker, Bitdefender, Webroot, Malwarebytes, ESET, Fortinet, Palo Alto, SonicWall, Meraki MX, Sophos XG, pfSense.
+  - `SecurityAlert` — ingested alert with severity / status / asset_hint / raw_payload + audit fields. Unique per (connection, external_id) for dedupe.
+  - `SecurityAlertRule` — auto-action rules with priority + match clauses (provider / category / severity-min / client) + optional suppression-window. Currently fires `create_ticket` action mapping severity → priority.
+- **Provider adapter framework** (`security_alerts/adapters/`) — abstract `SecurityProvider` extends the v3.17.166 Integration SDK. One reference adapter (Microsoft Defender for Endpoint) registered as a stub showing the integration shape.
+- **Polling cron** — `poll_security_alerts` mgmt command runs every 5 min via cron, loops active connections, runs the matching adapter's `sync()`. Auto-installed in `deploy/update_instructions.sh`.
+- **Webhook receiver** at `/security/webhook/<token>/` — CSRF-exempt, HMAC-verified inbound for vendors that push.
+- **Triage pages**: `/security/alerts/` (list + filter chips + bulk ack/dismiss/convert), `/security/alerts/<id>/` (detail with raw payload), `/security/connections/` (CRUD), `/security/rules/` (CRUD).
+- **Dashboard widgets**: 24h alerts breakdown by severity (table), open critical+high count (metric).
+- **MTTA report** at `/reports/security/mtta/` — Mean Time To Acknowledge per client × vendor over a date window.
+- 4 new RoleTemplate booleans: `security_alerts_view`, `security_alerts_manage_connections`, `security_alerts_acknowledge`, `security_alerts_create_rules`. Defaults wired across all 13 system templates.
+- New top-level "Security" dropdown in the navbar.
+- Tests in `security_alerts/tests.py` cover model dedupe, MTTA math, auto-ticket rule matching + suppression, webhook auth.
+
+### Migrations
+- `security_alerts.0001_initial`
+- `accounts.0028_roletemplate_security_alerts_acknowledge_and_more` for the 4 new RoleTemplate booleans
+
 ## [3.17.167] - 2026-04-30
 
 ### Added — Roadmap status JSON feed for external pollers

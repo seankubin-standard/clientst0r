@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Security Alerts{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'security_alerts:alert_list' %}">Security</a></li>
+        <li class="breadcrumb-item active">Alerts</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-triangle-exclamation me-2"></i>Security Alerts</h2>
+    <div class="d-flex gap-2">
+        {% if can_manage_connections %}
+        <a href="{% url 'security_alerts:connection_list' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-plug me-1"></i>Connections</a>
+        {% endif %}
+        {% if can_manage_rules %}
+        <a href="{% url 'security_alerts:rule_list' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-bolt me-1"></i>Rules</a>
+        {% endif %}
+    </div>
+</div>
+
+<form method="get" class="d-flex gap-2 mb-3 align-items-center flex-wrap">
+    <select name="severity" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All severities</option>
+        {% for value, label in severity_choices %}
+        <option value="{{ value }}" {% if filters.severity == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <select name="status" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All statuses</option>
+        {% for value, label in status_choices %}
+        <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <select name="vendor" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All vendors</option>
+        {% for value, label in provider_choices %}
+        <option value="{{ value }}" {% if filters.vendor == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <select name="client" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All clients</option>
+        {% for c in clients %}
+        <option value="{{ c.pk }}" {% if filters.client == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+    </select>
+    <input type="date" name="start" value="{{ filters.start }}" class="form-control form-control-sm" style="width:auto;">
+    <input type="date" name="end" value="{{ filters.end }}" class="form-control form-control-sm" style="width:auto;">
+    <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
+    <a href="{% url 'security_alerts:alert_list' %}" class="btn btn-sm btn-outline-secondary">Clear</a>
+</form>
+
+{% if can_acknowledge %}
+<form method="post" action="{% url 'security_alerts:alert_bulk_decide' %}">
+    {% csrf_token %}
+    <div class="d-flex gap-2 mb-2 align-items-center">
+        <span class="text-muted small">Bulk:</span>
+        <button type="submit" name="decision" value="acknowledge" class="btn btn-sm btn-outline-success">Acknowledge selected</button>
+        <button type="submit" name="decision" value="dismiss" class="btn btn-sm btn-outline-secondary">Dismiss selected</button>
+        <button type="submit" name="decision" value="resolve" class="btn btn-sm btn-outline-primary">Resolve selected</button>
+    </div>
+{% endif %}
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 small">
+            <thead class="table-light">
+                <tr>
+                    {% if can_acknowledge %}<th style="width:30px;"><input type="checkbox" id="bulk-toggle" onclick="document.querySelectorAll('input[name=alert_ids]').forEach(cb=>cb.checked=this.checked);"></th>{% endif %}
+                    <th>Severity</th>
+                    <th>Title</th>
+                    <th>Asset</th>
+                    <th>Status</th>
+                    <th>Client</th>
+                    <th>Vendor</th>
+                    <th>Seen</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for a in alerts %}
+                <tr>
+                    {% if can_acknowledge %}<td><input type="checkbox" name="alert_ids" value="{{ a.pk }}"></td>{% endif %}
+                    <td>
+                        {% if a.severity == 'critical' %}<span class="badge bg-danger">Critical</span>
+                        {% elif a.severity == 'high' %}<span class="badge bg-warning text-dark">High</span>
+                        {% elif a.severity == 'medium' %}<span class="badge bg-info text-dark">Medium</span>
+                        {% elif a.severity == 'low' %}<span class="badge bg-secondary">Low</span>
+                        {% else %}<span class="badge bg-light text-dark border">Info</span>{% endif %}
+                    </td>
+                    <td><a href="{% url 'security_alerts:alert_detail' a.pk %}">{{ a.title|truncatechars:80 }}</a></td>
+                    <td><span class="text-muted">{{ a.asset_hint|default:"—" }}</span></td>
+                    <td>
+                        {% if a.status == 'new' %}<span class="badge bg-danger">New</span>
+                        {% elif a.status == 'acknowledged' %}<span class="badge bg-warning text-dark">Ack</span>
+                        {% elif a.status == 'dismissed' %}<span class="badge bg-secondary">Dismissed</span>
+                        {% elif a.status == 'resolved' %}<span class="badge bg-success">Resolved</span>{% endif %}
+                    </td>
+                    <td>{{ a.client_org.name|default:"—" }}</td>
+                    <td>{{ a.connection.get_provider_display }}</td>
+                    <td><span class="text-muted">{{ a.seen_at|timesince }} ago</span></td>
+                    <td class="text-nowrap">
+                        {% if can_acknowledge and a.status == 'new' %}
+                        <form method="post" action="{% url 'security_alerts:alert_decide' a.pk %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button name="decision" value="acknowledge" class="btn btn-sm btn-outline-success" title="Acknowledge"><i class="fas fa-check"></i></button>
+                            <button name="decision" value="dismiss" class="btn btn-sm btn-outline-secondary" title="Dismiss"><i class="fas fa-xmark"></i></button>
+                            {% if not a.auto_ticket %}
+                            <button name="decision" value="convert" class="btn btn-sm btn-outline-primary" title="Convert to ticket"><i class="fas fa-ticket"></i></button>
+                            {% endif %}
+                        </form>
+                        {% endif %}
+                        {% if a.auto_ticket %}
+                        <a href="/psa/tickets/{{ a.auto_ticket_id }}/" class="btn btn-sm btn-link" title="Open ticket">{{ a.auto_ticket.ticket_number }}</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">No security alerts. Configure a vendor connection to start ingesting.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if can_acknowledge %}
+</form>
+{% endif %}
+{% endblock %}

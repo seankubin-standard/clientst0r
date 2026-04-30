@@ -78,5 +78,8 @@ urlpatterns = [
     path('psa/client-health/', views.psa_client_health, name='psa_client_health'),
     # Phase 5.2 — CRM sales funnel
     path('crm/sales-funnel/', views.crm_sales_funnel, name='crm_sales_funnel'),
+    # Phase 9.4 — Security alert MTTA
+    path('security/mtta/', views.security_alert_mtta_report,
+         name='security_alert_mtta'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

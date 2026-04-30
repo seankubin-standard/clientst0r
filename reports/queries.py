@@ -1403,3 +1403,49 @@ def sales_funnel(start_date, end_date, organization=None):
         },
         'total_won_value': won_value,
     }
+
+
+# ---------------------------------------------------------------------------
+# Phase 9.4 — Security alert MTTA (Mean Time To Acknowledge)
+# ---------------------------------------------------------------------------
+
+def security_alert_mtta(start_date, end_date, organization=None):
+    """
+    Mean Time To Acknowledge for security alerts in the window.
+
+    Returns: list of {'client_id', 'client_name', 'vendor',
+    'count', 'avg_mtta_minutes', 'unack_count'} rows.
+    """
+    from security_alerts.models import SecurityAlert
+    qs = SecurityAlert.objects.filter(
+        seen_at__date__gte=start_date,
+        seen_at__date__lte=end_date,
+    ).select_related('client_org', 'connection')
+    if organization is not None:
+        qs = qs.filter(organization=organization)
+
+    out = {}
+    for a in qs:
+        client_id = a.client_org_id or 0
+        key = (client_id, a.connection.provider)
+        row = out.setdefault(key, {
+            'client_id': client_id,
+            'client_name': a.client_org.name if a.client_org else '(unscoped)',
+            'vendor': a.connection.get_provider_display(),
+            'count': 0, 'mtta_total': 0, 'mtta_count': 0, 'unack_count': 0,
+        })
+        row['count'] += 1
+        if a.acknowledged_at:
+            row['mtta_total'] += int((a.acknowledged_at - a.seen_at).total_seconds() / 60)
+            row['mtta_count'] += 1
+        else:
+            row['unack_count'] += 1
+    rows = []
+    for r in out.values():
+        rows.append({
+            'client_id': r['client_id'], 'client_name': r['client_name'],
+            'vendor': r['vendor'], 'count': r['count'],
+            'avg_mtta_minutes': (r['mtta_total'] / r['mtta_count']) if r['mtta_count'] else None,
+            'unack_count': r['unack_count'],
+        })
+    return sorted(rows, key=lambda r: r['count'], reverse=True)

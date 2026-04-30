@@ -1,0 +1,21 @@
+from django.urls import path
+from . import views
+
+
+app_name = 'security_alerts'
+
+urlpatterns = [
+    path('alerts/', views.alert_list, name='alert_list'),
+    path('alerts/<int:pk>/', views.alert_detail, name='alert_detail'),
+    path('alerts/<int:pk>/decide/', views.alert_decide, name='alert_decide'),
+    path('alerts/bulk/', views.alert_bulk_decide, name='alert_bulk_decide'),
+    path('connections/', views.connection_list, name='connection_list'),
+    path('connections/new/', views.connection_form, name='connection_create'),
+    path('connections/<int:pk>/edit/', views.connection_form, name='connection_edit'),
+    path('connections/<int:pk>/test/', views.connection_test, name='connection_test'),
+    path('connections/<int:pk>/sync/', views.connection_sync, name='connection_sync'),
+    path('rules/', views.rule_list, name='rule_list'),
+    path('rules/new/', views.rule_form, name='rule_create'),
+    path('rules/<int:pk>/edit/', views.rule_form, name='rule_edit'),
+    path('webhook/<str:token>/', views.webhook_receive, name='webhook_receive'),
+]

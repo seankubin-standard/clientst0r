@@ -133,6 +133,22 @@
                             <li><a class="dropdown-item" href="{% url 'psa_ai:inbox' %}"><i class="fas fa-wand-magic-sparkles"></i> {% trans "AI Inbox" %}</a></li>
                         </ul>
                     </li>
+                    <!-- Phase 9 — Security alert ingestion (v3.17.168) -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="securityDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-shield-halved"></i> {% trans "Security" %}
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{% url 'security_alerts:alert_list' %}"><i class="fas fa-triangle-exclamation"></i> {% trans "Security Alerts" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'security_alerts:connection_list' %}"><i class="fas fa-plug"></i> {% trans "Vendor Connections" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'security_alerts:rule_list' %}"><i class="fas fa-bolt"></i> {% trans "Auto-Ticket Rules" %}</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            {% if user.is_superuser %}
+                            <li><a class="dropdown-item" href="{% url 'core:security_dashboard' %}"><i class="fas fa-shield-alt"></i> {% trans "Security Dashboard" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'core:snyk_scans' %}"><i class="fas fa-bug"></i> {% trans "Vulnerability Scans" %}</a></li>
+                            {% endif %}
+                        </ul>
+                    </li>
                     {% endif %}
                     {% if workflows_enabled or inventory_enabled or scheduling_enabled or monitoring_enabled or vehicles_enabled %}
                     <li class="nav-item dropdown">

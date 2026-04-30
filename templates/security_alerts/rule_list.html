@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Auto-Ticket Rules{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'security_alerts:alert_list' %}">Security</a></li>
+        <li class="breadcrumb-item active">Auto-Ticket Rules</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-bolt me-2"></i>Auto-Ticket Rules</h2>
+    {% if can_manage %}
+    <a href="{% url 'security_alerts:rule_create' %}" class="btn btn-primary btn-sm"><i class="fas fa-plus me-1"></i>New Rule</a>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 small">
+            <thead class="table-light">
+                <tr>
+                    <th>Priority</th>
+                    <th>Name</th>
+                    <th>Provider</th>
+                    <th>Category</th>
+                    <th>Min severity</th>
+                    <th>Suppression</th>
+                    <th>Active</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in rules %}
+                <tr>
+                    <td>{{ r.priority }}</td>
+                    <td><strong>{% if can_manage %}<a href="{% url 'security_alerts:rule_edit' r.pk %}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</strong></td>
+                    <td>{{ r.match_provider|default:"any" }}</td>
+                    <td>{{ r.match_category|default:"any" }}</td>
+                    <td>{{ r.match_severity_min|default:"any" }}</td>
+                    <td>{% if r.suppress_start_hour is not None %}{{ r.suppress_start_hour }}–{{ r.suppress_end_hour }}{% else %}—{% endif %}</td>
+                    <td>{% if r.is_active %}<span class="badge bg-success">On</span>{% else %}<span class="badge bg-secondary">Off</span>{% endif %}</td>
+                    <td>{{ r.get_action_display }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="8" class="text-center text-muted py-4">No rules — create one to auto-ticket from incoming alerts.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
