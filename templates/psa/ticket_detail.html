@@ -205,6 +205,52 @@
 </div>
 {% endif %}
 
+{# Phase 6.2 — Related problem records (the M2M reverse). #}
+{% if problems %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="fas fa-bug me-1"></i>Related problem records</strong>
+        {% if problem_can_create %}
+        <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#linkProblemForm">
+            <i class="fas fa-plus me-1"></i>Link to a problem
+        </button>
+        {% endif %}
+    </div>
+    <ul class="list-group list-group-flush">
+        {% for p in problems %}
+        <li class="list-group-item d-flex justify-content-between align-items-center gap-2 flex-wrap">
+            <div>
+                <a href="{% url 'psa:problem_detail' p.pk %}"><strong>{{ p.problem_number }}</strong></a>
+                <span class="text-muted small ms-2">{{ p.title|truncatechars:80 }}</span>
+            </div>
+            <span class="badge bg-{% if p.status == 'resolved' %}success{% elif p.status == 'known_error' %}info{% elif p.status == 'investigating' %}warning text-dark{% else %}secondary{% endif %}">
+                {{ p.get_status_display }}
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% if problem_can_create %}
+    <div class="collapse" id="linkProblemForm">
+        <div class="card-body border-top">
+            {% include "psa/_link_to_problem_form.html" with form_id="linkPK1" pk_input_id="linkPK1Input" %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% elif problem_can_create %}
+<div class="alert alert-light border d-flex justify-content-between align-items-center mb-3">
+    <span class="small text-muted"><i class="fas fa-bug me-1"></i>This ticket isn't linked to any problem record.</span>
+    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#linkProblemFormStandalone">
+        <i class="fas fa-plus me-1"></i>Link to a problem
+    </button>
+</div>
+<div class="collapse mb-3" id="linkProblemFormStandalone">
+    <div class="card card-body">
+        {% include "psa/_link_to_problem_form.html" with form_id="linkPK2" pk_input_id="linkPK2Input" %}
+    </div>
+</div>
+{% endif %}
+
 {# Hygiene flags — surface things to fix before close #}
 {% if hygiene and not is_closed %}
 <div class="alert alert-light border-warning mb-3">

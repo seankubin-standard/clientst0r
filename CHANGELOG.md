@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.160] - 2026-04-30
+
+### Added — Phase 6.2: Problem records + Root-Cause Analysis (ITIL)
+- New `psa.Problem` model — auto-numbered `PRB-YYYY-NNNNN`. Links N tickets together to spot recurring incidents and isolate the underlying root cause. Status pipeline: investigating → known_error → resolved → closed (or duplicate). Priority: critical / high / medium / low.
+- RCA fields: `symptoms`, `root_cause`, `workaround`, `permanent_fix`, `five_whys` (JSON list), and an optional FK to the `ChangeRequest` that deployed the fix.
+- New `psa.ProblemNote` model — append-only investigation timeline with an `is_breakthrough` flag for key findings.
+- Status-transition validation: can't reach `known_error` without `root_cause + workaround`; can't reach `resolved` without `permanent_fix`.
+- Pages: `/psa/problems/` queue, `/psa/problems/<id>/` detail, `/psa/problems/new/` form. Endpoints: link-ticket, unlink-ticket, add-note, advance-status.
+- Cross-link surfaced on ticket detail: a "Related problem records" card lists every Problem the ticket is linked to with status pill.
+- 4 new RoleTemplate booleans: `problem_view` (default True), `problem_create` (default True), `problem_assign`, `problem_resolve` (default False — owner/admin gate).
+- 7 new tests in `psa.tests`.
+
+Phase 6 status: 6.1 + 6.2 shipped. 6.3 (release management + service-catalog governance) closes Phase 6.
+
+### Migrations
+`psa.0024_problem_problemnote_and_more` (Problem + ProblemNote), `accounts.0024_roletemplate_problem_assign_and_more` for the 4 RoleTemplate booleans.
+
 ## [3.17.159] - 2026-04-30
 
 ### Roadmap

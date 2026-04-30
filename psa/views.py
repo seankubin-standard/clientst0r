@@ -284,6 +284,11 @@ def ticket_detail(request, ticket_number):
     can_assign = _can_assign(request, ticket.organization)
     eligible_assignees = _eligible_assignees(ticket.organization) if can_assign else []
 
+    # Phase 6.2 — surface linked Problem records (the M2M reverse).
+    problems = list(ticket.problems.all().order_by('-created_at'))
+    from accounts.permission_utils import user_has_perm as _uhp
+    problem_can_create = _uhp(request.user, 'problem_create')
+
     return render(request, 'psa/ticket_detail.html', {
         'ticket': ticket,
         'workflow_executions': workflow_executions,
@@ -315,6 +320,9 @@ def ticket_detail(request, ticket_number):
         'expense_categories': TicketExpense.CATEGORY_CHOICES,
         'can_assign': can_assign,
         'eligible_assignees': eligible_assignees,
+        # Phase 6.2 — Problem records linked to this ticket
+        'problems': problems,
+        'problem_can_create': problem_can_create,
     })
 
 
@@ -5399,3 +5407,456 @@ def change_request_fail(request, ticket_number):
     )
     messages.warning(request, 'Change marked as failed / rolled back.')
     return redirect('psa:change_request_detail', ticket_number=ticket_number)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.2 — Problem records + root-cause analysis
+# ---------------------------------------------------------------------------
+
+
+def _scoped_problem_qs(request):
+    """Tenant-scoped Problem queryset following the same staff/org pattern
+    as `_scoped_change_request_qs`."""
+    from .models import Problem
+    qs = Problem.objects.select_related(
+        'organization', 'assigned_to', 'investigated_by', 'created_by',
+        'duplicate_of', 'fix_change_request',
+    )
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        return qs
+    if hasattr(request.user, 'memberships'):
+        org_ids = list(
+            request.user.memberships.filter(is_active=True)
+            .values_list('organization_id', flat=True)
+        )
+        return qs.filter(organization_id__in=org_ids)
+    return qs.none()
+
+
+def _problem_org_choices(request):
+    """Orgs the requester is allowed to file a Problem against."""
+    from core.models import Organization
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        return Organization.objects.all().order_by('name')
+    if hasattr(request.user, 'memberships'):
+        org_ids = list(
+            request.user.memberships.filter(is_active=True)
+            .values_list('organization_id', flat=True)
+        )
+        return Organization.objects.filter(id__in=org_ids).order_by('name')
+    return Organization.objects.none()
+
+
+@login_required
+@require_psa_enabled
+def problem_list(request):
+    """Filterable Problem queue. Open problems first, then by priority desc,
+    then created_at desc."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'problem_view'):
+        raise PermissionDenied("You don't have the 'problem_view' permission.")
+    from .models import Problem
+
+    qs = _scoped_problem_qs(request)
+
+    status = (request.GET.get('status') or '').strip()
+    priority = (request.GET.get('priority') or '').strip()
+    assigned = (request.GET.get('assigned') or '').strip()
+
+    valid_statuses = {s for s, _ in Problem.STATUS_CHOICES}
+    valid_priorities = {p for p, _ in Problem.PRIORITY_CHOICES}
+    if status in valid_statuses:
+        qs = qs.filter(status=status)
+    if priority in valid_priorities:
+        qs = qs.filter(priority=priority)
+    if assigned == 'me':
+        qs = qs.filter(assigned_to=request.user)
+    elif assigned == 'unassigned':
+        qs = qs.filter(assigned_to__isnull=True)
+    elif assigned.isdigit():
+        qs = qs.filter(assigned_to_id=int(assigned))
+
+    # Default sort: open (investigating, known_error) first, then by priority,
+    # then created_at desc. Use Case for the open ranking.
+    from django.db.models import Case, When, IntegerField, Value
+    qs = qs.annotate(
+        is_open_rank=Case(
+            When(status='investigating', then=Value(0)),
+            When(status='known_error', then=Value(1)),
+            When(status='resolved', then=Value(2)),
+            When(status='closed', then=Value(3)),
+            When(status='duplicate', then=Value(4)),
+            default=Value(5),
+            output_field=IntegerField(),
+        ),
+        priority_rank=Case(
+            When(priority='critical', then=Value(0)),
+            When(priority='high', then=Value(1)),
+            When(priority='medium', then=Value(2)),
+            When(priority='low', then=Value(3)),
+            default=Value(4),
+            output_field=IntegerField(),
+        ),
+    ).order_by('is_open_rank', 'priority_rank', '-created_at')
+
+    return render(request, 'psa/problem_list.html', {
+        'problems': qs[:300],
+        'status_filter': status,
+        'priority_filter': priority,
+        'assigned_filter': assigned,
+        'status_choices': Problem.STATUS_CHOICES,
+        'priority_choices': Problem.PRIORITY_CHOICES,
+        'can_create': user_has_perm(request.user, 'problem_create'),
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def problem_form(request, pk=None):
+    """Create or edit a Problem. Editing allows changing status (gated via
+    `can_advance_to`)."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    from django.contrib.auth.models import User as _User
+    from .models import Problem, ChangeRequest
+
+    if not user_has_perm(request.user, 'problem_create'):
+        raise PermissionDenied("You don't have the 'problem_create' permission.")
+
+    is_edit = pk is not None
+    problem = None
+    if is_edit:
+        problem = get_object_or_404(_scoped_problem_qs(request), pk=pk)
+
+    if request.method == 'POST':
+        title = (request.POST.get('title') or '').strip()
+        description = (request.POST.get('description') or '').strip()
+        priority = (request.POST.get('priority') or 'medium').strip()
+        symptoms = (request.POST.get('symptoms') or '').strip()
+        root_cause = (request.POST.get('root_cause') or '').strip()
+        workaround = (request.POST.get('workaround') or '').strip()
+        permanent_fix = (request.POST.get('permanent_fix') or '').strip()
+        org_id = (request.POST.get('organization') or '').strip()
+        assigned_to_id = (request.POST.get('assigned_to') or '').strip()
+        fix_cr_id = (request.POST.get('fix_change_request') or '').strip()
+        duplicate_of_id = (request.POST.get('duplicate_of') or '').strip()
+
+        # 5-whys list — accept a textarea with one why per line
+        five_whys_raw = (request.POST.get('five_whys') or '').strip()
+        five_whys = [line.strip() for line in five_whys_raw.split('\n') if line.strip()] if five_whys_raw else []
+
+        valid_priorities = {p for p, _ in Problem.PRIORITY_CHOICES}
+        if priority not in valid_priorities:
+            priority = 'medium'
+
+        if not title:
+            messages.error(request, 'Title is required.')
+            return redirect(request.path)
+
+        if is_edit:
+            problem.title = title
+            problem.description = description
+            problem.priority = priority
+            problem.symptoms = symptoms
+            problem.root_cause = root_cause
+            problem.workaround = workaround
+            problem.permanent_fix = permanent_fix
+            problem.five_whys = five_whys
+
+            # Status change is gated through can_advance_to.
+            new_status = (request.POST.get('status') or problem.status).strip()
+            valid_statuses = {s for s, _ in Problem.STATUS_CHOICES}
+            if new_status in valid_statuses and new_status != problem.status:
+                # Snapshot RCA fields BEFORE the gate so the saved values
+                # (set above) are what feeds the validator.
+                if not problem.can_advance_to(new_status):
+                    messages.error(
+                        request,
+                        f'Cannot move to "{new_status}" without the required RCA fields '
+                        '(known_error needs root_cause + workaround; '
+                        'resolved needs root_cause + permanent_fix).',
+                    )
+                    return redirect(request.path)
+                problem.status = new_status
+                if new_status == 'resolved' and not problem.resolved_at:
+                    problem.resolved_at = timezone.now()
+                if new_status == 'closed' and not problem.closed_at:
+                    problem.closed_at = timezone.now()
+
+            # Assignment (optional) — only if the user has problem_assign.
+            if user_has_perm(request.user, 'problem_assign'):
+                if assigned_to_id.isdigit():
+                    try:
+                        problem.assigned_to = _User.objects.get(pk=int(assigned_to_id), is_active=True)
+                    except _User.DoesNotExist:
+                        pass
+                elif assigned_to_id == '':
+                    problem.assigned_to = None
+
+            # Optional fix_change_request linkage.
+            if fix_cr_id.isdigit():
+                cr = ChangeRequest.objects.filter(
+                    pk=int(fix_cr_id), organization=problem.organization
+                ).first()
+                problem.fix_change_request = cr
+            elif fix_cr_id == '':
+                problem.fix_change_request = None
+
+            # Optional duplicate_of linkage.
+            if duplicate_of_id.isdigit():
+                dup = Problem.objects.filter(pk=int(duplicate_of_id)).exclude(pk=problem.pk).first()
+                problem.duplicate_of = dup
+            elif duplicate_of_id == '':
+                problem.duplicate_of = None
+
+            problem.save()
+            AuditLog.log(
+                user=request.user, action='update',
+                organization=problem.organization,
+                object_type='psa.Problem', object_id=problem.pk,
+                object_repr=str(problem),
+                description=f'Edited problem {problem.problem_number}',
+                ip_address=_client_ip(request), path=request.path,
+            )
+            messages.success(request, 'Problem saved.')
+            return redirect('psa:problem_detail', pk=problem.pk)
+
+        # CREATE branch
+        org_choices = _problem_org_choices(request)
+        try:
+            org = org_choices.get(pk=int(org_id)) if org_id.isdigit() else None
+        except Exception:
+            org = None
+        if org is None:
+            messages.error(request, 'Pick a client / organization for this problem.')
+            return redirect(request.path)
+
+        problem = Problem.objects.create(
+            organization=org,
+            title=title,
+            description=description,
+            priority=priority,
+            symptoms=symptoms,
+            root_cause=root_cause,
+            workaround=workaround,
+            permanent_fix=permanent_fix,
+            five_whys=five_whys,
+            created_by=request.user,
+        )
+        AuditLog.log(
+            user=request.user, action='create',
+            organization=org,
+            object_type='psa.Problem', object_id=problem.pk,
+            object_repr=str(problem),
+            description=f'Created problem {problem.problem_number}: {title[:120]}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Problem {problem.problem_number} created.')
+        return redirect('psa:problem_detail', pk=problem.pk)
+
+    # GET
+    org_choices = _problem_org_choices(request)
+    candidate_users = _User.objects.filter(is_active=True).order_by('username')[:500]
+
+    fix_cr_choices = []
+    if is_edit:
+        from .models import ChangeRequest
+        fix_cr_choices = ChangeRequest.objects.filter(
+            organization=problem.organization,
+        ).select_related('ticket').order_by('-created_at')[:200]
+
+    five_whys_text = '\n'.join(problem.five_whys) if (is_edit and problem.five_whys) else ''
+
+    return render(request, 'psa/problem_form.html', {
+        'problem': problem,
+        'is_edit': is_edit,
+        'org_choices': org_choices,
+        'candidate_users': candidate_users,
+        'fix_cr_choices': fix_cr_choices,
+        'five_whys_text': five_whys_text,
+        'can_assign': user_has_perm(request.user, 'problem_assign'),
+        'can_resolve': user_has_perm(request.user, 'problem_resolve'),
+        # Choices for dropdowns
+        'priority_choices': [
+            ('critical', 'Critical'), ('high', 'High'),
+            ('medium', 'Medium'), ('low', 'Low'),
+        ],
+        'status_choices': [
+            ('investigating', 'Investigating'),
+            ('known_error', 'Known Error - Workaround Available'),
+            ('resolved', 'Resolved - Permanent Fix Deployed'),
+            ('closed', 'Closed'),
+            ('duplicate', 'Duplicate of Another Problem'),
+        ],
+    })
+
+
+@login_required
+@require_psa_enabled
+def problem_detail(request, pk):
+    """Full Problem view: header, RCA, 5-whys, related tickets, notes timeline."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'problem_view'):
+        raise PermissionDenied("You don't have the 'problem_view' permission.")
+    problem = get_object_or_404(_scoped_problem_qs(request), pk=pk)
+    notes = problem.notes.select_related('user').order_by('-created_at')[:100]
+    related_tickets = problem.related_tickets.select_related(
+        'organization', 'status', 'priority', 'assigned_to'
+    ).order_by('-created_at')
+
+    return render(request, 'psa/problem_detail.html', {
+        'problem': problem,
+        'notes': notes,
+        'related_tickets': related_tickets,
+        'can_create': user_has_perm(request.user, 'problem_create'),
+        'can_assign': user_has_perm(request.user, 'problem_assign'),
+        'can_resolve': user_has_perm(request.user, 'problem_resolve'),
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def problem_link_ticket(request, pk):
+    """Link a Ticket to this Problem by ticket_number."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'problem_create'):
+        raise PermissionDenied("You don't have the 'problem_create' permission.")
+    problem = get_object_or_404(_scoped_problem_qs(request), pk=pk)
+    ticket_number = (request.POST.get('ticket_number') or '').strip()
+    if not ticket_number:
+        messages.error(request, 'Ticket number is required.')
+        return redirect('psa:problem_detail', pk=problem.pk)
+    ticket_qs = _scoped_ticket_qs(request).filter(ticket_number=ticket_number)
+    ticket = ticket_qs.first()
+    if not ticket:
+        messages.error(request, f'Ticket {ticket_number} not found (or outside your scope).')
+        return redirect('psa:problem_detail', pk=problem.pk)
+    if problem.related_tickets.filter(pk=ticket.pk).exists():
+        messages.info(request, f'{ticket.ticket_number} is already linked.')
+        return redirect('psa:problem_detail', pk=problem.pk)
+    problem.related_tickets.add(ticket)
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=problem.organization,
+        object_type='psa.Problem', object_id=problem.pk,
+        object_repr=str(problem),
+        description=f'Linked ticket {ticket.ticket_number} to problem {problem.problem_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Linked {ticket.ticket_number}.')
+    # If POST came from a ticket page, redirect back there.
+    redirect_to = (request.POST.get('redirect_to') or '').strip()
+    if redirect_to == 'ticket':
+        return redirect('psa:ticket_detail', ticket_number=ticket.ticket_number)
+    return redirect('psa:problem_detail', pk=problem.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def problem_unlink_ticket(request, pk, ticket_pk):
+    """Remove a ticket from a Problem's related_tickets M2M."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'problem_create'):
+        raise PermissionDenied("You don't have the 'problem_create' permission.")
+    problem = get_object_or_404(_scoped_problem_qs(request), pk=pk)
+    ticket = problem.related_tickets.filter(pk=ticket_pk).first()
+    if not ticket:
+        messages.info(request, 'That ticket is not linked.')
+        return redirect('psa:problem_detail', pk=problem.pk)
+    problem.related_tickets.remove(ticket)
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=problem.organization,
+        object_type='psa.Problem', object_id=problem.pk,
+        object_repr=str(problem),
+        description=f'Unlinked ticket {ticket.ticket_number} from problem {problem.problem_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Unlinked {ticket.ticket_number}.')
+    return redirect('psa:problem_detail', pk=problem.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def problem_add_note(request, pk):
+    """Add an investigation note to a Problem."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    from .models import ProblemNote
+    if not user_has_perm(request.user, 'problem_create'):
+        raise PermissionDenied("You don't have the 'problem_create' permission.")
+    problem = get_object_or_404(_scoped_problem_qs(request), pk=pk)
+    body = (request.POST.get('body') or '').strip()
+    is_breakthrough = (request.POST.get('is_breakthrough') or '').lower() in ('on', '1', 'true', 'yes')
+    if not body:
+        messages.error(request, 'Note body is required.')
+        return redirect('psa:problem_detail', pk=problem.pk)
+    ProblemNote.objects.create(
+        problem=problem, user=request.user, body=body,
+        is_breakthrough=is_breakthrough,
+    )
+    AuditLog.log(
+        user=request.user, action='create',
+        organization=problem.organization,
+        object_type='psa.ProblemNote', object_id=problem.pk,
+        object_repr=str(problem),
+        description=f'Added investigation note to problem {problem.problem_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, 'Note added.')
+    return redirect('psa:problem_detail', pk=problem.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def problem_advance_status(request, pk):
+    """Advance a Problem's status. Validates RCA gates via `can_advance_to`."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    from .models import Problem
+    if not user_has_perm(request.user, 'problem_resolve'):
+        raise PermissionDenied("You don't have the 'problem_resolve' permission.")
+    problem = get_object_or_404(_scoped_problem_qs(request), pk=pk)
+    new_status = (request.POST.get('status') or '').strip()
+    valid = {s for s, _ in Problem.STATUS_CHOICES}
+    if new_status not in valid:
+        messages.error(request, 'Invalid status.')
+        return redirect('psa:problem_detail', pk=problem.pk)
+    if not problem.can_advance_to(new_status):
+        messages.error(
+            request,
+            f'Cannot advance to "{new_status}" — RCA fields incomplete '
+            '(known_error needs root_cause + workaround; '
+            'resolved needs root_cause + permanent_fix).',
+        )
+        return redirect('psa:problem_detail', pk=problem.pk)
+    problem.status = new_status
+    if new_status == 'resolved' and not problem.resolved_at:
+        problem.resolved_at = timezone.now()
+    if new_status == 'closed' and not problem.closed_at:
+        problem.closed_at = timezone.now()
+    problem.save(update_fields=['status', 'resolved_at', 'closed_at', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=problem.organization,
+        object_type='psa.Problem', object_id=problem.pk,
+        object_repr=str(problem),
+        description=f'Advanced problem {problem.problem_number} to {new_status}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Problem moved to {problem.get_status_display()}.')
+    return redirect('psa:problem_detail', pk=problem.pk)

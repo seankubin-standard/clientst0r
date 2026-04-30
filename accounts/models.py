@@ -119,6 +119,9 @@ class Membership(BaseModel):
                 # Change management (Phase 6.1) — Owner: all True
                 change_view=True, change_create=True,
                 change_approve_cab=True, change_implement=True,
+                # Problem management (Phase 6.2) — Owner: all True
+                problem_view=True, problem_create=True,
+                problem_assign=True, problem_resolve=True,
             )
         elif self.role == Role.ADMIN:
             return SimpleNamespace(
@@ -157,6 +160,9 @@ class Membership(BaseModel):
                 # Change management (Phase 6.1) — Admin: all True
                 change_view=True, change_create=True,
                 change_approve_cab=True, change_implement=True,
+                # Problem management (Phase 6.2) — Admin: all True
+                problem_view=True, problem_create=True,
+                problem_assign=True, problem_resolve=True,
             )
         elif self.role == Role.EDITOR:
             return SimpleNamespace(
@@ -197,6 +203,9 @@ class Membership(BaseModel):
                 # Change management (Phase 6.1) — Editor: view + create only.
                 change_view=True, change_create=True,
                 change_approve_cab=False, change_implement=False,
+                # Problem management (Phase 6.2) — Editor: view + create only.
+                problem_view=True, problem_create=True,
+                problem_assign=False, problem_resolve=False,
             )
         else:  # READONLY
             return SimpleNamespace(
@@ -235,6 +244,9 @@ class Membership(BaseModel):
                 # Change management (Phase 6.1) — Read-Only: view only.
                 change_view=True, change_create=False,
                 change_approve_cab=False, change_implement=False,
+                # Problem management (Phase 6.2) — Read-Only: view only.
+                problem_view=True, problem_create=False,
+                problem_assign=False, problem_resolve=False,
             )
 
     def can_read(self):
@@ -743,6 +755,14 @@ class RoleTemplate(BaseModel):
     change_implement = models.BooleanField(default=False,
         help_text='Move an approved change into Implementing.')
 
+    # --- Problem management (Phase 6.2) — v3.17.160 ---
+    problem_view = models.BooleanField(default=True)
+    problem_create = models.BooleanField(default=True)
+    problem_assign = models.BooleanField(default=False,
+        help_text='Assign problems to investigators / reassign owners.')
+    problem_resolve = models.BooleanField(default=False,
+        help_text='Move a problem to resolved/closed status.')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -844,6 +864,11 @@ class RoleTemplate(BaseModel):
                 'change_create': True,
                 'change_approve_cab': True,
                 'change_implement': True,
+                # Problem management (Phase 6.2) — Owner: all True
+                'problem_view': True,
+                'problem_create': True,
+                'problem_assign': True,
+                'problem_resolve': True,
             },
             {
                 'name': 'Administrator',
@@ -933,6 +958,11 @@ class RoleTemplate(BaseModel):
                 'change_create': True,
                 'change_approve_cab': True,
                 'change_implement': True,
+                # Problem management (Phase 6.2) — Administrator: all True
+                'problem_view': True,
+                'problem_create': True,
+                'problem_assign': True,
+                'problem_resolve': True,
             },
             {
                 'name': 'Editor',
@@ -1023,6 +1053,11 @@ class RoleTemplate(BaseModel):
                 'change_create': True,
                 'change_approve_cab': False,
                 'change_implement': False,
+                # Problem management (Phase 6.2) — Editor: view + create only.
+                'problem_view': True,
+                'problem_create': True,
+                'problem_assign': False,
+                'problem_resolve': False,
             },
             {
                 'name': 'Help Desk',
@@ -1113,6 +1148,11 @@ class RoleTemplate(BaseModel):
                 'change_create': True,
                 'change_approve_cab': False,
                 'change_implement': False,
+                # Problem management (Phase 6.2) — Help Desk: view + create.
+                'problem_view': True,
+                'problem_create': True,
+                'problem_assign': False,
+                'problem_resolve': False,
             },
             {
                 'name': 'IT Manager',
@@ -1204,6 +1244,11 @@ class RoleTemplate(BaseModel):
                 'change_create': True,
                 'change_approve_cab': True,
                 'change_implement': True,
+                # Problem management (Phase 6.2) — IT Manager: all four.
+                'problem_view': True,
+                'problem_create': True,
+                'problem_assign': True,
+                'problem_resolve': True,
             },
             {
                 'name': 'Documentation Writer',
@@ -1293,6 +1338,11 @@ class RoleTemplate(BaseModel):
                 'change_create': False,
                 'change_approve_cab': False,
                 'change_implement': False,
+                # Problem management (Phase 6.2) — Documentation Writer: view only.
+                'problem_view': True,
+                'problem_create': False,
+                'problem_assign': False,
+                'problem_resolve': False,
             },
             {
                 'name': 'Read-Only',
@@ -1382,6 +1432,11 @@ class RoleTemplate(BaseModel):
                 'change_create': False,
                 'change_approve_cab': False,
                 'change_implement': False,
+                # Problem management (Phase 6.2) — Read-Only: view only.
+                'problem_view': True,
+                'problem_create': False,
+                'problem_assign': False,
+                'problem_resolve': False,
             },
         ]
 

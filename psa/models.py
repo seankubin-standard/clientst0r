@@ -2579,3 +2579,168 @@ class CABVote(models.Model):
 
     def __str__(self):
         return f'{self.user.username}: {self.get_decision_display()}'
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.2 — Problem records + root-cause analysis
+# ---------------------------------------------------------------------------
+
+
+class Problem(models.Model):
+    """
+    ITIL Problem record — the underlying cause behind recurring incidents.
+    Links N Tickets together so techs can spot patterns. Has a status
+    pipeline distinct from any single ticket: investigating -> known_error
+    -> resolved.
+    """
+    STATUS_CHOICES = [
+        ('investigating', 'Investigating'),
+        ('known_error', 'Known Error - Workaround Available'),
+        ('resolved', 'Resolved - Permanent Fix Deployed'),
+        ('closed', 'Closed'),
+        ('duplicate', 'Duplicate of Another Problem'),
+    ]
+    PRIORITY_CHOICES = [
+        ('critical', 'Critical'),
+        ('high', 'High'),
+        ('medium', 'Medium'),
+        ('low', 'Low'),
+    ]
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_problems',
+    )
+    problem_number = models.CharField(max_length=30, unique=True)  # PRB-YYYY-NNNNN
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='investigating')
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium')
+
+    # Linked tickets (the recurring incidents that surfaced this problem)
+    related_tickets = models.ManyToManyField(
+        'psa.Ticket', related_name='problems', blank=True,
+        help_text='Incidents that share this underlying root cause.',
+    )
+    duplicate_of = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='duplicates',
+        help_text='If this problem turns out to be a duplicate, link to the canonical one.',
+    )
+
+    # RCA fields
+    symptoms = models.TextField(
+        blank=True,
+        help_text='What the user / monitoring observed. The problem manifestation.',
+    )
+    root_cause = models.TextField(
+        blank=True,
+        help_text='Underlying cause. Required to flip status to known_error or resolved.',
+    )
+    workaround = models.TextField(
+        blank=True,
+        help_text='Temporary mitigation. Required when status=known_error.',
+    )
+    permanent_fix = models.TextField(
+        blank=True,
+        help_text='Permanent resolution. Required when status=resolved.',
+    )
+    fix_change_request = models.ForeignKey(
+        'psa.ChangeRequest', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='problems_fixed',
+        help_text='Optional link to the Change that deployed the permanent fix.',
+    )
+
+    # 5 Whys structured analysis
+    five_whys = models.JSONField(
+        default=list, blank=True,
+        help_text='Optional structured 5-whys list - each entry is a string.',
+    )
+
+    # Lifecycle
+    investigated_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    assigned_to = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_problems_owned',
+    )
+    discovered_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_problems_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_problems'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'status', '-created_at']),
+            models.Index(fields=['priority', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.problem_number} - {self.title[:60]}'
+
+    @classmethod
+    def next_number(cls):
+        from django.utils import timezone
+        from django.db.models import Max
+        year = timezone.now().year
+        prefix = f'PRB-{year}-'
+        last = cls.objects.filter(problem_number__startswith=prefix).aggregate(
+            Max('problem_number'))['problem_number__max']
+        if not last:
+            return f'{prefix}00001'
+        try:
+            n = int(last.split('-')[-1])
+        except (ValueError, IndexError):
+            n = 0
+        return f'{prefix}{n + 1:05d}'
+
+    def save(self, *args, **kwargs):
+        if not self.problem_number:
+            self.problem_number = self.next_number()
+        super().save(*args, **kwargs)
+
+    @property
+    def related_ticket_count(self):
+        return self.related_tickets.count()
+
+    def can_advance_to(self, new_status):
+        """Validate state transition + RCA requirements."""
+        if new_status == 'known_error':
+            return bool(self.root_cause and self.workaround)
+        if new_status == 'resolved':
+            return bool(self.root_cause and self.permanent_fix)
+        return True
+
+
+class ProblemNote(models.Model):
+    """
+    Investigation notes on a Problem. Append-only timeline of analysis
+    progress. Distinct from ticket comments - these are the trail of
+    "what we learned and when" during root-cause analysis.
+    """
+    problem = models.ForeignKey(Problem, on_delete=models.CASCADE, related_name='notes')
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    body = models.TextField()
+    is_breakthrough = models.BooleanField(
+        default=False,
+        help_text='Mark when this note records a key analytical finding.',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_problem_notes'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Note on {self.problem.problem_number} @ {self.created_at:%Y-%m-%d}'

@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}Problem — {{ problem.problem_number }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:problem_list' %}">Problems</a></li>
+        <li class="breadcrumb-item active">{{ problem.problem_number }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+        <h2 class="mb-1"><i class="fas fa-bug me-2"></i>{{ problem.problem_number }}</h2>
+        <div class="text-muted">{{ problem.title }}</div>
+        <div class="small text-muted mt-1">
+            <span class="badge rounded-pill" style="background:hsl({% widthratio problem.organization.id 1 47 %}, 55%, 42%); color: white;">
+                <i class="fas fa-building me-1"></i>{{ problem.organization.name }}
+            </span>
+            opened {{ problem.created_at|timesince }} ago
+            {% if problem.created_by %}by {{ problem.created_by.username }}{% endif %}
+        </div>
+    </div>
+    <div class="text-end">
+        {% if problem.priority == 'critical' %}<span class="badge fs-6 text-bg-danger">Critical</span>
+        {% elif problem.priority == 'high' %}<span class="badge fs-6 text-bg-warning text-dark">High</span>
+        {% elif problem.priority == 'medium' %}<span class="badge fs-6 text-bg-secondary">Medium</span>
+        {% elif problem.priority == 'low' %}<span class="badge fs-6 text-bg-light text-dark border">Low</span>
+        {% endif %}
+        <div class="mt-1">
+            {% if problem.status == 'investigating' %}<span class="badge text-bg-warning text-dark">Investigating</span>
+            {% elif problem.status == 'known_error' %}<span class="badge text-bg-info">Known Error - Workaround Available</span>
+            {% elif problem.status == 'resolved' %}<span class="badge text-bg-success">Resolved - Permanent Fix Deployed</span>
+            {% elif problem.status == 'closed' %}<span class="badge text-bg-secondary">Closed</span>
+            {% elif problem.status == 'duplicate' %}<span class="badge text-bg-dark">Duplicate of Another Problem</span>
+            {% else %}<span class="badge text-bg-secondary">{{ problem.get_status_display }}</span>{% endif %}
+        </div>
+        {% if can_create %}
+        <a href="{% url 'psa:problem_edit' problem.pk %}" class="btn btn-sm btn-outline-secondary mt-2"><i class="fas fa-pen me-1"></i>Edit</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if problem.duplicate_of %}
+<div class="alert alert-warning">
+    <i class="fas fa-clone me-1"></i>
+    This problem is a duplicate of
+    <a href="{% url 'psa:problem_detail' problem.duplicate_of.pk %}"><strong>{{ problem.duplicate_of.problem_number }}</strong></a>
+    — {{ problem.duplicate_of.title|truncatechars:80 }}.
+</div>
+{% endif %}
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        {% if problem.description %}
+        <div class="card mb-3">
+            <div class="card-header"><strong>Description</strong></div>
+            <div class="card-body">
+                <pre class="mb-0" style="white-space: pre-wrap;">{{ problem.description }}</pre>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mb-3">
+            <div class="card-header"><strong>Root-Cause Analysis</strong></div>
+            <div class="card-body">
+                <h6>Symptoms</h6>
+                <pre class="bg-light p-2 small">{{ problem.symptoms|default:'(not set)' }}</pre>
+                <h6 class="mt-3">Root cause</h6>
+                <pre class="bg-light p-2 small">{{ problem.root_cause|default:'(not set)' }}</pre>
+                <h6 class="mt-3">Workaround</h6>
+                <pre class="bg-light p-2 small">{{ problem.workaround|default:'(not set)' }}</pre>
+                <h6 class="mt-3">Permanent fix</h6>
+                <pre class="bg-light p-2 small">{{ problem.permanent_fix|default:'(not set)' }}</pre>
+                {% if problem.fix_change_request %}
+                <p class="small mb-0 mt-2">
+                    <i class="fas fa-code-branch me-1"></i>
+                    Permanent fix deployed via change
+                    <a href="{% url 'psa:change_request_detail' problem.fix_change_request.ticket.ticket_number %}">
+                        {{ problem.fix_change_request.ticket.ticket_number }}
+                    </a>.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if problem.five_whys %}
+        <div class="card mb-3">
+            <div class="card-header"><strong>5 Whys</strong></div>
+            <div class="card-body">
+                <ol class="mb-0">
+                    {% for why in problem.five_whys %}
+                    <li class="mb-1">{{ why }}</li>
+                    {% endfor %}
+                </ol>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong><i class="fas fa-link me-1"></i>Related tickets ({{ related_tickets|length }})</strong>
+                {% if can_create %}
+                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#linkTicketForm">
+                    <i class="fas fa-plus me-1"></i>Link a ticket
+                </button>
+                {% endif %}
+            </div>
+            {% if can_create %}
+            <div class="collapse" id="linkTicketForm">
+                <div class="card-body border-bottom">
+                    <form method="post" action="{% url 'psa:problem_link_ticket' problem.pk %}" class="d-flex gap-2">
+                        {% csrf_token %}
+                        <input type="text" name="ticket_number" class="form-control form-control-sm" placeholder="e.g. TKT-2026-00042" required>
+                        <button type="submit" class="btn btn-sm btn-primary">Link</button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Subject</th>
+                            <th>Status</th>
+                            <th>Priority</th>
+                            <th>Assigned</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in related_tickets %}
+                        <tr>
+                            <td><a href="{% url 'psa:ticket_detail' t.ticket_number %}"><code>{{ t.ticket_number }}</code></a></td>
+                            <td>{{ t.subject|truncatechars:60 }}</td>
+                            <td><span class="badge bg-info text-dark">{{ t.status.name }}</span></td>
+                            <td><span class="badge bg-secondary">{{ t.priority.code }}</span></td>
+                            <td>{{ t.assigned_to.username|default:'—' }}</td>
+                            <td>
+                                {% if can_create %}
+                                <form method="post" action="{% url 'psa:problem_unlink_ticket' problem.pk t.pk %}" class="d-inline" onsubmit="return confirm('Unlink {{ t.ticket_number }} from this problem?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-link p-0 text-danger" title="Unlink"><i class="fas fa-unlink"></i></button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-muted small text-center py-3">No tickets linked yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><strong><i class="fas fa-clipboard-list me-1"></i>Investigation Notes</strong></div>
+            {% if can_create %}
+            <div class="card-body border-bottom">
+                <form method="post" action="{% url 'psa:problem_add_note' problem.pk %}">
+                    {% csrf_token %}
+                    <textarea name="body" rows="3" class="form-control mb-2" placeholder="What did you find? What did you try?" required></textarea>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_breakthrough" value="on" id="isBreakthrough">
+                            <label class="form-check-label small" for="isBreakthrough">
+                                <i class="fas fa-lightbulb me-1 text-warning"></i>Mark as breakthrough finding
+                            </label>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-plus me-1"></i>Add note</button>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
+            <ul class="list-group list-group-flush">
+                {% for n in notes %}
+                <li class="list-group-item {% if n.is_breakthrough %}bg-warning bg-opacity-10{% endif %}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            {% if n.is_breakthrough %}<i class="fas fa-lightbulb text-warning me-1" title="Breakthrough finding"></i>{% endif %}
+                            <strong class="small">{{ n.user.username|default:'(system)' }}</strong>
+                            <small class="text-muted ms-2"><span data-utc="{{ n.created_at|date:'c' }}">{{ n.created_at|date:'Y-m-d H:i' }}</span></small>
+                        </div>
+                    </div>
+                    <pre class="mb-0 mt-2 small" style="white-space: pre-wrap;">{{ n.body }}</pre>
+                </li>
+                {% empty %}
+                <li class="list-group-item text-muted small text-center py-3">No investigation notes yet.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        {% if can_resolve %}
+        <div class="card mb-3">
+            <div class="card-header"><strong>Status Pipeline</strong></div>
+            <div class="card-body d-flex flex-column gap-2">
+                {% if problem.status == 'investigating' %}
+                <form method="post" action="{% url 'psa:problem_advance_status' problem.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="known_error">
+                    <button class="btn btn-info btn-sm w-100" {% if not problem.root_cause or not problem.workaround %}disabled title="Requires root_cause + workaround"{% endif %}>
+                        <i class="fas fa-arrow-right me-1"></i>Mark Known Error
+                    </button>
+                </form>
+                <form method="post" action="{% url 'psa:problem_advance_status' problem.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="resolved">
+                    <button class="btn btn-success btn-sm w-100" {% if not problem.root_cause or not problem.permanent_fix %}disabled title="Requires root_cause + permanent_fix"{% endif %}>
+                        <i class="fas fa-check me-1"></i>Mark Resolved
+                    </button>
+                </form>
+                {% elif problem.status == 'known_error' %}
+                <form method="post" action="{% url 'psa:problem_advance_status' problem.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="resolved">
+                    <button class="btn btn-success btn-sm w-100" {% if not problem.root_cause or not problem.permanent_fix %}disabled title="Requires root_cause + permanent_fix"{% endif %}>
+                        <i class="fas fa-check me-1"></i>Mark Resolved
+                    </button>
+                </form>
+                {% elif problem.status == 'resolved' %}
+                <form method="post" action="{% url 'psa:problem_advance_status' problem.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="closed">
+                    <button class="btn btn-secondary btn-sm w-100"><i class="fas fa-archive me-1"></i>Close</button>
+                </form>
+                {% endif %}
+                {% if problem.status not in 'closed duplicate' %}
+                <form method="post" action="{% url 'psa:problem_advance_status' problem.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="duplicate">
+                    <button class="btn btn-outline-dark btn-sm w-100"><i class="fas fa-clone me-1"></i>Mark Duplicate</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mb-3">
+            <div class="card-header"><strong>Metadata</strong></div>
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-5">Discovered</dt><dd class="col-7"><span data-utc="{{ problem.discovered_at|date:'c' }}">{{ problem.discovered_at|date:'Y-m-d H:i' }}</span></dd>
+                    <dt class="col-5">Created by</dt><dd class="col-7">{{ problem.created_by.username|default:'—' }}</dd>
+                    <dt class="col-5">Assigned to</dt><dd class="col-7">{{ problem.assigned_to.username|default:'—' }}</dd>
+                    <dt class="col-5">Resolved</dt><dd class="col-7">{% if problem.resolved_at %}<span data-utc="{{ problem.resolved_at|date:'c' }}">{{ problem.resolved_at|date:'Y-m-d H:i' }}</span>{% else %}—{% endif %}</dd>
+                    <dt class="col-5">Closed</dt><dd class="col-7">{% if problem.closed_at %}<span data-utc="{{ problem.closed_at|date:'c' }}">{{ problem.closed_at|date:'Y-m-d H:i' }}</span>{% else %}—{% endif %}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

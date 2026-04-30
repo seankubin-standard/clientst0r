@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}PSA — Problems{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Problems</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-bug me-2"></i>Problem Records</h2>
+    {% if can_create %}
+    <a href="{% url 'psa:problem_create' %}" class="btn btn-primary btn-sm"><i class="fas fa-plus me-1"></i>New Problem</a>
+    {% endif %}
+</div>
+
+<form method="get" class="d-flex gap-2 mb-3 align-items-center flex-wrap">
+    <select name="status" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All statuses</option>
+        {% for value, label in status_choices %}
+        <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <select name="priority" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All priorities</option>
+        {% for value, label in priority_choices %}
+        <option value="{{ value }}" {% if priority_filter == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <select name="assigned" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All assignees</option>
+        <option value="me" {% if assigned_filter == 'me' %}selected{% endif %}>Assigned to me</option>
+        <option value="unassigned" {% if assigned_filter == 'unassigned' %}selected{% endif %}>Unassigned</option>
+    </select>
+    {% if status_filter or priority_filter or assigned_filter %}
+    <a href="{% url 'psa:problem_list' %}" class="btn btn-sm btn-outline-secondary">Clear</a>
+    {% endif %}
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 small">
+            <thead class="table-light">
+                <tr>
+                    <th>Number</th>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Assigned to</th>
+                    <th class="text-end">Linked tickets</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in problems %}
+                <tr>
+                    <td><a href="{% url 'psa:problem_detail' p.pk %}"><strong>{{ p.problem_number }}</strong></a></td>
+                    <td>{{ p.title|truncatechars:80 }}</td>
+                    <td>
+                        {% if p.status == 'investigating' %}<span class="badge text-bg-warning text-dark">Investigating</span>
+                        {% elif p.status == 'known_error' %}<span class="badge text-bg-info">Known Error</span>
+                        {% elif p.status == 'resolved' %}<span class="badge text-bg-success">Resolved</span>
+                        {% elif p.status == 'closed' %}<span class="badge text-bg-secondary">Closed</span>
+                        {% elif p.status == 'duplicate' %}<span class="badge text-bg-dark">Duplicate</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ p.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if p.priority == 'critical' %}<span class="badge text-bg-danger">Critical</span>
+                        {% elif p.priority == 'high' %}<span class="badge text-bg-warning text-dark">High</span>
+                        {% elif p.priority == 'medium' %}<span class="badge text-bg-secondary">Medium</span>
+                        {% elif p.priority == 'low' %}<span class="badge text-bg-light text-dark border">Low</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ p.assigned_to.username|default:'—' }}</td>
+                    <td class="text-end">{{ p.related_ticket_count }}</td>
+                    <td><span data-utc="{{ p.created_at|date:'c' }}">{{ p.created_at|date:'Y-m-d' }}</span></td>
+                    <td><a href="{% url 'psa:problem_detail' p.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-eye"></i></a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-center text-muted py-4">No problem records yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

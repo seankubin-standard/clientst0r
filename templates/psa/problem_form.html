@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{% if is_edit %}Edit Problem — {{ problem.problem_number }}{% else %}New Problem{% endif %}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:problem_list' %}">Problems</a></li>
+        {% if is_edit %}
+        <li class="breadcrumb-item"><a href="{% url 'psa:problem_detail' problem.pk %}">{{ problem.problem_number }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active">New</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<h2 class="mb-3">
+    <i class="fas fa-bug me-2"></i>
+    {% if is_edit %}Edit {{ problem.problem_number }}{% else %}New Problem Record{% endif %}
+</h2>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card mb-3">
+        <div class="card-header"><strong>Problem Identification</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                {% if not is_edit %}
+                <div class="col-md-6">
+                    <label class="form-label">Client / Organization <span class="text-danger">*</span></label>
+                    <select name="organization" class="form-select" required>
+                        <option value="">Pick a client...</option>
+                        {% for o in org_choices %}
+                        <option value="{{ o.id }}">{{ o.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="col-md-{% if is_edit %}6{% else %}3{% endif %}">
+                    <label class="form-label">Priority</label>
+                    <select name="priority" class="form-select">
+                        {% for value, label in priority_choices %}
+                        <option value="{{ value }}" {% if is_edit and problem.priority == value %}selected{% elif not is_edit and value == 'medium' %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% if is_edit %}
+                <div class="col-md-6">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select" {% if not can_resolve %}disabled{% endif %}>
+                        {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if problem.status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if not can_resolve %}
+                    <small class="text-muted">You don't have the <code>problem_resolve</code> permission, so status changes are saved as the current value.</small>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% if not is_edit %}
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <div class="form-control-plaintext small text-muted">New problems start in <strong>Investigating</strong>.</div>
+                </div>
+                {% endif %}
+                <div class="col-12">
+                    <label class="form-label">Title <span class="text-danger">*</span></label>
+                    <input type="text" name="title" maxlength="300" required value="{% if is_edit %}{{ problem.title }}{% endif %}" class="form-control">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Short description</label>
+                    <textarea name="description" rows="3" class="form-control">{% if is_edit %}{{ problem.description }}{% endif %}</textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><strong>Root-Cause Analysis</strong></div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Symptoms</label>
+                <textarea name="symptoms" rows="3" class="form-control" placeholder="What did users / monitoring observe?">{% if is_edit %}{{ problem.symptoms }}{% endif %}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Root cause</label>
+                <textarea name="root_cause" rows="4" class="form-control" placeholder="Underlying cause. Required to advance to known_error or resolved.">{% if is_edit %}{{ problem.root_cause }}{% endif %}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Workaround <span class="text-muted small">(required for known_error)</span></label>
+                <textarea name="workaround" rows="3" class="form-control" placeholder="Temporary mitigation that lets users keep working.">{% if is_edit %}{{ problem.workaround }}{% endif %}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Permanent fix <span class="text-muted small">(required for resolved)</span></label>
+                <textarea name="permanent_fix" rows="3" class="form-control" placeholder="Permanent resolution.">{% if is_edit %}{{ problem.permanent_fix }}{% endif %}</textarea>
+            </div>
+            <div class="mb-0">
+                <label class="form-label">5 Whys <span class="text-muted small">(one per line)</span></label>
+                <textarea name="five_whys" rows="5" class="form-control" placeholder="Why? Because...&#10;Why? Because...&#10;Why? Because...">{{ five_whys_text }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    {% if is_edit %}
+    <div class="card mb-3">
+        <div class="card-header"><strong>Linkage</strong></div>
+        <div class="card-body">
+            {% if can_assign %}
+            <div class="mb-3">
+                <label class="form-label">Assigned investigator</label>
+                <select name="assigned_to" class="form-select">
+                    <option value="">— Unassigned —</option>
+                    {% for u in candidate_users %}
+                    <option value="{{ u.id }}" {% if problem.assigned_to_id == u.id %}selected{% endif %}>{{ u.username }}{% if u.email %} ({{ u.email }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="mb-3">
+                <label class="form-label">Fix change request <span class="text-muted small">(optional)</span></label>
+                <select name="fix_change_request" class="form-select">
+                    <option value="">— None —</option>
+                    {% for cr in fix_cr_choices %}
+                    <option value="{{ cr.id }}" {% if problem.fix_change_request_id == cr.id %}selected{% endif %}>{{ cr.ticket.ticket_number }} — {{ cr.ticket.subject|truncatechars:60 }}</option>
+                    {% endfor %}
+                </select>
+                <small class="text-muted">Link the Change that deployed the permanent fix.</small>
+            </div>
+            <div class="mb-0">
+                <label class="form-label">Duplicate of <span class="text-muted small">(optional)</span></label>
+                <input type="number" name="duplicate_of" min="1" value="{{ problem.duplicate_of_id|default:'' }}" class="form-control" placeholder="Other Problem PK">
+                <small class="text-muted">If this turns out to be a duplicate, enter the canonical Problem's primary key.</small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>{% if is_edit %}Save{% else %}Create{% endif %}</button>
+        <a href="{% if is_edit %}{% url 'psa:problem_detail' problem.pk %}{% else %}{% url 'psa:problem_list' %}{% endif %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

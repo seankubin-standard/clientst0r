@@ -3721,3 +3721,239 @@ class ChangeRequestPermissionTests(TestCase):
         c = self._client_for(self.cab_member)
         r = c.post(f'/psa/t/{self.ticket.ticket_number}/change/implement/')
         self.assertEqual(r.status_code, 403)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.2 — Problem records + root-cause analysis
+# ---------------------------------------------------------------------------
+
+
+def _make_problem_helper_ticket(org, subject='Recurring printer flakiness'):
+    """Helper: build a non-change Ticket so it can be linked to a Problem."""
+    from psa.models import (
+        Queue, TicketStatus, TicketPriority, TicketType, Ticket,
+    )
+    queue = Queue.objects.first() or Queue.objects.create(name='Helpdesk', slug='helpdesk')
+    status = TicketStatus.objects.first() or TicketStatus.objects.create(name='New', slug='new')
+    priority = TicketPriority.objects.first() or TicketPriority.objects.create(
+        code='P3', name='Normal',
+        response_target_minutes=240, resolution_target_minutes=4320,
+    )
+    incident_type = TicketType.objects.filter(slug='incident').first()
+    if not incident_type:
+        incident_type = TicketType.objects.create(name='Incident', slug='incident')
+    return Ticket.objects.create(
+        organization=org,
+        subject=subject,
+        status=status,
+        priority=priority,
+        ticket_type=incident_type,
+        queue=queue,
+    )
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ProblemModelTests(TestCase):
+    """Validate problem_number auto-increment + RCA gating logic."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ProblemOrg', slug='problem-org')
+
+    def test_next_number_increments(self):
+        from psa.models import Problem
+        p1 = Problem.objects.create(organization=self.org, title='First')
+        p2 = Problem.objects.create(organization=self.org, title='Second')
+        self.assertTrue(p1.problem_number.startswith('PRB-'))
+        self.assertTrue(p1.problem_number.endswith('00001'))
+        self.assertTrue(p2.problem_number.endswith('00002'))
+
+    def test_can_advance_to_known_error_requires_root_cause_and_workaround(self):
+        from psa.models import Problem
+        p = Problem.objects.create(organization=self.org, title='Flaky printer')
+        # Empty -> blocked
+        self.assertFalse(p.can_advance_to('known_error'))
+        p.root_cause = 'Driver mismatch'
+        p.save()
+        # Root cause but no workaround -> still blocked
+        self.assertFalse(p.can_advance_to('known_error'))
+        p.workaround = 'Restart spooler nightly'
+        p.save()
+        # Both -> ok
+        self.assertTrue(p.can_advance_to('known_error'))
+
+    def test_can_advance_to_resolved_requires_permanent_fix(self):
+        from psa.models import Problem
+        p = Problem.objects.create(
+            organization=self.org, title='Flaky printer',
+            root_cause='Driver mismatch',
+            workaround='Restart spooler nightly',
+        )
+        # No permanent fix -> blocked
+        self.assertFalse(p.can_advance_to('resolved'))
+        p.permanent_fix = 'Roll out new driver via Intune'
+        p.save()
+        self.assertTrue(p.can_advance_to('resolved'))
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ProblemTicketLinkTests(TestCase):
+    """The M2M tying tickets to problems and the link-ticket endpoint."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='LinkOrg', slug='link-org')
+        # Need vault_create or similar so require_write passes.
+        self.role = RoleTemplate.objects.create(
+            name='ProblemTech', is_system_template=False,
+            problem_view=True, problem_create=True,
+            problem_assign=False, problem_resolve=False,
+            assets_create=True,
+        )
+        self.user = User.objects.create_user(
+            username='ptech', password='pw', email='ptech@x.com')
+        Membership.objects.create(
+            user=self.user, organization=self.org,
+            role=Role.EDITOR, role_template=self.role,
+            is_active=True,
+        )
+
+    def _client(self):
+        c = Client()
+        c.force_login(self.user)
+        sess = c.session
+        sess['current_organization_id'] = self.org.id
+        sess.save()
+        return c
+
+    def test_link_ticket_via_post(self):
+        """User with problem_create posts ticket_number -> ticket appears in
+        related_tickets."""
+        from psa.models import Problem
+        problem = Problem.objects.create(organization=self.org, title='Flaky printer')
+        ticket = _make_problem_helper_ticket(self.org, subject='Print job failed')
+
+        c = self._client()
+        r = c.post(f'/psa/problems/{problem.pk}/link-ticket/', {
+            'ticket_number': ticket.ticket_number,
+        })
+        self.assertEqual(r.status_code, 302)
+        problem.refresh_from_db()
+        self.assertTrue(problem.related_tickets.filter(pk=ticket.pk).exists())
+
+    def test_problem_appears_on_ticket_detail(self):
+        """Linked ticket renders the problem in ticket_detail context."""
+        from psa.models import Problem
+        problem = Problem.objects.create(
+            organization=self.org, title='Email storm',
+            description='Recurring SMTP loop',
+        )
+        ticket = _make_problem_helper_ticket(self.org, subject='Email queue stuck')
+        problem.related_tickets.add(ticket)
+
+        c = self._client()
+        r = c.get(f'/psa/t/{ticket.ticket_number}/')
+        self.assertEqual(r.status_code, 200)
+        # The Problem number appears on the rendered page.
+        self.assertIn(problem.problem_number.encode(), r.content)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ProblemPermissionTests(TestCase):
+    """Permission gating on view/advance endpoints."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ProblemPermOrg', slug='problem-perm-org')
+
+        common_write = dict(assets_create=True)
+
+        # Tech: view+create but cannot resolve.
+        self.tech_role = RoleTemplate.objects.create(
+            name='ProblemTechRole', is_system_template=False,
+            problem_view=True, problem_create=True,
+            problem_assign=False, problem_resolve=False,
+            **common_write,
+        )
+        self.tech = User.objects.create_user(
+            username='pt_tech', password='pw', email='pt@x.com')
+        Membership.objects.create(
+            user=self.tech, organization=self.org,
+            role=Role.EDITOR, role_template=self.tech_role,
+            is_active=True,
+        )
+
+        # Resolver: full perms.
+        self.resolver_role = RoleTemplate.objects.create(
+            name='ProblemResolverRole', is_system_template=False,
+            problem_view=True, problem_create=True,
+            problem_assign=True, problem_resolve=True,
+            **common_write,
+        )
+        self.resolver = User.objects.create_user(
+            username='pt_res', password='pw', email='ptr@x.com')
+        Membership.objects.create(
+            user=self.resolver, organization=self.org,
+            role=Role.ADMIN, role_template=self.resolver_role,
+            is_active=True,
+        )
+
+        # No-perm user: nothing.
+        self.no_perm_role = RoleTemplate.objects.create(
+            name='ProblemNoPermRole', is_system_template=False,
+            problem_view=False, problem_create=False,
+            problem_assign=False, problem_resolve=False,
+            **common_write,
+        )
+        self.no_perm = User.objects.create_user(
+            username='pt_no', password='pw', email='ptn@x.com')
+        Membership.objects.create(
+            user=self.no_perm, organization=self.org,
+            role=Role.EDITOR, role_template=self.no_perm_role,
+            is_active=True,
+        )
+
+        from psa.models import Problem
+        self.problem = Problem.objects.create(
+            organization=self.org, title='Server stuck',
+            root_cause='Thermal throttle',
+            workaround='Bump fan speed',
+            permanent_fix='Replace heatsink',
+        )
+
+    def _client_for(self, user):
+        c = Client()
+        c.force_login(user)
+        sess = c.session
+        sess['current_organization_id'] = self.org.id
+        sess.save()
+        return c
+
+    def test_advance_requires_resolve_perm(self):
+        """A user with problem_view+create but not problem_resolve gets 403."""
+        c = self._client_for(self.tech)
+        r = c.post(f'/psa/problems/{self.problem.pk}/advance/', {
+            'status': 'known_error',
+        })
+        self.assertEqual(r.status_code, 403)
+
+        # Resolver succeeds.
+        c2 = self._client_for(self.resolver)
+        r2 = c2.post(f'/psa/problems/{self.problem.pk}/advance/', {
+            'status': 'known_error',
+        })
+        self.assertEqual(r2.status_code, 302)
+        self.problem.refresh_from_db()
+        self.assertEqual(self.problem.status, 'known_error')
+
+    def test_view_blocked_for_user_without_problem_view(self):
+        c = self._client_for(self.no_perm)
+        r = c.get('/psa/problems/')
+        self.assertEqual(r.status_code, 403)
+        r2 = c.get(f'/psa/problems/{self.problem.pk}/')
+        self.assertEqual(r2.status_code, 403)

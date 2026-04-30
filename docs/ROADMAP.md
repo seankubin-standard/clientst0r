@@ -76,11 +76,11 @@ ConnectWise's wedge: PSA covers sales-pipeline-to-invoice. Currently we have quo
 
 Extends existing tickets + approvals; doesn't fork into a separate model layer.
 
-- **Change requests** as a `Ticket.ticket_type='change'` extension with required CAB approval before status moves to "Implementing"
-- **CAB workflow** — multi-approver gate (extends existing single-approval)
-- **Problem records** — link N related tickets, root-cause analysis field, status pipeline
-- **Release management** — group changes into release windows, freeze flags, rollback documentation
-- **Service-catalog governance** — approval gate on catalog item changes
+- **Change requests** as a `Ticket.ticket_type='change'` extension with required CAB approval before status moves to "Implementing" *(6.1 — shipped v3.17.158)*
+- **CAB workflow** — multi-approver gate (extends existing single-approval) *(6.1 — shipped v3.17.158)*
+- **Problem records** — link N related tickets, root-cause analysis field, status pipeline *(6.2 — shipped v3.17.160)*
+- **Release management** — group changes into release windows, freeze flags, rollback documentation *(6.3 — pending)*
+- **Service-catalog governance** — approval gate on catalog item changes *(6.3 — pending)*
 
 ## Phase 7 — Outsourcing, integrations, polish **(continuous track)**
 

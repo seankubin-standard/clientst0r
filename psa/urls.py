@@ -134,4 +134,14 @@ urlpatterns = [
     path('t/<str:ticket_number>/change/implement/', views.change_request_implement, name='change_request_implement'),
     path('t/<str:ticket_number>/change/verify/', views.change_request_verify, name='change_request_verify'),
     path('t/<str:ticket_number>/change/fail/', views.change_request_fail, name='change_request_fail'),
+
+    # Problem management (Phase 6.2) — RCA + recurring incidents
+    path('problems/', views.problem_list, name='problem_list'),
+    path('problems/new/', views.problem_form, name='problem_create'),
+    path('problems/<int:pk>/', views.problem_detail, name='problem_detail'),
+    path('problems/<int:pk>/edit/', views.problem_form, name='problem_edit'),
+    path('problems/<int:pk>/link-ticket/', views.problem_link_ticket, name='problem_link_ticket'),
+    path('problems/<int:pk>/unlink-ticket/<int:ticket_pk>/', views.problem_unlink_ticket, name='problem_unlink_ticket'),
+    path('problems/<int:pk>/notes/', views.problem_add_note, name='problem_add_note'),
+    path('problems/<int:pk>/advance/', views.problem_advance_status, name='problem_advance_status'),
 ]
