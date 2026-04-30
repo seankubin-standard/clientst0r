@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.164] - 2026-04-30
+
+### Added — 6 MSP-named sample role templates
+- Six new system role templates seeded by `RoleTemplate.get_or_create_system_templates`:
+  - **Client** — customer portal user (files tickets, views shared KB / vault items only)
+  - **Client Admin** — customer org admin (manages who at their org sees shared vault items + invites portal users)
+  - **Technician** — internal staff doing day-to-day support work
+  - **Tech Manager** — supervises techs (approves leave, dispatches, approves changes + PRs)
+  - **Office Manager** — financial + operations (invoices, payments, aging, cost rates, CRM pipeline)
+  - **Full Admin** — full access (alias for Owner)
+- Built using a helper `_build(name, description, **overrides)` that defaults every RoleTemplate boolean to False and only flips the listed perms — keeps the diff small and means new RoleTemplate booleans added later default safely (False) for these sample roles.
+- The existing 7 system templates (Owner / Administrator / Editor / Help Desk / IT Manager / Documentation Writer / Read-Only) are unchanged. Total: 13 system templates available out-of-the-box.
+- Sample roles are user-editable via `/accounts/roles/` like any other role template — they're starting points, not locked-down system roles.
+
 ## [3.17.163] - 2026-04-30
 
 ### Added — Vault GeoIP / IP / Time access rules

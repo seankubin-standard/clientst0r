@@ -81,6 +81,7 @@ Extends existing tickets + approvals; doesn't fork into a separate model layer.
 - **Problem records** — link N related tickets, root-cause analysis field, status pipeline *(6.2 — shipped v3.17.160)*
 - **Release management** — group changes into release windows, freeze flags, rollback documentation *(6.3 — pending)*
 - **Service-catalog governance** — approval gate on catalog item changes *(6.3 — pending)*
+- MSP-named sample role templates seeded by `RoleTemplate.get_or_create_system_templates()`: Client, Client Admin, Technician, Tech Manager, Office Manager, Full Admin (in addition to the existing Owner/Administrator/Editor/Help Desk/IT Manager/Documentation Writer/Read-Only) *(shipped v3.17.164)*
 
 ## Phase 7 — Outsourcing, integrations, polish **(continuous track)**
 
