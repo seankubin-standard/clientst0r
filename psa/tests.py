@@ -3469,3 +3469,255 @@ class ProcurementGateTests(TestCase):
         self.assertIn(r.status_code, [200, 302])
         self.pr.refresh_from_db()
         self.assertEqual(self.pr.status, 'approved')
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.1 — Change requests with CAB approval workflow
+# ---------------------------------------------------------------------------
+
+
+def _make_change_ticket(org, **overrides):
+    """Helper: build a ticket with ticket_type slug='change'. The
+    auto-spawn signal will create the ChangeRequest."""
+    from psa.models import (
+        Queue, TicketStatus, TicketPriority, TicketType, Ticket,
+    )
+    queue = Queue.objects.first() or Queue.objects.create(name='Helpdesk', slug='helpdesk')
+    status = TicketStatus.objects.first() or TicketStatus.objects.create(name='New', slug='new')
+    priority = TicketPriority.objects.first() or TicketPriority.objects.create(
+        code='P3', name='Normal',
+        response_target_minutes=240, resolution_target_minutes=4320,
+    )
+    change_type, _ = TicketType.objects.get_or_create(
+        slug='change', defaults={'name': 'Change', 'sort_order': 99},
+    )
+    defaults = dict(
+        organization=org,
+        subject='CR test',
+        status=status,
+        priority=priority,
+        ticket_type=change_type,
+        queue=queue,
+    )
+    defaults.update(overrides)
+    return Ticket.objects.create(**defaults)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ChangeRequestModelTests(TestCase):
+    """Validate the CAB gating logic on the model itself."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ChangeOrg', slug='change-org')
+        self.requester = User.objects.create_user(
+            username='cr_req', password='pw', email='req@x.com')
+        self.approver_a = User.objects.create_user(
+            username='cab_a', password='pw', email='a@x.com')
+        self.approver_b = User.objects.create_user(
+            username='cab_b', password='pw', email='b@x.com')
+
+        self.ticket = _make_change_ticket(
+            self.org, subject='CR test', created_by=self.requester,
+        )
+        self.cr = self.ticket.change_request
+        self.cr.implementation_status = 'pending_cab'
+        self.cr.save(update_fields=['implementation_status'])
+
+    def test_can_implement_requires_all_cab_approvers(self):
+        from psa.models import CABVote
+        self.cr.required_approvers.set([self.approver_a, self.approver_b])
+        # 1 approves -> not satisfied
+        CABVote.objects.create(
+            change_request=self.cr, user=self.approver_a, decision='approved')
+        self.assertFalse(self.cr.is_cab_satisfied)
+        # Even if we manually set the CR to 'approved', the gate must still
+        # require all approvers -> can_implement returns False because
+        # is_cab_satisfied is False.
+        self.cr.implementation_status = 'approved'
+        self.cr.save(update_fields=['implementation_status'])
+        self.assertFalse(self.cr.can_implement())
+        # Both approve -> satisfied
+        CABVote.objects.create(
+            change_request=self.cr, user=self.approver_b, decision='approved')
+        self.assertTrue(self.cr.is_cab_satisfied)
+        self.assertTrue(self.cr.can_implement())
+
+    def test_any_rejection_blocks_implementation(self):
+        from psa.models import CABVote
+        self.cr.required_approvers.set([self.approver_a, self.approver_b])
+        CABVote.objects.create(
+            change_request=self.cr, user=self.approver_a, decision='approved')
+        CABVote.objects.create(
+            change_request=self.cr, user=self.approver_b, decision='rejected')
+        self.assertTrue(self.cr.has_cab_rejection)
+        self.cr.implementation_status = 'approved'
+        self.cr.save(update_fields=['implementation_status'])
+        self.assertFalse(self.cr.can_implement())
+
+    def test_can_implement_falls_back_for_no_cab(self):
+        """No required_approvers configured: a single 'approved' CABVote
+        is enough to satisfy the fallback gate."""
+        from psa.models import CABVote
+        self.cr.required_approvers.clear()
+        # No votes -> not satisfied
+        self.assertFalse(self.cr.is_cab_satisfied)
+        CABVote.objects.create(
+            change_request=self.cr, user=self.approver_a, decision='approved')
+        self.assertTrue(self.cr.is_cab_satisfied)
+        self.cr.implementation_status = 'approved'
+        self.cr.save(update_fields=['implementation_status'])
+        self.assertTrue(self.cr.can_implement())
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ChangeRequestSignalTests(TestCase):
+    """Validate the post_save signal that auto-creates a ChangeRequest."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='SignalOrg', slug='signal-org')
+
+    def test_change_ticket_auto_spawns_change_request(self):
+        from psa.models import ChangeRequest
+        ticket = _make_change_ticket(self.org, subject='Auto-spawn test')
+        cr = ChangeRequest.objects.filter(ticket=ticket).first()
+        self.assertIsNotNone(cr)
+        self.assertEqual(cr.organization, self.org)
+        self.assertEqual(cr.implementation_status, 'draft')
+
+    def test_non_change_ticket_does_not_spawn(self):
+        from psa.models import (
+            Queue, TicketStatus, TicketPriority, TicketType, Ticket,
+            ChangeRequest,
+        )
+        incident_type = TicketType.objects.filter(slug='incident').first()
+        if not incident_type:
+            incident_type = TicketType.objects.create(name='Incident', slug='incident')
+        ticket = Ticket.objects.create(
+            organization=self.org,
+            subject='Non-change',
+            status=TicketStatus.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=incident_type,
+            queue=Queue.objects.first(),
+        )
+        self.assertFalse(ChangeRequest.objects.filter(ticket=ticket).exists())
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ChangeRequestPermissionTests(TestCase):
+    """Permission gating on vote/implement endpoints."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='PermOrg', slug='perm-org')
+
+        # Give every test user generic write perms so `require_write` lets
+        # them past — the tests are exercising the change_* perms specifically.
+        # `can_write()` looks at vault_create OR assets_create OR ...
+        common_write = dict(assets_create=True)
+
+        self.tech_role = RoleTemplate.objects.create(
+            name='ChangeTech', is_system_template=False,
+            change_view=True, change_create=True,
+            change_approve_cab=False, change_implement=False,
+            **common_write,
+        )
+        self.tech = User.objects.create_user(
+            username='ch_tech', password='pw', email='ct@x.com')
+        Membership.objects.create(
+            user=self.tech, organization=self.org,
+            role=Role.EDITOR, role_template=self.tech_role,
+            is_active=True,
+        )
+
+        self.cab_role = RoleTemplate.objects.create(
+            name='ChangeCAB', is_system_template=False,
+            change_view=True, change_create=True,
+            change_approve_cab=True, change_implement=False,
+            **common_write,
+        )
+        self.cab_member = User.objects.create_user(
+            username='ch_cab', password='pw', email='cab@x.com')
+        Membership.objects.create(
+            user=self.cab_member, organization=self.org,
+            role=Role.ADMIN, role_template=self.cab_role,
+            is_active=True,
+        )
+
+        self.impl_role = RoleTemplate.objects.create(
+            name='ChangeImpl', is_system_template=False,
+            change_view=True, change_create=True,
+            change_approve_cab=False, change_implement=True,
+            **common_write,
+        )
+        self.implementer = User.objects.create_user(
+            username='ch_impl', password='pw', email='impl@x.com')
+        Membership.objects.create(
+            user=self.implementer, organization=self.org,
+            role=Role.ADMIN, role_template=self.impl_role,
+            is_active=True,
+        )
+
+        self.ticket = _make_change_ticket(
+            self.org, subject='Perm CR', created_by=self.tech,
+        )
+        self.cr = self.ticket.change_request
+        self.cr.implementation_status = 'pending_cab'
+        self.cr.required_approvers.set([self.cab_member])
+        self.cr.save()
+
+    def _client_for(self, user):
+        c = Client()
+        c.force_login(user)
+        sess = c.session
+        sess['current_organization_id'] = self.org.id
+        sess.save()
+        return c
+
+    def test_voting_requires_cab_perm(self):
+        """A user without change_approve_cab cannot vote."""
+        c = self._client_for(self.tech)
+        r = c.post(f'/psa/t/{self.ticket.ticket_number}/change/vote/', {
+            'decision': 'approved',
+        })
+        self.assertEqual(r.status_code, 403)
+
+    def test_voting_requires_being_a_required_approver(self):
+        """Even with the CAB perm, you must be in required_approvers."""
+        # Implementer has change_implement but NOT change_approve_cab.
+        c = self._client_for(self.implementer)
+        r = c.post(f'/psa/t/{self.ticket.ticket_number}/change/vote/', {
+            'decision': 'approved',
+        })
+        self.assertEqual(r.status_code, 403)
+
+    def test_cab_member_can_vote_and_drives_approval(self):
+        c = self._client_for(self.cab_member)
+        r = c.post(f'/psa/t/{self.ticket.ticket_number}/change/vote/', {
+            'decision': 'approved',
+        })
+        self.assertEqual(r.status_code, 302)
+        self.cr.refresh_from_db()
+        self.assertEqual(self.cr.implementation_status, 'approved')
+
+    def test_implement_requires_can_implement_gate(self):
+        """Implementer has perm but CR is pending_cab -> blocked."""
+        c = self._client_for(self.implementer)
+        r = c.post(f'/psa/t/{self.ticket.ticket_number}/change/implement/')
+        # The view redirects with an error message, NOT a 403, because the
+        # *permission* is fine - it's the gate that's not satisfied.
+        self.assertEqual(r.status_code, 302)
+        self.cr.refresh_from_db()
+        self.assertNotEqual(self.cr.implementation_status, 'implementing')
+
+    def test_implement_blocked_without_change_implement_perm(self):
+        """A user with change_approve_cab but not change_implement gets 403."""
+        c = self._client_for(self.cab_member)
+        r = c.post(f'/psa/t/{self.ticket.ticket_number}/change/implement/')
+        self.assertEqual(r.status_code, 403)

@@ -2407,3 +2407,175 @@ class POBackOrder(models.Model):
 
     def __str__(self):
         return f'{self.po.po_number} back-order: {self.po_line.description} ({self.quantity_outstanding})'
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.1 — Change requests with CAB approval workflow
+# ---------------------------------------------------------------------------
+
+
+class ChangeRequest(models.Model):
+    """
+    A change-management ticket extension. One-to-one with a Ticket whose
+    ticket_type slug is 'change'. Captures CAB-relevant metadata that a
+    regular ticket doesn't need:
+      - Risk classification (low/medium/high/emergency)
+      - Implementation + rollback plans
+      - Scheduled window
+      - Required approvers (set by category/risk)
+      - Implementation status (cannot move ticket to 'Implementing'
+        without all CAB approvals satisfied)
+    """
+    RISK_CHOICES = [
+        ('low', 'Low - routine, well-tested'),
+        ('medium', 'Medium - significant scope'),
+        ('high', 'High - service-impacting potential'),
+        ('emergency', 'Emergency - out-of-band, post-implement review'),
+    ]
+    IMPLEMENTATION_STATUS = [
+        ('draft', 'Draft'),
+        ('pending_cab', 'Pending CAB Approval'),
+        ('approved', 'Approved - Ready to Implement'),
+        ('rejected', 'Rejected by CAB'),
+        ('implementing', 'Implementing'),
+        ('verified', 'Verified - Successful'),
+        ('failed', 'Failed - Rolled Back'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    ticket = models.OneToOneField(
+        'psa.Ticket', on_delete=models.CASCADE,
+        related_name='change_request',
+    )
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_change_requests',
+    )
+
+    risk = models.CharField(max_length=20, choices=RISK_CHOICES, default='medium')
+    implementation_status = models.CharField(
+        max_length=30, choices=IMPLEMENTATION_STATUS, default='draft',
+    )
+
+    # CAB members assigned to review this change (multi-approver)
+    required_approvers = models.ManyToManyField(
+        django_settings.AUTH_USER_MODEL, related_name='+',
+        blank=True,
+        help_text='Each must approve before the change moves to '
+                  'Implementing. Empty = single approver via the '
+                  'existing PSAApproval flow.',
+    )
+
+    # Plans
+    implementation_plan = models.TextField(
+        blank=True,
+        help_text='Step-by-step plan. Required before submitting to CAB.',
+    )
+    rollback_plan = models.TextField(
+        blank=True,
+        help_text='If the change fails, how do we revert? Required for '
+                  'high/emergency risk.',
+    )
+    impact_assessment = models.TextField(blank=True)
+    backout_window_minutes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Maximum minutes the change can run before triggering '
+                  'auto-rollback considerations.',
+    )
+
+    # Scheduled window
+    scheduled_start = models.DateTimeField(null=True, blank=True)
+    scheduled_end = models.DateTimeField(null=True, blank=True)
+    actual_start = models.DateTimeField(null=True, blank=True)
+    actual_end = models.DateTimeField(null=True, blank=True)
+
+    # Outcome
+    outcome_summary = models.TextField(blank=True)
+
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    submitted_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    decision_note = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_change_requests'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'implementation_status', '-created_at']),
+            models.Index(fields=['risk', 'implementation_status']),
+        ]
+
+    def __str__(self):
+        return f'Change for {self.ticket.ticket_number} ({self.get_risk_display()})'
+
+    @property
+    def is_cab_satisfied(self):
+        """True when every required_approver has an 'approved' CABVote."""
+        required_ids = set(self.required_approvers.values_list('id', flat=True))
+        if not required_ids:
+            # No CAB members configured - fall back to the existing single
+            # PSAApproval check (returns True if there's an approved one).
+            return self._fallback_single_approval_satisfied()
+        approved_ids = set(
+            self.cab_votes.filter(decision='approved').values_list('user_id', flat=True)
+        )
+        return required_ids.issubset(approved_ids)
+
+    @property
+    def has_cab_rejection(self):
+        """True if any required approver rejected - terminal."""
+        return self.cab_votes.filter(decision='rejected').exists()
+
+    def _fallback_single_approval_satisfied(self):
+        """For changes with no required_approvers configured, check if
+        any CABVote with decision='approved' exists (lightweight)."""
+        return self.cab_votes.filter(decision='approved').exists()
+
+    def can_implement(self):
+        """Required gate before flipping ticket status to Implementing."""
+        return (
+            self.implementation_status == 'approved'
+            and not self.has_cab_rejection
+            and self.is_cab_satisfied
+        )
+
+
+class CABVote(models.Model):
+    """
+    Each CAB member's vote on a ChangeRequest. The change is approved
+    when every required_approver has an 'approved' vote and zero have
+    rejected.
+    """
+    DECISION_CHOICES = [
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('abstained', 'Abstained'),
+    ]
+    change_request = models.ForeignKey(
+        ChangeRequest, on_delete=models.CASCADE, related_name='cab_votes',
+    )
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='+',
+    )
+    decision = models.CharField(max_length=20, choices=DECISION_CHOICES)
+    note = models.TextField(blank=True)
+    voted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_cab_votes'
+        unique_together = [['change_request', 'user']]
+        ordering = ['-voted_at']
+
+    def __str__(self):
+        return f'{self.user.username}: {self.get_decision_display()}'

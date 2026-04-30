@@ -100,3 +100,20 @@ def _fire_comment_workflow(sender, instance, created, **kwargs):
         fire('comment_added', instance.ticket)
     except Exception:
         logger.exception('PSA comment workflow signal failed')
+
+
+@receiver(post_save, sender=Ticket)
+def _auto_create_change_request(sender, instance, created, **kwargs):
+    """When a Ticket of type 'change' is created, auto-spawn a draft
+    ChangeRequest. The ticket_type slug 'change' is the link contract."""
+    if not created:
+        return
+    try:
+        if instance.ticket_type and instance.ticket_type.slug == 'change':
+            from .models import ChangeRequest
+            ChangeRequest.objects.get_or_create(
+                ticket=instance,
+                defaults={'organization': instance.organization},
+            )
+    except Exception:
+        logger.exception('PSA change request auto-create signal failed')

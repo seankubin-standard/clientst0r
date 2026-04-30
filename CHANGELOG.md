@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.158] - 2026-04-29
+
+### Added — Phase 6.1: Change requests with CAB approval workflow
+- New `psa.ChangeRequest` model — one-to-one with a `Ticket` of type 'change'. Captures CAB-relevant metadata: risk (low/medium/high/emergency), implementation/rollback/impact plans, scheduled + actual windows, outcome summary, implementation_status pipeline (draft → pending_cab → approved/rejected → implementing → verified/failed/cancelled).
+- New `psa.CABVote` model — one row per (change_request, user). Approvals require **every** `required_approvers` user to vote `approved` AND zero rejections. Falls back to the existing single-approval pattern when no required_approvers are set.
+- Auto-create signal: any Ticket whose `ticket_type.slug='change'` spawns a draft ChangeRequest on save.
+- New 'change' ticket type seeded by `psa_seed_defaults`.
+- Pages: `/psa/changes/` (queue), `/psa/t/<n>/change/` (detail + vote form), `/psa/t/<n>/change/edit/` (form). Endpoints: submit / vote / implement / verify / fail.
+- 4 new RoleTemplate booleans: `change_view`, `change_create`, `change_approve_cab`, `change_implement`. Defaults: Editor = view+create; Owner/Admin = all 4.
+- "Change Management" card surfaced on the ticket detail page when ticket_type='change'.
+- 8 new tests in `psa.tests`.
+
+Phase 6 sub-phases left: 6.2 Problem records + RCA; 6.3 Release management + service-catalog governance.
+
+### Migrations
+`psa.0023_changerequest_cabvote_and_more`, `accounts.0023_roletemplate_change_approve_cab_and_more`.
+
 ## [3.17.157] - 2026-04-29
 
 ### Fixed — Generated Reports list now actionable for legacy + failed rows

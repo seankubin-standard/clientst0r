@@ -116,6 +116,9 @@ class Membership(BaseModel):
                 crm_view=True, crm_create_lead=True,
                 crm_manage_pipeline=True, crm_manage_campaigns=True,
                 crm_view_forecast=True,
+                # Change management (Phase 6.1) — Owner: all True
+                change_view=True, change_create=True,
+                change_approve_cab=True, change_implement=True,
             )
         elif self.role == Role.ADMIN:
             return SimpleNamespace(
@@ -151,6 +154,9 @@ class Membership(BaseModel):
                 crm_view=True, crm_create_lead=True,
                 crm_manage_pipeline=True, crm_manage_campaigns=True,
                 crm_view_forecast=True,
+                # Change management (Phase 6.1) — Admin: all True
+                change_view=True, change_create=True,
+                change_approve_cab=True, change_implement=True,
             )
         elif self.role == Role.EDITOR:
             return SimpleNamespace(
@@ -188,6 +194,9 @@ class Membership(BaseModel):
                 crm_view=True, crm_create_lead=True,
                 crm_manage_pipeline=True, crm_manage_campaigns=False,
                 crm_view_forecast=False,
+                # Change management (Phase 6.1) — Editor: view + create only.
+                change_view=True, change_create=True,
+                change_approve_cab=False, change_implement=False,
             )
         else:  # READONLY
             return SimpleNamespace(
@@ -223,6 +232,9 @@ class Membership(BaseModel):
                 crm_view=True, crm_create_lead=False,
                 crm_manage_pipeline=False, crm_manage_campaigns=False,
                 crm_view_forecast=False,
+                # Change management (Phase 6.1) — Read-Only: view only.
+                change_view=True, change_create=False,
+                change_approve_cab=False, change_implement=False,
             )
 
     def can_read(self):
@@ -722,6 +734,15 @@ class RoleTemplate(BaseModel):
     crm_view_forecast = models.BooleanField(default=False,
         help_text='See $-weighted pipeline forecast (revenue projections).')
 
+    # --- Change management (Phase 6.1) — v3.17.158 ---
+    change_view = models.BooleanField(default=True)
+    change_create = models.BooleanField(default=True,
+        help_text='Submit a change request for CAB review.')
+    change_approve_cab = models.BooleanField(default=False,
+        help_text='Sit on the CAB and vote on changes.')
+    change_implement = models.BooleanField(default=False,
+        help_text='Move an approved change into Implementing.')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -818,6 +839,11 @@ class RoleTemplate(BaseModel):
                 'crm_manage_pipeline': True,
                 'crm_manage_campaigns': True,
                 'crm_view_forecast': True,
+                # Change management (Phase 6.1) — Owner: all True
+                'change_view': True,
+                'change_create': True,
+                'change_approve_cab': True,
+                'change_implement': True,
             },
             {
                 'name': 'Administrator',
@@ -902,6 +928,11 @@ class RoleTemplate(BaseModel):
                 'crm_manage_pipeline': True,
                 'crm_manage_campaigns': True,
                 'crm_view_forecast': True,
+                # Change management (Phase 6.1) — Administrator: all True
+                'change_view': True,
+                'change_create': True,
+                'change_approve_cab': True,
+                'change_implement': True,
             },
             {
                 'name': 'Editor',
@@ -987,6 +1018,11 @@ class RoleTemplate(BaseModel):
                 'crm_manage_pipeline': True,
                 'crm_manage_campaigns': False,
                 'crm_view_forecast': False,
+                # Change management (Phase 6.1) — Editor: view + create only.
+                'change_view': True,
+                'change_create': True,
+                'change_approve_cab': False,
+                'change_implement': False,
             },
             {
                 'name': 'Help Desk',
@@ -1072,6 +1108,11 @@ class RoleTemplate(BaseModel):
                 'crm_manage_pipeline': False,
                 'crm_manage_campaigns': False,
                 'crm_view_forecast': False,
+                # Change management (Phase 6.1) — Help Desk: view + create.
+                'change_view': True,
+                'change_create': True,
+                'change_approve_cab': False,
+                'change_implement': False,
             },
             {
                 'name': 'IT Manager',
@@ -1158,6 +1199,11 @@ class RoleTemplate(BaseModel):
                 'crm_manage_pipeline': True,
                 'crm_manage_campaigns': False,
                 'crm_view_forecast': True,
+                # Change management (Phase 6.1) — IT Manager: all four.
+                'change_view': True,
+                'change_create': True,
+                'change_approve_cab': True,
+                'change_implement': True,
             },
             {
                 'name': 'Documentation Writer',
@@ -1242,6 +1288,11 @@ class RoleTemplate(BaseModel):
                 'crm_manage_pipeline': False,
                 'crm_manage_campaigns': False,
                 'crm_view_forecast': False,
+                # Change management (Phase 6.1) — Documentation Writer: view only.
+                'change_view': True,
+                'change_create': False,
+                'change_approve_cab': False,
+                'change_implement': False,
             },
             {
                 'name': 'Read-Only',
@@ -1326,6 +1377,11 @@ class RoleTemplate(BaseModel):
                 'crm_manage_pipeline': False,
                 'crm_manage_campaigns': False,
                 'crm_view_forecast': False,
+                # Change management (Phase 6.1) — Read-Only: view only.
+                'change_view': True,
+                'change_create': False,
+                'change_approve_cab': False,
+                'change_implement': False,
             },
         ]
 

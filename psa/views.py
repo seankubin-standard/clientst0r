@@ -5049,3 +5049,353 @@ def quote_to_po(request, pk):
         f'Pick a vendor and review before sending.',
     )
     return redirect('psa:po_edit', pk=po.pk)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.1 — Change requests with CAB approval workflow
+# ---------------------------------------------------------------------------
+
+
+def _scoped_change_request_qs(request):
+    """Tenant-scoped ChangeRequest queryset following the same staff/org
+    pattern as `_scoped_ticket_qs`."""
+    from .models import ChangeRequest
+    qs = ChangeRequest.objects.select_related(
+        'organization', 'ticket', 'ticket__ticket_type', 'ticket__status',
+        'submitted_by', 'decided_by',
+    )
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        return qs
+    if hasattr(request.user, 'memberships'):
+        org_ids = list(
+            request.user.memberships.filter(is_active=True)
+            .values_list('organization_id', flat=True)
+        )
+        return qs.filter(organization_id__in=org_ids)
+    return qs.none()
+
+
+def _get_change_for_ticket(request, ticket_number):
+    """Resolve a ChangeRequest by ticket number with tenant scoping. Auto-
+    creates the CR if the ticket is type='change' but no CR exists yet
+    (covers tickets created before the signal was wired up)."""
+    from .models import ChangeRequest
+    qs = _scoped_ticket_qs(request).filter(ticket_number=ticket_number)
+    ticket = get_object_or_404(qs)
+    if not ticket.ticket_type or ticket.ticket_type.slug != 'change':
+        raise Http404('Ticket is not a change request')
+    cr, _ = ChangeRequest.objects.get_or_create(
+        ticket=ticket,
+        defaults={'organization': ticket.organization},
+    )
+    return ticket, cr
+
+
+@login_required
+@require_psa_enabled
+def change_request_list(request):
+    """Staff queue of change requests, filterable by risk + status."""
+    from accounts.permission_utils import user_has_perm
+    if not user_has_perm(request.user, 'change_view'):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied("You don't have the 'change_view' permission.")
+    from .models import ChangeRequest
+    qs = _scoped_change_request_qs(request)
+    risk = request.GET.get('risk') or ''
+    status = request.GET.get('status') or ''
+    if risk in {'low', 'medium', 'high', 'emergency'}:
+        qs = qs.filter(risk=risk)
+    valid_status = {s for s, _ in ChangeRequest.IMPLEMENTATION_STATUS}
+    if status in valid_status:
+        qs = qs.filter(implementation_status=status)
+    return render(request, 'psa/change_request_list.html', {
+        'change_requests': qs.order_by('-created_at')[:200],
+        'risk_filter': risk,
+        'status_filter': status,
+    })
+
+
+@login_required
+@require_psa_enabled
+def change_request_detail(request, ticket_number):
+    """View a CR — plans, schedule, votes, gate state."""
+    from accounts.permission_utils import user_has_perm
+    if not user_has_perm(request.user, 'change_view'):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied("You don't have the 'change_view' permission.")
+    ticket, cr = _get_change_for_ticket(request, ticket_number)
+    user_is_required_approver = cr.required_approvers.filter(pk=request.user.pk).exists()
+    user_vote = cr.cab_votes.filter(user=request.user).first()
+    return render(request, 'psa/change_request_detail.html', {
+        'ticket': ticket,
+        'cr': cr,
+        'votes': cr.cab_votes.select_related('user').all(),
+        'required_approvers': cr.required_approvers.all(),
+        'user_is_required_approver': user_is_required_approver,
+        'user_vote': user_vote,
+        'can_create': user_has_perm(request.user, 'change_create'),
+        'can_vote': user_has_perm(request.user, 'change_approve_cab') and user_is_required_approver,
+        'can_implement': user_has_perm(request.user, 'change_implement') and cr.can_implement(),
+        'can_edit': (
+            user_has_perm(request.user, 'change_create')
+            and cr.implementation_status in {'draft', 'rejected'}
+        ),
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def change_request_form(request, ticket_number):
+    """Edit plans / risk / schedule / required approvers."""
+    from accounts.permission_utils import user_has_perm, require_perm  # noqa: F401
+    if not user_has_perm(request.user, 'change_create'):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied("You don't have the 'change_create' permission.")
+    ticket, cr = _get_change_for_ticket(request, ticket_number)
+    if cr.implementation_status not in {'draft', 'rejected'}:
+        messages.error(request, f'Cannot edit — change is {cr.get_implementation_status_display()}.')
+        return redirect('psa:change_request_detail', ticket_number=ticket_number)
+
+    if request.method == 'POST':
+        cr.risk = request.POST.get('risk') or cr.risk
+        cr.implementation_plan = (request.POST.get('implementation_plan') or '').strip()
+        cr.rollback_plan = (request.POST.get('rollback_plan') or '').strip()
+        cr.impact_assessment = (request.POST.get('impact_assessment') or '').strip()
+        backout = (request.POST.get('backout_window_minutes') or '').strip()
+        cr.backout_window_minutes = int(backout) if backout.isdigit() else None
+        for fname in ('scheduled_start', 'scheduled_end'):
+            val = (request.POST.get(fname) or '').strip()
+            if val:
+                from django.utils.dateparse import parse_datetime
+                parsed = parse_datetime(val)
+                setattr(cr, fname, parsed)
+            else:
+                setattr(cr, fname, None)
+        cr.save()
+        # Required approvers (m2m)
+        approver_ids = request.POST.getlist('required_approvers')
+        if approver_ids is not None:
+            from django.contrib.auth.models import User as _User
+            ids = [int(x) for x in approver_ids if x.isdigit()]
+            users = list(_User.objects.filter(id__in=ids))
+            cr.required_approvers.set(users)
+        AuditLog.log(
+            user=request.user, action='update',
+            organization=cr.organization,
+            object_type='psa.ChangeRequest', object_id=cr.pk,
+            object_repr=str(cr),
+            description=f'Edited change request for {ticket.ticket_number}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, 'Change request saved.')
+        return redirect('psa:change_request_detail', ticket_number=ticket_number)
+
+    from django.contrib.auth.models import User as _User
+    candidate_users = _User.objects.filter(is_active=True).order_by('username')[:500]
+    return render(request, 'psa/change_request_form.html', {
+        'ticket': ticket,
+        'cr': cr,
+        'candidate_users': candidate_users,
+        'selected_approver_ids': set(cr.required_approvers.values_list('id', flat=True)),
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def change_request_submit(request, ticket_number):
+    """Submit a draft change for CAB review."""
+    from accounts.permission_utils import user_has_perm
+    if not user_has_perm(request.user, 'change_create'):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied("You don't have the 'change_create' permission.")
+    ticket, cr = _get_change_for_ticket(request, ticket_number)
+    if cr.implementation_status not in {'draft', 'rejected'}:
+        messages.error(request, f'Cannot submit — change is {cr.get_implementation_status_display()}.')
+        return redirect('psa:change_request_detail', ticket_number=ticket_number)
+    # Require plans
+    if not cr.implementation_plan.strip():
+        messages.error(request, 'Implementation plan is required before submitting.')
+        return redirect('psa:change_request_detail', ticket_number=ticket_number)
+    if cr.risk in {'high', 'emergency'} and not cr.rollback_plan.strip():
+        messages.error(request, 'Rollback plan is required for high or emergency risk changes.')
+        return redirect('psa:change_request_detail', ticket_number=ticket_number)
+    cr.implementation_status = 'pending_cab'
+    cr.submitted_at = timezone.now()
+    cr.submitted_by = request.user
+    cr.save(update_fields=['implementation_status', 'submitted_at', 'submitted_by', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=cr.organization,
+        object_type='psa.ChangeRequest', object_id=cr.pk,
+        object_repr=str(cr),
+        description=f'Submitted change request for {ticket.ticket_number} to CAB',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, 'Submitted to CAB.')
+    return redirect('psa:change_request_detail', ticket_number=ticket_number)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def change_request_vote(request, ticket_number):
+    """A CAB member casts (or updates) their vote on a change request."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    from .models import CABVote
+    if not user_has_perm(request.user, 'change_approve_cab'):
+        raise PermissionDenied("You don't have the 'change_approve_cab' permission.")
+    ticket, cr = _get_change_for_ticket(request, ticket_number)
+    if not cr.required_approvers.filter(pk=request.user.pk).exists():
+        raise PermissionDenied('You are not a required approver for this change.')
+    if cr.implementation_status not in {'pending_cab', 'approved', 'rejected'}:
+        messages.error(
+            request,
+            f'Cannot vote — change is {cr.get_implementation_status_display()}.',
+        )
+        return redirect('psa:change_request_detail', ticket_number=ticket_number)
+    decision = (request.POST.get('decision') or '').strip()
+    note = (request.POST.get('note') or '').strip()
+    if decision not in {'approved', 'rejected', 'abstained'}:
+        messages.error(request, 'Pick Approve, Reject, or Abstain.')
+        return redirect('psa:change_request_detail', ticket_number=ticket_number)
+    vote, _ = CABVote.objects.update_or_create(
+        change_request=cr, user=request.user,
+        defaults={'decision': decision, 'note': note},
+    )
+    # Recompute aggregate state
+    if cr.has_cab_rejection:
+        cr.implementation_status = 'rejected'
+        cr.decided_at = timezone.now()
+        cr.decided_by = request.user
+        cr.save(update_fields=['implementation_status', 'decided_at', 'decided_by', 'updated_at'])
+    elif cr.is_cab_satisfied:
+        cr.implementation_status = 'approved'
+        cr.decided_at = timezone.now()
+        cr.decided_by = request.user
+        cr.save(update_fields=['implementation_status', 'decided_at', 'decided_by', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=cr.organization,
+        object_type='psa.ChangeRequest', object_id=cr.pk,
+        object_repr=str(cr),
+        description=f'CAB vote {decision} on change for {ticket.ticket_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Vote recorded: {decision}.')
+    return redirect('psa:change_request_detail', ticket_number=ticket_number)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def change_request_implement(request, ticket_number):
+    """Begin implementation of an approved change."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'change_implement'):
+        raise PermissionDenied("You don't have the 'change_implement' permission.")
+    ticket, cr = _get_change_for_ticket(request, ticket_number)
+    if not cr.can_implement():
+        messages.error(request, 'Change is not yet approved by all CAB members.')
+        return redirect('psa:change_request_detail', ticket_number=ticket_number)
+    cr.implementation_status = 'implementing'
+    cr.actual_start = timezone.now()
+    cr.save(update_fields=['implementation_status', 'actual_start', 'updated_at'])
+    # Best-effort flip ticket status to In Progress (not all installs have an
+    # 'Implementing' status; the CR's own status is the canonical state).
+    in_progress_status = (
+        TicketStatus.objects.filter(slug='in-progress').first()
+        or TicketStatus.objects.filter(is_terminal=False).order_by('sort_order').first()
+    )
+    if in_progress_status and ticket.status_id != in_progress_status.pk:
+        ticket.status = in_progress_status
+        ticket.updated_by = request.user
+        ticket.save(update_fields=['status', 'updated_by', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=cr.organization,
+        object_type='psa.ChangeRequest', object_id=cr.pk,
+        object_repr=str(cr),
+        description=f'Started implementing change for {ticket.ticket_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, 'Change is now implementing.')
+    return redirect('psa:change_request_detail', ticket_number=ticket_number)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def change_request_verify(request, ticket_number):
+    """Mark change as verified (successful) and close the ticket."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'change_implement'):
+        raise PermissionDenied("You don't have the 'change_implement' permission.")
+    ticket, cr = _get_change_for_ticket(request, ticket_number)
+    if cr.implementation_status != 'implementing':
+        messages.error(request, 'Change must be in Implementing state to verify.')
+        return redirect('psa:change_request_detail', ticket_number=ticket_number)
+    summary = (request.POST.get('outcome_summary') or '').strip()
+    cr.outcome_summary = summary
+    cr.implementation_status = 'verified'
+    cr.actual_end = timezone.now()
+    cr.save(update_fields=['outcome_summary', 'implementation_status', 'actual_end', 'updated_at'])
+    closed_status = (
+        TicketStatus.objects.filter(slug='closed').first()
+        or TicketStatus.objects.filter(is_terminal=True).order_by('sort_order').first()
+    )
+    if closed_status:
+        ticket.status = closed_status
+        ticket.closed_at = timezone.now()
+        ticket.updated_by = request.user
+        ticket.save(update_fields=['status', 'closed_at', 'updated_by', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=cr.organization,
+        object_type='psa.ChangeRequest', object_id=cr.pk,
+        object_repr=str(cr),
+        description=f'Verified change for {ticket.ticket_number}: {summary[:120]}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, 'Change verified and ticket closed.')
+    return redirect('psa:change_request_detail', ticket_number=ticket_number)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def change_request_fail(request, ticket_number):
+    """Mark change as failed/rolled back."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'change_implement'):
+        raise PermissionDenied("You don't have the 'change_implement' permission.")
+    ticket, cr = _get_change_for_ticket(request, ticket_number)
+    if cr.implementation_status != 'implementing':
+        messages.error(request, 'Change must be in Implementing state to fail.')
+        return redirect('psa:change_request_detail', ticket_number=ticket_number)
+    summary = (request.POST.get('outcome_summary') or '').strip()
+    cr.outcome_summary = summary
+    cr.implementation_status = 'failed'
+    cr.actual_end = timezone.now()
+    cr.save(update_fields=['outcome_summary', 'implementation_status', 'actual_end', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=cr.organization,
+        object_type='psa.ChangeRequest', object_id=cr.pk,
+        object_repr=str(cr),
+        description=f'Failed change for {ticket.ticket_number}: {summary[:120]}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.warning(request, 'Change marked as failed / rolled back.')
+    return redirect('psa:change_request_detail', ticket_number=ticket_number)

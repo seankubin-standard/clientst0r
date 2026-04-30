@@ -64,6 +64,12 @@ TYPES = [
     'Calendar Dispatch',
 ]
 
+# (slug, name, description) — explicit-slug ticket types. The Phase 6.1 'change'
+# slug is the contract for the auto-spawning ChangeRequest signal.
+EXPLICIT_SLUG_TYPES = [
+    ('change', 'Change', 'Change request - requires CAB approval before implementing'),
+]
+
 # Catalog item schema:
 # {
 #   name, description, type, queue, priority, icon,
@@ -350,6 +356,20 @@ class Command(BaseCommand):
             _, created = TicketType.objects.get_or_create(
                 name=name,
                 defaults={'slug': slugify(name), 'sort_order': i, 'is_active': True},
+            )
+            created_total += 1 if created else 0
+            existing_total += 0 if created else 1
+
+        # Explicit-slug ticket types (Phase 6.1: 'change' for ChangeRequest)
+        for i, (slug, name, desc) in enumerate(EXPLICIT_SLUG_TYPES):
+            _, created = TicketType.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    'name': name,
+                    'description': desc,
+                    'sort_order': len(TYPES) + i,
+                    'is_active': True,
+                },
             )
             created_total += 1 if created else 0
             existing_total += 0 if created else 1

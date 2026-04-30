@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Edit Change — {{ ticket.ticket_number }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:change_request_list' %}">Change Requests</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:change_request_detail' ticket.ticket_number %}">{{ ticket.ticket_number }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3"><i class="fas fa-pen me-2"></i>Edit Change for {{ ticket.ticket_number }}</h2>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card mb-3">
+        <div class="card-header"><strong>Risk + Window</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Risk</label>
+                    <select name="risk" class="form-select">
+                        {% for value, label in cr.RISK_CHOICES %}
+                        <option value="{{ value }}" {% if cr.risk == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Backout window (minutes)</label>
+                    <input type="number" min="0" name="backout_window_minutes" value="{{ cr.backout_window_minutes|default_if_none:'' }}" class="form-control">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Scheduled start</label>
+                    <input type="datetime-local" name="scheduled_start" value="{{ cr.scheduled_start|date:'Y-m-d\TH:i' }}" class="form-control">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Scheduled end</label>
+                    <input type="datetime-local" name="scheduled_end" value="{{ cr.scheduled_end|date:'Y-m-d\TH:i' }}" class="form-control">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><strong>Plans</strong></div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Implementation Plan</label>
+                <textarea name="implementation_plan" rows="6" class="form-control" placeholder="Step-by-step plan...">{{ cr.implementation_plan }}</textarea>
+                <small class="text-muted">Required before submitting to CAB.</small>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Rollback Plan</label>
+                <textarea name="rollback_plan" rows="4" class="form-control" placeholder="If the change fails, how do we revert?">{{ cr.rollback_plan }}</textarea>
+                <small class="text-muted">Required for high or emergency risk.</small>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Impact Assessment</label>
+                <textarea name="impact_assessment" rows="3" class="form-control">{{ cr.impact_assessment }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><strong>Required Approvers (CAB)</strong></div>
+        <div class="card-body">
+            <p class="small text-muted">Each selected user must vote Approve before the change can be implemented. Empty = single-approval fallback.</p>
+            <select name="required_approvers" class="form-select" multiple size="10">
+                {% for u in candidate_users %}
+                <option value="{{ u.id }}" {% if u.id in selected_approver_ids %}selected{% endif %}>{{ u.username }}{% if u.email %} <{{ u.email }}>{% endif %}</option>
+                {% endfor %}
+            </select>
+            <small class="text-muted">Hold Ctrl/Cmd to select multiple.</small>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Save</button>
+        <a href="{% url 'psa:change_request_detail' ticket.ticket_number %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

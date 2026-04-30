@@ -8,6 +8,33 @@
     </ol>
 </nav>
 
+{% if ticket.ticket_type and ticket.ticket_type.slug == 'change' %}
+{% with cr=ticket.change_request %}
+<div class="alert alert-info d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <i class="fas fa-code-branch me-2"></i>
+        <strong>Change Management</strong>
+        — this ticket is governed by the CAB workflow.
+        {% if cr %}
+        Status:
+        {% if cr.implementation_status == 'draft' %}<span class="badge text-bg-secondary">Draft</span>
+        {% elif cr.implementation_status == 'pending_cab' %}<span class="badge text-bg-info">Pending CAB</span>
+        {% elif cr.implementation_status == 'approved' %}<span class="badge text-bg-success">Approved</span>
+        {% elif cr.implementation_status == 'rejected' %}<span class="badge text-bg-danger">Rejected</span>
+        {% elif cr.implementation_status == 'implementing' %}<span class="badge text-bg-primary">Implementing</span>
+        {% elif cr.implementation_status == 'verified' %}<span class="badge text-bg-success">Verified</span>
+        {% elif cr.implementation_status == 'failed' %}<span class="badge text-bg-danger">Failed</span>
+        {% else %}<span class="badge text-bg-secondary">{{ cr.get_implementation_status_display }}</span>{% endif %}
+        — Risk: <strong>{{ cr.get_risk_display }}</strong>
+        {% endif %}
+    </div>
+    <a href="{% url 'psa:change_request_detail' ticket.ticket_number %}" class="btn btn-sm btn-info">
+        Open Change Record <i class="fas fa-arrow-right ms-1"></i>
+    </a>
+</div>
+{% endwith %}
+{% endif %}
+
 <div class="d-flex justify-content-between align-items-start mb-3">
     <div>
         <h2 class="mb-1">

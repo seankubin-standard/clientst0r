@@ -124,4 +124,14 @@ urlpatterns = [
     path('vendors/new/', views.vendor_form, name='vendor_create'),
     path('vendors/<int:pk>/', views.vendor_detail, name='vendor_detail'),
     path('vendors/<int:pk>/edit/', views.vendor_form, name='vendor_edit'),
+
+    # Change management (Phase 6.1) — CAB approval workflow
+    path('changes/', views.change_request_list, name='change_request_list'),
+    path('t/<str:ticket_number>/change/', views.change_request_detail, name='change_request_detail'),
+    path('t/<str:ticket_number>/change/edit/', views.change_request_form, name='change_request_form'),
+    path('t/<str:ticket_number>/change/submit/', views.change_request_submit, name='change_request_submit'),
+    path('t/<str:ticket_number>/change/vote/', views.change_request_vote, name='change_request_vote'),
+    path('t/<str:ticket_number>/change/implement/', views.change_request_implement, name='change_request_implement'),
+    path('t/<str:ticket_number>/change/verify/', views.change_request_verify, name='change_request_verify'),
+    path('t/<str:ticket_number>/change/fail/', views.change_request_fail, name='change_request_fail'),
 ]
