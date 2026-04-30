@@ -123,6 +123,9 @@ class Membership(BaseModel):
                 # Problem management (Phase 6.2) — Owner: all True
                 problem_view=True, problem_create=True,
                 problem_assign=True, problem_resolve=True,
+                # Release + catalog governance (Phase 6.3) — Owner: all True
+                release_view=True, release_manage=True, release_freeze=True,
+                catalog_propose_change=True, catalog_approve_change=True,
             )
         elif self.role == Role.ADMIN:
             return SimpleNamespace(
@@ -165,6 +168,9 @@ class Membership(BaseModel):
                 # Problem management (Phase 6.2) — Admin: all True
                 problem_view=True, problem_create=True,
                 problem_assign=True, problem_resolve=True,
+                # Release + catalog governance (Phase 6.3) — Admin: all True
+                release_view=True, release_manage=True, release_freeze=True,
+                catalog_propose_change=True, catalog_approve_change=True,
             )
         elif self.role == Role.EDITOR:
             return SimpleNamespace(
@@ -209,6 +215,9 @@ class Membership(BaseModel):
                 # Problem management (Phase 6.2) — Editor: view + create only.
                 problem_view=True, problem_create=True,
                 problem_assign=False, problem_resolve=False,
+                # Release + catalog governance (Phase 6.3) — Editor: view + propose.
+                release_view=True, release_manage=False, release_freeze=False,
+                catalog_propose_change=True, catalog_approve_change=False,
             )
         else:  # READONLY
             return SimpleNamespace(
@@ -251,6 +260,9 @@ class Membership(BaseModel):
                 # Problem management (Phase 6.2) — Read-Only: view only.
                 problem_view=True, problem_create=False,
                 problem_assign=False, problem_resolve=False,
+                # Release + catalog governance (Phase 6.3) — Read-Only: view only.
+                release_view=True, release_manage=False, release_freeze=False,
+                catalog_propose_change=False, catalog_approve_change=False,
             )
 
     def can_read(self):
@@ -771,6 +783,17 @@ class RoleTemplate(BaseModel):
     problem_resolve = models.BooleanField(default=False,
         help_text='Move a problem to resolved/closed status.')
 
+    # --- Phase 6.3 release + catalog governance — v3.17.165 ---
+    release_view = models.BooleanField(default=True)
+    release_manage = models.BooleanField(default=False,
+        help_text='Create / edit release windows + bundle changes.')
+    release_freeze = models.BooleanField(default=False,
+        help_text='Flip a release to frozen/completed/rolled_back.')
+    catalog_propose_change = models.BooleanField(default=True,
+        help_text='Propose edits to a service catalog item that requires approval.')
+    catalog_approve_change = models.BooleanField(default=False,
+        help_text='Approve / reject ServiceCatalogChange proposals.')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -895,6 +918,12 @@ class RoleTemplate(BaseModel):
                 'problem_create': True,
                 'problem_assign': True,
                 'problem_resolve': True,
+                # Release + catalog governance (Phase 6.3) — Owner: all True
+                'release_view': True,
+                'release_manage': True,
+                'release_freeze': True,
+                'catalog_propose_change': True,
+                'catalog_approve_change': True,
             },
             {
                 'name': 'Administrator',
@@ -990,6 +1019,12 @@ class RoleTemplate(BaseModel):
                 'problem_create': True,
                 'problem_assign': True,
                 'problem_resolve': True,
+                # Release + catalog governance (Phase 6.3) — Administrator: all True
+                'release_view': True,
+                'release_manage': True,
+                'release_freeze': True,
+                'catalog_propose_change': True,
+                'catalog_approve_change': True,
             },
             {
                 'name': 'Editor',
@@ -1086,6 +1121,12 @@ class RoleTemplate(BaseModel):
                 'problem_create': True,
                 'problem_assign': False,
                 'problem_resolve': False,
+                # Release + catalog governance (Phase 6.3) — Editor: view + propose.
+                'release_view': True,
+                'release_manage': False,
+                'release_freeze': False,
+                'catalog_propose_change': True,
+                'catalog_approve_change': False,
             },
             {
                 'name': 'Help Desk',
@@ -1182,6 +1223,12 @@ class RoleTemplate(BaseModel):
                 'problem_create': True,
                 'problem_assign': False,
                 'problem_resolve': False,
+                # Release + catalog governance (Phase 6.3) — Help Desk: view + propose.
+                'release_view': True,
+                'release_manage': False,
+                'release_freeze': False,
+                'catalog_propose_change': True,
+                'catalog_approve_change': False,
             },
             {
                 'name': 'IT Manager',
@@ -1279,6 +1326,12 @@ class RoleTemplate(BaseModel):
                 'problem_create': True,
                 'problem_assign': True,
                 'problem_resolve': True,
+                # Release + catalog governance (Phase 6.3) — IT Manager: all True
+                'release_view': True,
+                'release_manage': True,
+                'release_freeze': True,
+                'catalog_propose_change': True,
+                'catalog_approve_change': True,
             },
             {
                 'name': 'Documentation Writer',
@@ -1374,6 +1427,12 @@ class RoleTemplate(BaseModel):
                 'problem_create': False,
                 'problem_assign': False,
                 'problem_resolve': False,
+                # Release + catalog governance (Phase 6.3) — Documentation Writer: view only.
+                'release_view': True,
+                'release_manage': False,
+                'release_freeze': False,
+                'catalog_propose_change': False,
+                'catalog_approve_change': False,
             },
             {
                 'name': 'Read-Only',
@@ -1469,6 +1528,12 @@ class RoleTemplate(BaseModel):
                 'problem_create': False,
                 'problem_assign': False,
                 'problem_resolve': False,
+                # Release + catalog governance (Phase 6.3) — Read-Only: view only.
+                'release_view': True,
+                'release_manage': False,
+                'release_freeze': False,
+                'catalog_propose_change': False,
+                'catalog_approve_change': False,
             },
             # --- MSP-named sample roles (v3.17.164) -----------------------
             # Built via _build() so they only flip the listed perms; every
@@ -1487,6 +1552,8 @@ class RoleTemplate(BaseModel):
                 kb_view_articles=True,
                 change_view=True,
                 procurement_view=True,
+                # Phase 6.3 — view only
+                release_view=True,
             ),
             _build(
                 'Client Admin',
@@ -1508,6 +1575,8 @@ class RoleTemplate(BaseModel):
                 org_view_members=True,
                 org_invite_members=True,
                 org_manage_members=True,
+                # Phase 6.3 — view only
+                release_view=True,
             ),
             _build(
                 'Technician',
@@ -1541,6 +1610,9 @@ class RoleTemplate(BaseModel):
                 problem_view=True,
                 problem_create=True,
                 psa_ai_request_triage=True,
+                # Phase 6.3 — Technician: view + propose only
+                release_view=True,
+                catalog_propose_change=True,
             ),
             _build(
                 'Tech Manager',
@@ -1593,6 +1665,12 @@ class RoleTemplate(BaseModel):
                 change_implement=True,
                 problem_assign=True,
                 problem_resolve=True,
+                # Phase 6.3 — Tech Manager: full release + catalog governance
+                release_view=True,
+                release_manage=True,
+                release_freeze=True,
+                catalog_propose_change=True,
+                catalog_approve_change=True,
             ),
             _build(
                 'Office Manager',
@@ -1667,6 +1745,12 @@ class RoleTemplate(BaseModel):
                 crm_manage_pipeline=True,
                 crm_manage_campaigns=True,
                 crm_view_forecast=True,
+                # Phase 6.3 — Office Manager: full release + catalog governance
+                release_view=True,
+                release_manage=True,
+                release_freeze=True,
+                catalog_propose_change=True,
+                catalog_approve_change=True,
             ),
             _build(
                 'Full Admin',

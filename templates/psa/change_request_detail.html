@@ -136,6 +136,33 @@
             </div>
         </div>
         {% endif %}
+
+        {% if cr.release_windows.exists %}
+        <div class="card mb-3 border-info">
+            <div class="card-header"><strong><i class="fas fa-rocket me-1"></i>Bundled into release</strong></div>
+            <div class="card-body p-2">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Release</th><th>Title</th><th>Status</th><th>Scheduled</th></tr></thead>
+                    <tbody>
+                    {% for rel in cr.release_windows.all %}
+                        <tr>
+                            <td><a href="{% url 'psa:release_detail' rel.pk %}">{{ rel.release_number }}</a></td>
+                            <td>{{ rel.title|truncatechars:60 }}</td>
+                            <td>
+                                {% if rel.status == 'planned' %}<span class="badge text-bg-secondary">Planned</span>
+                                {% elif rel.status == 'frozen' %}<span class="badge text-bg-warning"><i class="fas fa-lock me-1"></i>Frozen</span>
+                                {% elif rel.status == 'completed' %}<span class="badge text-bg-success">Completed</span>
+                                {% elif rel.status == 'rolled_back' %}<span class="badge text-bg-danger">Rolled Back</span>
+                                {% else %}<span class="badge text-bg-secondary">{{ rel.get_status_display }}</span>{% endif %}
+                            </td>
+                            <td><small><span data-utc="{{ rel.scheduled_start|date:'c' }}">{{ rel.scheduled_start|date:'Y-m-d H:i' }}</span></small></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <div class="col-lg-4">

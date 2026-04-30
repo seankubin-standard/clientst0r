@@ -1586,9 +1586,20 @@ def _catalog_admin_or_404(request):
 @require_psa_enabled
 @require_http_methods(['GET', 'POST'])
 def service_catalog_form(request, pk=None):
-    """Create or edit a ServiceCatalogItem. Staff/superuser only."""
+    """Create or edit a ServiceCatalogItem. Staff/superuser only.
+
+    Phase 6.3 governance: when editing an item flagged
+    `requires_approval=True`, route the editor through the propose-change
+    form unless they also have `catalog_approve_change` (in which case
+    they can publish straight away).
+    """
     _catalog_admin_or_404(request)
     item = get_object_or_404(ServiceCatalogItem, pk=pk) if pk else None
+
+    if item is not None and item.requires_approval:
+        from accounts.permission_utils import user_has_perm
+        if not user_has_perm(request.user, 'catalog_approve_change'):
+            return redirect('psa:catalog_propose_change', pk=item.pk)
 
     queues = Queue.objects.filter(is_active=True).order_by('name')
     priorities = TicketPriority.objects.all().order_by('sort_order', 'code')
@@ -1667,6 +1678,11 @@ def service_catalog_form(request, pk=None):
         item.default_queue = queue
         item.default_priority = priority
         item.default_type = ttype
+        # Governance toggle (Phase 6.3 — v3.17.165)
+        item.requires_approval = request.POST.get('requires_approval') == 'on'
+        # Direct save by an admin counts as a publish.
+        item.last_published_at = timezone.now()
+        item.last_published_by = request.user
         item.save()
 
         AuditLog.log(
@@ -5860,3 +5876,578 @@ def problem_advance_status(request, pk):
     )
     messages.success(request, f'Problem moved to {problem.get_status_display()}.')
     return redirect('psa:problem_detail', pk=problem.pk)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.3 — Release management + Service-catalog governance
+# ---------------------------------------------------------------------------
+
+
+def _scoped_release_qs(request):
+    """Tenant-scoped ReleaseWindow queryset."""
+    from .models import ReleaseWindow
+    qs = ReleaseWindow.objects.select_related(
+        'organization', 'release_manager', 'created_by',
+    ).prefetch_related('changes')
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        return qs
+    if hasattr(request.user, 'memberships'):
+        org_ids = list(
+            request.user.memberships.filter(is_active=True)
+            .values_list('organization_id', flat=True)
+        )
+        return qs.filter(organization_id__in=org_ids)
+    return qs.none()
+
+
+def _release_org_choices(request):
+    """Orgs the requester is allowed to file a Release against."""
+    from core.models import Organization
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        return Organization.objects.all().order_by('name')
+    if hasattr(request.user, 'memberships'):
+        org_ids = list(
+            request.user.memberships.filter(is_active=True)
+            .values_list('organization_id', flat=True)
+        )
+        return Organization.objects.filter(id__in=org_ids).order_by('name')
+    return Organization.objects.none()
+
+
+@login_required
+@require_psa_enabled
+def release_list(request):
+    """Staff queue of release windows, filterable by status."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'release_view'):
+        raise PermissionDenied("You don't have the 'release_view' permission.")
+    from .models import ReleaseWindow
+    qs = _scoped_release_qs(request)
+    status = (request.GET.get('status') or '').strip()
+    valid_statuses = {s for s, _ in ReleaseWindow.STATUS_CHOICES}
+    if status in valid_statuses:
+        qs = qs.filter(status=status)
+    return render(request, 'psa/release_list.html', {
+        'releases': qs[:300],
+        'status_filter': status,
+        'status_choices': ReleaseWindow.STATUS_CHOICES,
+        'can_manage': user_has_perm(request.user, 'release_manage'),
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def release_form(request, pk=None):
+    """Create or edit a ReleaseWindow."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    from django.contrib.auth.models import User as _User
+    from django.utils.dateparse import parse_datetime
+    from .models import ReleaseWindow
+
+    if not user_has_perm(request.user, 'release_manage'):
+        raise PermissionDenied("You don't have the 'release_manage' permission.")
+
+    is_edit = pk is not None
+    release = None
+    if is_edit:
+        release = get_object_or_404(_scoped_release_qs(request), pk=pk)
+        if release.is_frozen or release.status in {'completed', 'rolled_back', 'cancelled'}:
+            messages.error(request, f'Cannot edit — release is {release.get_status_display()}.')
+            return redirect('psa:release_detail', pk=release.pk)
+
+    if request.method == 'POST':
+        title = (request.POST.get('title') or '').strip()
+        description = (request.POST.get('description') or '').strip()
+        rollback_plan = (request.POST.get('rollback_plan') or '').strip()
+        scheduled_start = (request.POST.get('scheduled_start') or '').strip()
+        scheduled_end = (request.POST.get('scheduled_end') or '').strip()
+        org_id = (request.POST.get('organization') or '').strip()
+        manager_id = (request.POST.get('release_manager') or '').strip()
+
+        if not title:
+            messages.error(request, 'Title is required.')
+            return redirect(request.path)
+
+        start_dt = parse_datetime(scheduled_start) if scheduled_start else None
+        end_dt = parse_datetime(scheduled_end) if scheduled_end else None
+        if not start_dt or not end_dt:
+            messages.error(request, 'Both scheduled start and scheduled end are required.')
+            return redirect(request.path)
+
+        if is_edit:
+            release.title = title
+            release.description = description
+            release.rollback_plan = rollback_plan
+            release.scheduled_start = start_dt
+            release.scheduled_end = end_dt
+            if manager_id.isdigit():
+                try:
+                    release.release_manager = _User.objects.get(pk=int(manager_id), is_active=True)
+                except _User.DoesNotExist:
+                    pass
+            elif manager_id == '':
+                release.release_manager = None
+            release.save()
+            AuditLog.log(
+                user=request.user, action='update',
+                organization=release.organization,
+                object_type='psa.ReleaseWindow', object_id=release.pk,
+                object_repr=str(release),
+                description=f'Edited release window {release.release_number}',
+                ip_address=_client_ip(request), path=request.path,
+            )
+            messages.success(request, 'Release saved.')
+            return redirect('psa:release_detail', pk=release.pk)
+
+        # CREATE branch
+        org_choices = _release_org_choices(request)
+        try:
+            org = org_choices.get(pk=int(org_id)) if org_id.isdigit() else None
+        except Exception:
+            org = None
+        if org is None:
+            messages.error(request, 'Pick a client / organization for this release.')
+            return redirect(request.path)
+
+        manager = None
+        if manager_id.isdigit():
+            try:
+                manager = _User.objects.get(pk=int(manager_id), is_active=True)
+            except _User.DoesNotExist:
+                manager = None
+
+        release = ReleaseWindow.objects.create(
+            organization=org,
+            title=title,
+            description=description,
+            rollback_plan=rollback_plan,
+            scheduled_start=start_dt,
+            scheduled_end=end_dt,
+            release_manager=manager,
+            created_by=request.user,
+        )
+        AuditLog.log(
+            user=request.user, action='create',
+            organization=org,
+            object_type='psa.ReleaseWindow', object_id=release.pk,
+            object_repr=str(release),
+            description=f'Created release window {release.release_number}: {title[:120]}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Release {release.release_number} created.')
+        return redirect('psa:release_detail', pk=release.pk)
+
+    # GET
+    org_choices = _release_org_choices(request)
+    candidate_users = _User.objects.filter(is_active=True).order_by('username')[:500]
+    return render(request, 'psa/release_form.html', {
+        'release': release,
+        'is_edit': is_edit,
+        'org_choices': org_choices,
+        'candidate_users': candidate_users,
+    })
+
+
+@login_required
+@require_psa_enabled
+def release_detail(request, pk):
+    """Full release view with bundled changes + actions."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    from .models import ChangeRequest
+    if not user_has_perm(request.user, 'release_view'):
+        raise PermissionDenied("You don't have the 'release_view' permission.")
+    release = get_object_or_404(_scoped_release_qs(request), pk=pk)
+    bundled_changes = release.changes.select_related(
+        'organization', 'ticket', 'ticket__ticket_type', 'ticket__status',
+    ).order_by('-created_at')
+    # Candidate changes the user might add: same org, not already in this release.
+    candidate_changes = ChangeRequest.objects.filter(
+        organization=release.organization,
+    ).exclude(release_windows=release).select_related('ticket')[:200]
+    return render(request, 'psa/release_detail.html', {
+        'release': release,
+        'bundled_changes': bundled_changes,
+        'candidate_changes': candidate_changes,
+        'can_manage': user_has_perm(request.user, 'release_manage'),
+        'can_freeze': user_has_perm(request.user, 'release_freeze'),
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def release_add_change(request, pk):
+    """Add a ChangeRequest to this release."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    from .models import ChangeRequest
+    if not user_has_perm(request.user, 'release_manage'):
+        raise PermissionDenied("You don't have the 'release_manage' permission.")
+    release = get_object_or_404(_scoped_release_qs(request), pk=pk)
+    if release.is_frozen or release.status in {'completed', 'rolled_back', 'cancelled'}:
+        messages.error(request, f'Cannot add changes — release is {release.get_status_display()}.')
+        return redirect('psa:release_detail', pk=release.pk)
+    change_id = (request.POST.get('change_id') or '').strip()
+    if not change_id.isdigit():
+        messages.error(request, 'Pick a change to bundle.')
+        return redirect('psa:release_detail', pk=release.pk)
+    cr = ChangeRequest.objects.filter(
+        pk=int(change_id), organization=release.organization,
+    ).first()
+    if not cr:
+        messages.error(request, 'Change not found in this organization.')
+        return redirect('psa:release_detail', pk=release.pk)
+    # Validate: not already in another active (planned/frozen) release.
+    other_active = cr.release_windows.exclude(pk=release.pk).filter(
+        status__in=['planned', 'frozen']
+    ).first()
+    if other_active:
+        messages.error(
+            request,
+            f'That change is already bundled into {other_active.release_number} '
+            f'({other_active.get_status_display()}).',
+        )
+        return redirect('psa:release_detail', pk=release.pk)
+    if release.changes.filter(pk=cr.pk).exists():
+        messages.info(request, 'That change is already in this release.')
+        return redirect('psa:release_detail', pk=release.pk)
+    release.changes.add(cr)
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=release.organization,
+        object_type='psa.ReleaseWindow', object_id=release.pk,
+        object_repr=str(release),
+        description=f'Bundled change {cr.ticket.ticket_number} into release {release.release_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Bundled {cr.ticket.ticket_number} into {release.release_number}.')
+    return redirect('psa:release_detail', pk=release.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def release_remove_change(request, pk, change_pk):
+    """Remove a change from this release."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'release_manage'):
+        raise PermissionDenied("You don't have the 'release_manage' permission.")
+    release = get_object_or_404(_scoped_release_qs(request), pk=pk)
+    if release.is_frozen or release.status in {'completed', 'rolled_back', 'cancelled'}:
+        messages.error(request, f'Cannot remove changes — release is {release.get_status_display()}.')
+        return redirect('psa:release_detail', pk=release.pk)
+    cr = release.changes.filter(pk=change_pk).first()
+    if not cr:
+        messages.info(request, 'That change is not in this release.')
+        return redirect('psa:release_detail', pk=release.pk)
+    release.changes.remove(cr)
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=release.organization,
+        object_type='psa.ReleaseWindow', object_id=release.pk,
+        object_repr=str(release),
+        description=f'Removed change {cr.ticket.ticket_number} from release {release.release_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Removed {cr.ticket.ticket_number} from {release.release_number}.')
+    return redirect('psa:release_detail', pk=release.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def release_freeze(request, pk):
+    """Flip a release to frozen."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'release_freeze'):
+        raise PermissionDenied("You don't have the 'release_freeze' permission.")
+    release = get_object_or_404(_scoped_release_qs(request), pk=pk)
+    if not release.can_advance_to('frozen'):
+        messages.error(
+            request,
+            'Cannot freeze: release needs at least one bundled change AND a rollback plan.',
+        )
+        return redirect('psa:release_detail', pk=release.pk)
+    release.status = 'frozen'
+    release.is_frozen = True
+    if not release.actual_start:
+        release.actual_start = timezone.now()
+    release.save(update_fields=['status', 'is_frozen', 'actual_start', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=release.organization,
+        object_type='psa.ReleaseWindow', object_id=release.pk,
+        object_repr=str(release),
+        description=f'Froze release {release.release_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'{release.release_number} frozen.')
+    return redirect('psa:release_detail', pk=release.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def release_complete(request, pk):
+    """Mark a release completed."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'release_freeze'):
+        raise PermissionDenied("You don't have the 'release_freeze' permission.")
+    release = get_object_or_404(_scoped_release_qs(request), pk=pk)
+    if not release.can_advance_to('completed'):
+        messages.error(
+            request,
+            f'Cannot complete: release is {release.get_status_display()}.',
+        )
+        return redirect('psa:release_detail', pk=release.pk)
+    release.status = 'completed'
+    release.actual_end = timezone.now()
+    release.save(update_fields=['status', 'actual_end', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=release.organization,
+        object_type='psa.ReleaseWindow', object_id=release.pk,
+        object_repr=str(release),
+        description=f'Completed release {release.release_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'{release.release_number} marked completed.')
+    return redirect('psa:release_detail', pk=release.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def release_rollback(request, pk):
+    """Mark a release rolled-back with a reason."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    if not user_has_perm(request.user, 'release_freeze'):
+        raise PermissionDenied("You don't have the 'release_freeze' permission.")
+    release = get_object_or_404(_scoped_release_qs(request), pk=pk)
+    if release.status in {'completed', 'rolled_back', 'cancelled'}:
+        messages.error(
+            request,
+            f'Cannot roll back: release is already {release.get_status_display()}.',
+        )
+        return redirect('psa:release_detail', pk=release.pk)
+    reason = (request.POST.get('rolled_back_reason') or '').strip()
+    if not reason:
+        messages.error(request, 'Rollback reason is required.')
+        return redirect('psa:release_detail', pk=release.pk)
+    release.status = 'rolled_back'
+    release.rolled_back_at = timezone.now()
+    release.rolled_back_reason = reason
+    release.actual_end = release.actual_end or timezone.now()
+    release.save(update_fields=[
+        'status', 'rolled_back_at', 'rolled_back_reason', 'actual_end', 'updated_at',
+    ])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=release.organization,
+        object_type='psa.ReleaseWindow', object_id=release.pk,
+        object_repr=str(release),
+        description=f'Rolled back release {release.release_number}: {reason[:120]}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'{release.release_number} marked rolled back.')
+    return redirect('psa:release_detail', pk=release.pk)
+
+
+# ---------------------------------------------------------------------------
+# Service Catalog governance — propose / approve / reject ServiceCatalogChange
+# ---------------------------------------------------------------------------
+
+
+# The set of ServiceCatalogItem fields a propose-change form is allowed to
+# modify. JSON-serializable so we can store before/after snapshots.
+_CATALOG_GOVERNED_FIELDS = (
+    'name', 'description', 'default_subject', 'default_body',
+    'icon', 'is_active', 'sort_order',
+)
+
+
+def _catalog_snapshot(item):
+    """Snapshot the governed fields of a ServiceCatalogItem to a dict."""
+    return {f: getattr(item, f) for f in _CATALOG_GOVERNED_FIELDS}
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def catalog_propose_change(request, pk):
+    """Propose a change to a ServiceCatalogItem.
+
+    On GET: render a form pre-filled with the live item.
+    On POST: create a ServiceCatalogChange row in `pending` state with
+    before_snapshot=live values + after_snapshot=submitted values.
+    """
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    from .models import ServiceCatalogChange
+    if not user_has_perm(request.user, 'catalog_propose_change'):
+        raise PermissionDenied("You don't have the 'catalog_propose_change' permission.")
+    item = get_object_or_404(ServiceCatalogItem, pk=pk)
+
+    if request.method == 'POST':
+        before = _catalog_snapshot(item)
+        after = dict(before)
+        after['name'] = (request.POST.get('name') or item.name).strip()[:120]
+        after['description'] = (request.POST.get('description') or '').strip()
+        after['default_subject'] = (request.POST.get('default_subject') or '').strip()[:300]
+        after['default_body'] = (request.POST.get('default_body') or '').strip()
+        after['icon'] = (request.POST.get('icon') or '').strip()[:80]
+        after['is_active'] = request.POST.get('is_active') == 'on'
+        try:
+            after['sort_order'] = int(request.POST.get('sort_order') or 0)
+        except ValueError:
+            after['sort_order'] = item.sort_order
+        reason = (request.POST.get('reason') or '').strip()
+
+        # Discard fields with no diff to keep the snapshot tight.
+        after_diff = {k: v for k, v in after.items() if before.get(k) != v}
+        if not after_diff:
+            messages.info(request, 'No changes detected — nothing to propose.')
+            return redirect('psa:service_catalog')
+
+        change = ServiceCatalogChange.objects.create(
+            catalog_item=item,
+            proposed_by=request.user,
+            before_snapshot={k: before[k] for k in after_diff.keys()},
+            after_snapshot=after_diff,
+            reason=reason,
+        )
+        AuditLog.log(
+            user=request.user, action='create',
+            object_type='psa.ServiceCatalogChange', object_id=change.pk,
+            object_repr=str(change),
+            description=f'Proposed change to catalog item "{item.name}" '
+                        f'(fields: {", ".join(after_diff.keys())})',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        # Lightweight notification: email the proposer their proposal is in
+        # the pending queue. (More robust notification flows live in
+        # psa/notifications.py.)
+        try:
+            from psa.notifications import _send_email
+            _send_email(
+                request.user,
+                f'Catalog change proposal pending: {item.name}',
+                f'Your proposed change to "{item.name}" is awaiting approval.',
+            )
+        except Exception:
+            # notifications are best-effort; never block the response.
+            pass
+        messages.success(
+            request,
+            f'Proposal submitted for "{item.name}" — pending approval.',
+        )
+        return redirect('psa:catalog_change_list')
+
+    return render(request, 'psa/catalog_propose_change.html', {
+        'item': item,
+    })
+
+
+@login_required
+@require_psa_enabled
+def catalog_change_list(request):
+    """Queue of pending ServiceCatalogChange proposals (and recent decisions)."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    from .models import ServiceCatalogChange
+    if not user_has_perm(request.user, 'catalog_propose_change') \
+            and not user_has_perm(request.user, 'catalog_approve_change'):
+        raise PermissionDenied("You need catalog_propose_change or catalog_approve_change.")
+    status = (request.GET.get('status') or 'pending').strip()
+    qs = ServiceCatalogChange.objects.select_related(
+        'catalog_item', 'proposed_by', 'decided_by',
+    )
+    valid = {s for s, _ in ServiceCatalogChange.STATUS_CHOICES}
+    if status in valid:
+        qs = qs.filter(status=status)
+    return render(request, 'psa/catalog_change_list.html', {
+        'changes': qs[:300],
+        'status_filter': status,
+        'status_choices': ServiceCatalogChange.STATUS_CHOICES,
+        'can_approve': user_has_perm(request.user, 'catalog_approve_change'),
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def catalog_change_decide(request, pk):
+    """Approve or reject a pending ServiceCatalogChange."""
+    from accounts.permission_utils import user_has_perm
+    from django.core.exceptions import PermissionDenied
+    from .models import ServiceCatalogChange
+    if not user_has_perm(request.user, 'catalog_approve_change'):
+        raise PermissionDenied("You don't have the 'catalog_approve_change' permission.")
+    change = get_object_or_404(
+        ServiceCatalogChange.objects.select_related('catalog_item', 'proposed_by'),
+        pk=pk,
+    )
+    if request.method == 'POST':
+        if change.status != 'pending':
+            messages.error(request, f'Already decided ({change.get_status_display()}).')
+            return redirect('psa:catalog_change_list')
+        action = (request.POST.get('action') or '').strip().lower()
+        note = (request.POST.get('note') or '').strip()
+        if action == 'approve':
+            change.decision_note = note
+            change.apply(decided_by=request.user)
+            AuditLog.log(
+                user=request.user, action='update',
+                object_type='psa.ServiceCatalogChange', object_id=change.pk,
+                object_repr=str(change),
+                description=f'Approved + applied catalog change to "{change.catalog_item.name}"',
+                ip_address=_client_ip(request), path=request.path,
+            )
+            messages.success(request, f'Approved + applied change to "{change.catalog_item.name}".')
+        elif action == 'reject':
+            change.status = 'rejected'
+            change.decided_by = request.user
+            change.decided_at = timezone.now()
+            change.decision_note = note
+            change.save(update_fields=['status', 'decided_by', 'decided_at', 'decision_note'])
+            AuditLog.log(
+                user=request.user, action='update',
+                object_type='psa.ServiceCatalogChange', object_id=change.pk,
+                object_repr=str(change),
+                description=f'Rejected catalog change to "{change.catalog_item.name}"',
+                ip_address=_client_ip(request), path=request.path,
+            )
+            messages.success(request, f'Rejected change to "{change.catalog_item.name}".')
+        else:
+            messages.error(request, 'Pick approve or reject.')
+            return redirect('psa:catalog_change_decide', pk=change.pk)
+        return redirect('psa:catalog_change_list')
+
+    # GET: render diff view.
+    diff_rows = []
+    for field in (change.after_snapshot or {}):
+        diff_rows.append({
+            'field': field,
+            'before': (change.before_snapshot or {}).get(field, ''),
+            'after': (change.after_snapshot or {}).get(field, ''),
+        })
+    return render(request, 'psa/catalog_change_decide.html', {
+        'change': change,
+        'diff_rows': diff_rows,
+    })

@@ -3957,3 +3957,254 @@ class ProblemPermissionTests(TestCase):
         self.assertEqual(r.status_code, 403)
         r2 = c.get(f'/psa/problems/{self.problem.pk}/')
         self.assertEqual(r2.status_code, 403)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.3 — Release management + Service-catalog governance
+# ---------------------------------------------------------------------------
+
+
+def _make_change_request(org, *, subject='Routine deploy', risk='medium',
+                         implementation_plan='Step 1', rollback_plan='Revert',
+                         created_by=None):
+    """Helper: build a Ticket(type=change) + its auto-spawned ChangeRequest,
+    fill in plans so the CR can be added to a release."""
+    from psa.models import (
+        Queue, TicketStatus, TicketPriority, TicketType, Ticket, ChangeRequest,
+    )
+    queue = Queue.objects.first() or Queue.objects.create(name='Helpdesk', slug='helpdesk')
+    status = TicketStatus.objects.first() or TicketStatus.objects.create(name='New', slug='new')
+    priority = TicketPriority.objects.first() or TicketPriority.objects.create(
+        code='P3', name='Normal',
+        response_target_minutes=240, resolution_target_minutes=4320,
+    )
+    change_type = TicketType.objects.filter(slug='change').first()
+    if not change_type:
+        change_type = TicketType.objects.create(name='Change', slug='change')
+    ticket = Ticket.objects.create(
+        organization=org, subject=subject,
+        status=status, priority=priority,
+        ticket_type=change_type, queue=queue,
+    )
+    cr, _ = ChangeRequest.objects.get_or_create(
+        ticket=ticket,
+        defaults={
+            'organization': org, 'risk': risk,
+            'implementation_plan': implementation_plan,
+            'rollback_plan': rollback_plan,
+        },
+    )
+    if not cr.implementation_plan:
+        cr.implementation_plan = implementation_plan
+        cr.rollback_plan = rollback_plan
+        cr.risk = risk
+        cr.save()
+    return ticket, cr
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ReleaseWindowTests(TestCase):
+    """Validate ReleaseWindow.next_number + can_advance_to gating."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='RelOrg', slug='rel-org')
+        self.start = timezone.now() + timedelta(days=1)
+        self.end = self.start + timedelta(hours=2)
+
+    def test_can_advance_to_frozen_requires_changes_and_rollback(self):
+        from psa.models import ReleaseWindow
+        rel = ReleaseWindow.objects.create(
+            organization=self.org, title='Q2 maintenance',
+            scheduled_start=self.start, scheduled_end=self.end,
+        )
+        # Empty release, no rollback -> blocked.
+        self.assertFalse(rel.can_advance_to('frozen'))
+
+        # Add a change, still no rollback -> blocked.
+        _, cr = _make_change_request(self.org)
+        rel.changes.add(cr)
+        self.assertFalse(rel.can_advance_to('frozen'))
+
+        # Both -> ok.
+        rel.rollback_plan = 'Revert via psql snapshot'
+        rel.save()
+        self.assertTrue(rel.can_advance_to('frozen'))
+
+    def test_release_number_increments(self):
+        from psa.models import ReleaseWindow
+        r1 = ReleaseWindow.objects.create(
+            organization=self.org, title='First',
+            scheduled_start=self.start, scheduled_end=self.end,
+        )
+        r2 = ReleaseWindow.objects.create(
+            organization=self.org, title='Second',
+            scheduled_start=self.start, scheduled_end=self.end,
+        )
+        self.assertTrue(r1.release_number.startswith('REL-'))
+        self.assertTrue(r1.release_number.endswith('00001'))
+        self.assertTrue(r2.release_number.endswith('00002'))
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ServiceCatalogChangeTests(TestCase):
+    """Service catalog governance — propose / apply / pending blocks publish."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='CatOrg', slug='cat-org')
+        # Staff superuser bypasses _catalog_admin_or_404.
+        self.admin = User.objects.create_user(
+            username='cat_admin', password='pw', email='ca@x.com',
+            is_superuser=True, is_staff=True,
+        )
+        self.proposer_role = RoleTemplate.objects.create(
+            name='CatProposer', is_system_template=False,
+            catalog_propose_change=True,
+            catalog_approve_change=False,
+            assets_create=True,
+        )
+        self.proposer = User.objects.create_user(
+            username='cat_prop', password='pw', email='cp@x.com',
+            is_staff=True, is_superuser=True,
+        )
+        # Make the proposer a real superuser for the catalog admin gate, but
+        # also give a role template with only propose perms so the
+        # propose-change permission check is exercised. Membership also gets
+        # us through any tenant scoping if relevant.
+        Membership.objects.create(
+            user=self.proposer, organization=self.org,
+            role=Role.EDITOR, role_template=self.proposer_role,
+            is_active=True,
+        )
+
+    def test_apply_writes_after_snapshot(self):
+        from psa.models import ServiceCatalogItem, ServiceCatalogChange
+        item = ServiceCatalogItem.objects.create(
+            name='Reset Password', slug='reset-password',
+            description='old desc',
+        )
+        change = ServiceCatalogChange.objects.create(
+            catalog_item=item,
+            before_snapshot={'description': 'old desc'},
+            after_snapshot={'description': 'new desc'},
+        )
+        ok = change.apply(decided_by=self.admin)
+        self.assertTrue(ok)
+        item.refresh_from_db()
+        self.assertEqual(item.description, 'new desc')
+        self.assertEqual(item.last_published_by, self.admin)
+        self.assertIsNotNone(item.last_published_at)
+        change.refresh_from_db()
+        self.assertEqual(change.status, 'approved')
+        self.assertEqual(change.decided_by, self.admin)
+
+    def test_pending_change_blocks_publish(self):
+        """When item.requires_approval=True, the propose endpoint creates a
+        new pending ServiceCatalogChange instead of writing live."""
+        from psa.models import ServiceCatalogItem, ServiceCatalogChange
+        item = ServiceCatalogItem.objects.create(
+            name='Onboard User', slug='onboard-user',
+            description='live description',
+            requires_approval=True,
+        )
+        c = Client()
+        c.force_login(self.proposer)
+        sess = c.session
+        sess['current_organization_id'] = self.org.id
+        sess.save()
+        r = c.post(f'/psa/catalog/{item.pk}/propose/', {
+            'name': item.name,
+            'description': 'proposed new description',
+            'default_subject': item.default_subject,
+            'default_body': item.default_body,
+            'icon': item.icon,
+            'sort_order': item.sort_order,
+            'is_active': 'on',
+            'reason': 'tightening copy',
+        })
+        self.assertEqual(r.status_code, 302)
+        # Live item unchanged.
+        item.refresh_from_db()
+        self.assertEqual(item.description, 'live description')
+        # A pending proposal exists with the new description in after_snapshot.
+        proposal = ServiceCatalogChange.objects.filter(
+            catalog_item=item, status='pending',
+        ).first()
+        self.assertIsNotNone(proposal)
+        self.assertEqual(proposal.after_snapshot.get('description'), 'proposed new description')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ReleasePermissionTests(TestCase):
+    """Permission gating on release_freeze endpoint."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='RelPermOrg', slug='rel-perm-org')
+
+        common_write = dict(assets_create=True)
+
+        # Manager: manage but cannot freeze.
+        self.mgr_role = RoleTemplate.objects.create(
+            name='RelMgr', is_system_template=False,
+            release_view=True, release_manage=True, release_freeze=False,
+            **common_write,
+        )
+        self.manager = User.objects.create_user(
+            username='rel_mgr', password='pw', email='rm@x.com')
+        Membership.objects.create(
+            user=self.manager, organization=self.org,
+            role=Role.EDITOR, role_template=self.mgr_role, is_active=True,
+        )
+
+        # Releaser: full perms.
+        self.rel_role = RoleTemplate.objects.create(
+            name='RelFull', is_system_template=False,
+            release_view=True, release_manage=True, release_freeze=True,
+            **common_write,
+        )
+        self.releaser = User.objects.create_user(
+            username='rel_full', password='pw', email='rf@x.com')
+        Membership.objects.create(
+            user=self.releaser, organization=self.org,
+            role=Role.ADMIN, role_template=self.rel_role, is_active=True,
+        )
+
+        from psa.models import ReleaseWindow
+        start = timezone.now() + timedelta(days=1)
+        end = start + timedelta(hours=2)
+        self.release = ReleaseWindow.objects.create(
+            organization=self.org, title='Test release',
+            scheduled_start=start, scheduled_end=end,
+            rollback_plan='Revert via snapshot',
+        )
+        _, self.cr = _make_change_request(self.org)
+        self.release.changes.add(self.cr)
+
+    def _client_for(self, user):
+        c = Client()
+        c.force_login(user)
+        sess = c.session
+        sess['current_organization_id'] = self.org.id
+        sess.save()
+        return c
+
+    def test_freeze_requires_release_freeze_perm(self):
+        # Manager (no freeze perm) -> 403.
+        c = self._client_for(self.manager)
+        r = c.post(f'/psa/releases/{self.release.pk}/freeze/')
+        self.assertEqual(r.status_code, 403)
+
+        # Releaser succeeds.
+        c2 = self._client_for(self.releaser)
+        r2 = c2.post(f'/psa/releases/{self.release.pk}/freeze/')
+        self.assertEqual(r2.status_code, 302)
+        self.release.refresh_from_db()
+        self.assertEqual(self.release.status, 'frozen')
+        self.assertTrue(self.release.is_frozen)

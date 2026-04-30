@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Release Windows{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Releases</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-rocket me-2"></i>Release Windows</h2>
+    {% if can_manage %}
+    <a href="{% url 'psa:release_create' %}" class="btn btn-primary"><i class="fas fa-plus me-1"></i>New Release</a>
+    {% endif %}
+</div>
+
+<form method="get" class="mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-auto">
+            <label class="form-label small mb-0">Status</label>
+            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All</option>
+                {% for code, label in status_choices %}
+                <option value="{{ code }}" {% if status_filter == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</form>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Number</th>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Scheduled</th>
+                    <th class="text-center">Changes</th>
+                    <th>Manager</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rel in releases %}
+                <tr>
+                    <td><a href="{% url 'psa:release_detail' rel.pk %}">{{ rel.release_number }}</a></td>
+                    <td>{{ rel.title|truncatechars:80 }}</td>
+                    <td>
+                        {% if rel.status == 'planned' %}<span class="badge text-bg-secondary">Planned</span>
+                        {% elif rel.status == 'frozen' %}<span class="badge text-bg-warning"><i class="fas fa-lock me-1"></i>Frozen</span>
+                        {% elif rel.status == 'completed' %}<span class="badge text-bg-success">Completed</span>
+                        {% elif rel.status == 'rolled_back' %}<span class="badge text-bg-danger">Rolled Back</span>
+                        {% elif rel.status == 'cancelled' %}<span class="badge text-bg-secondary">Cancelled</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ rel.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td>
+                        <small><span data-utc="{{ rel.scheduled_start|date:'c' }}">{{ rel.scheduled_start|date:'Y-m-d H:i' }}</span>
+                        &rarr;
+                        <span data-utc="{{ rel.scheduled_end|date:'c' }}">{{ rel.scheduled_end|date:'H:i' }}</span></small>
+                    </td>
+                    <td class="text-center">{{ rel.change_count }}</td>
+                    <td>{{ rel.release_manager.username|default:'—' }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-muted text-center py-4">No releases yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

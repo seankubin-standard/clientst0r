@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Decide Catalog Change{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:catalog_change_list' %}">Catalog Changes</a></li>
+        <li class="breadcrumb-item active">{{ change.catalog_item.name }}</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3">Catalog Change Proposal</h2>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card mb-3">
+            <div class="card-header"><strong>Diff</strong> — {{ change.catalog_item.name }}</div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead class="table-light"><tr><th style="width:18%">Field</th><th style="width:41%">Before</th><th style="width:41%">After</th></tr></thead>
+                    <tbody>
+                    {% for row in diff_rows %}
+                        <tr>
+                            <td><code>{{ row.field }}</code></td>
+                            <td><pre class="bg-light p-2 small mb-0">{{ row.before|default:'(empty)' }}</pre></td>
+                            <td><pre class="bg-success-subtle p-2 small mb-0">{{ row.after|default:'(empty)' }}</pre></td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="3" class="text-muted text-center py-3">No diff captured.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {% if change.reason %}
+        <div class="card mb-3">
+            <div class="card-header"><strong>Reason</strong></div>
+            <div class="card-body"><pre class="bg-light p-2 small mb-0">{{ change.reason }}</pre></div>
+        </div>
+        {% endif %}
+
+        {% if change.status == 'pending' %}
+        <div class="card mb-3">
+            <div class="card-header"><strong>Decision</strong></div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <textarea name="note" class="form-control form-control-sm mb-2" rows="3" placeholder="Optional decision note"></textarea>
+                    <button type="submit" name="action" value="approve" class="btn btn-success"><i class="fas fa-check me-1"></i>Approve &amp; Apply</button>
+                    <button type="submit" name="action" value="reject" class="btn btn-danger"><i class="fas fa-times me-1"></i>Reject</button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            Already decided: <strong>{{ change.get_status_display }}</strong>{% if change.decided_by %} by {{ change.decided_by.username }}{% endif %}{% if change.decided_at %} on <span data-utc="{{ change.decided_at|date:'c' }}">{{ change.decided_at|date:'Y-m-d H:i' }}</span>{% endif %}.
+            {% if change.decision_note %}<pre class="bg-light p-2 small mt-2 mb-0">{{ change.decision_note }}</pre>{% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header"><strong>Metadata</strong></div>
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-5">Item</dt><dd class="col-7">{{ change.catalog_item.name }}</dd>
+                    <dt class="col-5">Proposed by</dt><dd class="col-7">{{ change.proposed_by.username|default:'—' }}</dd>
+                    <dt class="col-5">Proposed at</dt><dd class="col-7"><span data-utc="{{ change.proposed_at|date:'c' }}">{{ change.proposed_at|date:'Y-m-d H:i' }}</span></dd>
+                    <dt class="col-5">Status</dt><dd class="col-7">{{ change.get_status_display }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Release {{ release.release_number }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:release_list' %}">Releases</a></li>
+        <li class="breadcrumb-item active">{{ release.release_number }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+        <h2 class="mb-1">
+            {% if release.is_frozen %}<i class="fas fa-lock text-warning me-1"></i>{% endif %}
+            <i class="fas fa-rocket me-1"></i>{{ release.release_number }}
+        </h2>
+        <div class="text-muted">{{ release.title }}</div>
+    </div>
+    <div class="text-end">
+        {% if release.status == 'planned' %}<span class="badge fs-6 text-bg-secondary">Planned</span>
+        {% elif release.status == 'frozen' %}<span class="badge fs-6 text-bg-warning"><i class="fas fa-lock me-1"></i>Frozen — In Progress</span>
+        {% elif release.status == 'completed' %}<span class="badge fs-6 text-bg-success">Completed</span>
+        {% elif release.status == 'rolled_back' %}<span class="badge fs-6 text-bg-danger">Rolled Back</span>
+        {% elif release.status == 'cancelled' %}<span class="badge fs-6 text-bg-secondary">Cancelled</span>
+        {% endif %}
+    </div>
+</div>
+
+{% if release.is_frozen %}
+<div class="alert alert-warning mb-3"><i class="fas fa-lock me-1"></i><strong>Release frozen.</strong> No further changes can be added or removed.</div>
+{% endif %}
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>Bundled Changes ({{ release.change_count }})</strong>
+                {% if can_manage and not release.is_frozen and release.status == 'planned' %}
+                <form method="post" action="{% url 'psa:release_add_change' release.pk %}" class="d-flex gap-2">
+                    {% csrf_token %}
+                    <select name="change_id" class="form-select form-select-sm">
+                        <option value="">— pick a change —</option>
+                        {% for cr in candidate_changes %}
+                        <option value="{{ cr.id }}">{{ cr.ticket.ticket_number }} — {{ cr.ticket.subject|truncatechars:60 }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary"><i class="fas fa-plus me-1"></i>Add</button>
+                </form>
+                {% endif %}
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr><th>Ticket</th><th>Subject</th><th>Risk</th><th>Status</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                    {% for cr in bundled_changes %}
+                        <tr>
+                            <td><a href="{% url 'psa:change_request_detail' cr.ticket.ticket_number %}">{{ cr.ticket.ticket_number }}</a></td>
+                            <td>{{ cr.ticket.subject|truncatechars:60 }}</td>
+                            <td>{{ cr.get_risk_display }}</td>
+                            <td><small>{{ cr.get_implementation_status_display }}</small></td>
+                            <td class="text-end">
+                                {% if can_manage and not release.is_frozen and release.status == 'planned' %}
+                                <form method="post" action="{% url 'psa:release_remove_change' release.pk cr.pk %}" class="d-inline" onsubmit="return confirm('Remove this change from the release?')">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-danger"><i class="fas fa-times"></i></button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="5" class="text-muted text-center py-3">No changes bundled yet.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {% if release.description %}
+        <div class="card mb-3">
+            <div class="card-header"><strong>Description</strong></div>
+            <div class="card-body"><pre class="bg-light p-2 small mb-0">{{ release.description }}</pre></div>
+        </div>
+        {% endif %}
+
+        <div class="card mb-3">
+            <div class="card-header"><strong>Rollback Plan</strong></div>
+            <div class="card-body">
+                <pre class="bg-light p-2 small mb-0">{{ release.rollback_plan|default:'(not set — required before freeze)' }}</pre>
+            </div>
+        </div>
+
+        {% if release.status == 'rolled_back' %}
+        <div class="card mb-3 border-danger">
+            <div class="card-header"><strong><i class="fas fa-exclamation-triangle text-danger me-1"></i>Rollback</strong></div>
+            <div class="card-body">
+                <p class="mb-1"><strong>Rolled back at:</strong> <span data-utc="{{ release.rolled_back_at|date:'c' }}">{{ release.rolled_back_at|date:'Y-m-d H:i' }}</span></p>
+                <pre class="bg-light p-2 small mb-0">{{ release.rolled_back_reason|default:'(no reason captured)' }}</pre>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header"><strong>Schedule</strong></div>
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-5">Org</dt><dd class="col-7">{{ release.organization.name }}</dd>
+                    <dt class="col-5">Manager</dt><dd class="col-7">{{ release.release_manager.username|default:'—' }}</dd>
+                    <dt class="col-5">Scheduled start</dt><dd class="col-7"><span data-utc="{{ release.scheduled_start|date:'c' }}">{{ release.scheduled_start|date:'Y-m-d H:i' }}</span></dd>
+                    <dt class="col-5">Scheduled end</dt><dd class="col-7"><span data-utc="{{ release.scheduled_end|date:'c' }}">{{ release.scheduled_end|date:'Y-m-d H:i' }}</span></dd>
+                    <dt class="col-5">Actual start</dt><dd class="col-7">{% if release.actual_start %}<span data-utc="{{ release.actual_start|date:'c' }}">{{ release.actual_start|date:'Y-m-d H:i' }}</span>{% else %}—{% endif %}</dd>
+                    <dt class="col-5">Actual end</dt><dd class="col-7">{% if release.actual_end %}<span data-utc="{{ release.actual_end|date:'c' }}">{{ release.actual_end|date:'Y-m-d H:i' }}</span>{% else %}—{% endif %}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><strong>Actions</strong></div>
+            <div class="card-body d-flex flex-column gap-2">
+                {% if can_manage and not release.is_frozen and release.status == 'planned' %}
+                <a href="{% url 'psa:release_edit' release.pk %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-pen me-1"></i>Edit</a>
+                {% endif %}
+                {% if can_freeze and release.status == 'planned' %}
+                <form method="post" action="{% url 'psa:release_freeze' release.pk %}">
+                    {% csrf_token %}
+                    <button class="btn btn-warning btn-sm w-100"><i class="fas fa-lock me-1"></i>Freeze (Begin)</button>
+                </form>
+                {% endif %}
+                {% if can_freeze and release.status == 'frozen' %}
+                <form method="post" action="{% url 'psa:release_complete' release.pk %}">
+                    {% csrf_token %}
+                    <button class="btn btn-success btn-sm w-100"><i class="fas fa-check me-1"></i>Mark Completed</button>
+                </form>
+                {% endif %}
+                {% if can_freeze and release.status in 'planned frozen' %}
+                <form method="post" action="{% url 'psa:release_rollback' release.pk %}">
+                    {% csrf_token %}
+                    <textarea name="rolled_back_reason" class="form-control form-control-sm mb-2" rows="2" placeholder="Why are we rolling back?" required></textarea>
+                    <button class="btn btn-danger btn-sm w-100"><i class="fas fa-undo me-1"></i>Roll Back</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

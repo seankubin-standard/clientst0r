@@ -657,6 +657,18 @@ class ServiceCatalogItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Governance (Phase 6.3 — v3.17.165)
+    requires_approval = models.BooleanField(
+        default=False,
+        help_text='When true, edits require approval via ServiceCatalogChange '
+                  'before publishing.',
+    )
+    last_published_at = models.DateTimeField(null=True, blank=True)
+    last_published_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+
     @staticmethod
     def render_template(template, values):
         """{{key}} → values[key] substitution. Unfilled placeholders are stripped."""
@@ -2744,3 +2756,190 @@ class ProblemNote(models.Model):
 
     def __str__(self):
         return f'Note on {self.problem.problem_number} @ {self.created_at:%Y-%m-%d}'
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.3 — Release management + Service-catalog governance
+# ---------------------------------------------------------------------------
+
+
+class ReleaseWindow(models.Model):
+    """
+    A scheduled release window — bundles one or more ChangeRequest
+    records into a single deployment. Provides freeze flags so other
+    techs know not to land additional changes during the window.
+    """
+    STATUS_CHOICES = [
+        ('planned', 'Planned'),
+        ('frozen', 'Frozen — In Progress'),
+        ('completed', 'Completed'),
+        ('rolled_back', 'Rolled Back'),
+        ('cancelled', 'Cancelled'),
+    ]
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_release_windows',
+    )
+    release_number = models.CharField(max_length=30, unique=True)  # REL-YYYY-NNNNN
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='planned')
+
+    # Window timing
+    scheduled_start = models.DateTimeField()
+    scheduled_end = models.DateTimeField()
+    actual_start = models.DateTimeField(null=True, blank=True)
+    actual_end = models.DateTimeField(null=True, blank=True)
+
+    # Freeze: when True (or status='frozen'), the engine prevents new
+    # changes from being added to this window AND warns when other
+    # changes target the same scheduled time.
+    is_frozen = models.BooleanField(default=False,
+        help_text='When true, no new changes can be added; existing changes locked.')
+
+    # Bundled changes
+    changes = models.ManyToManyField(
+        'psa.ChangeRequest', related_name='release_windows', blank=True,
+    )
+
+    # Rollback
+    rollback_plan = models.TextField(
+        blank=True,
+        help_text='If the release fails, what do we revert? Required '
+                  'before status flips to frozen / completed.',
+    )
+    rolled_back_at = models.DateTimeField(null=True, blank=True)
+    rolled_back_reason = models.TextField(blank=True)
+
+    # People
+    release_manager = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_release_windows_owned',
+    )
+
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_release_windows'
+        ordering = ['-scheduled_start']
+        indexes = [
+            models.Index(fields=['organization', 'status', '-scheduled_start']),
+            models.Index(fields=['scheduled_start', 'scheduled_end']),
+        ]
+
+    def __str__(self):
+        return f'{self.release_number} — {self.title[:60]}'
+
+    @classmethod
+    def next_number(cls):
+        from django.utils import timezone
+        from django.db.models import Max
+        year = timezone.now().year
+        prefix = f'REL-{year}-'
+        last = cls.objects.filter(release_number__startswith=prefix).aggregate(Max('release_number'))['release_number__max']
+        if not last:
+            return f'{prefix}00001'
+        try:
+            n = int(last.split('-')[-1])
+        except (ValueError, IndexError):
+            n = 0
+        return f'{prefix}{n + 1:05d}'
+
+    def save(self, *args, **kwargs):
+        if not self.release_number:
+            self.release_number = self.next_number()
+        super().save(*args, **kwargs)
+
+    @property
+    def change_count(self):
+        return self.changes.count()
+
+    @property
+    def is_currently_active(self):
+        from django.utils import timezone
+        now = timezone.now()
+        return (
+            self.status in ('frozen', 'planned')
+            and self.scheduled_start <= now <= self.scheduled_end
+        )
+
+    def can_advance_to(self, new_status):
+        if new_status == 'frozen':
+            return self.changes.exists() and bool(self.rollback_plan)
+        if new_status == 'completed':
+            return self.status in ('frozen', 'planned')
+        return True
+
+
+class ServiceCatalogChange(models.Model):
+    """
+    A pending edit to a ServiceCatalogItem. When the item has
+    requires_approval=True, edits go into this draft model first and
+    must be approved before they update the live catalog item.
+    Provides full audit trail of who changed what.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending Approval'),
+        ('approved', 'Approved & Applied'),
+        ('rejected', 'Rejected'),
+        ('cancelled', 'Cancelled'),
+    ]
+    catalog_item = models.ForeignKey(
+        'psa.ServiceCatalogItem', on_delete=models.CASCADE,
+        related_name='change_proposals',
+    )
+    proposed_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    proposed_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    reason = models.TextField(blank=True)
+
+    # Snapshot of all editable fields BEFORE + AFTER the change.
+    # Stored as JSON so the schema stays flexible if catalog fields evolve.
+    before_snapshot = models.JSONField(default=dict, blank=True)
+    after_snapshot = models.JSONField(default=dict, blank=True)
+
+    decided_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_note = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'psa_service_catalog_changes'
+        ordering = ['-proposed_at']
+        indexes = [
+            models.Index(fields=['catalog_item', 'status']),
+            models.Index(fields=['proposed_by', 'status']),
+        ]
+
+    def __str__(self):
+        return f'Change to {self.catalog_item.name} ({self.get_status_display()})'
+
+    def apply(self, decided_by):
+        """Apply the after_snapshot to the catalog_item, mark approved.
+        Returns True on success."""
+        from django.utils import timezone
+        item = self.catalog_item
+        for field, value in (self.after_snapshot or {}).items():
+            if hasattr(item, field):
+                try:
+                    setattr(item, field, value)
+                except Exception:
+                    continue
+        item.last_published_at = timezone.now()
+        item.last_published_by = decided_by
+        item.save()
+        self.status = 'approved'
+        self.decided_by = decided_by
+        self.decided_at = timezone.now()
+        self.save()
+        return True

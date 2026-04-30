@@ -144,4 +144,20 @@ urlpatterns = [
     path('problems/<int:pk>/unlink-ticket/<int:ticket_pk>/', views.problem_unlink_ticket, name='problem_unlink_ticket'),
     path('problems/<int:pk>/notes/', views.problem_add_note, name='problem_add_note'),
     path('problems/<int:pk>/advance/', views.problem_advance_status, name='problem_advance_status'),
+
+    # Release management (Phase 6.3)
+    path('releases/', views.release_list, name='release_list'),
+    path('releases/new/', views.release_form, name='release_create'),
+    path('releases/<int:pk>/', views.release_detail, name='release_detail'),
+    path('releases/<int:pk>/edit/', views.release_form, name='release_edit'),
+    path('releases/<int:pk>/add-change/', views.release_add_change, name='release_add_change'),
+    path('releases/<int:pk>/remove-change/<int:change_pk>/', views.release_remove_change, name='release_remove_change'),
+    path('releases/<int:pk>/freeze/', views.release_freeze, name='release_freeze'),
+    path('releases/<int:pk>/complete/', views.release_complete, name='release_complete'),
+    path('releases/<int:pk>/rollback/', views.release_rollback, name='release_rollback'),
+
+    # Service catalog governance (Phase 6.3)
+    path('catalog/<int:pk>/propose/', views.catalog_propose_change, name='catalog_propose_change'),
+    path('catalog-changes/', views.catalog_change_list, name='catalog_change_list'),
+    path('catalog-changes/<int:pk>/decide/', views.catalog_change_decide, name='catalog_change_decide'),
 ]

@@ -72,15 +72,15 @@ A mature PSA covers sales-pipeline-to-invoice. Currently we have quotes; we need
 - Commission rules engine + per-tech commission report *(5.2 — shipped v3.17.153)*
 - Lead capture from web form / IMAP / API *(5.3 — web + API shipped v3.17.155; IMAP poller stubbed, full implementation deferred to 5.4 follow-up)*
 
-## Phase 6 — ITIL maturity **(M)**
+## Phase 6 — ITIL maturity **— complete**
 
 Extends existing tickets + approvals; doesn't fork into a separate model layer.
 
 - **Change requests** as a `Ticket.ticket_type='change'` extension with required CAB approval before status moves to "Implementing" *(6.1 — shipped v3.17.158)*
 - **CAB workflow** — multi-approver gate (extends existing single-approval) *(6.1 — shipped v3.17.158)*
 - **Problem records** — link N related tickets, root-cause analysis field, status pipeline *(6.2 — shipped v3.17.160)*
-- **Release management** — group changes into release windows, freeze flags, rollback documentation *(6.3 — pending)*
-- **Service-catalog governance** — approval gate on catalog item changes *(6.3 — pending)*
+- **Release management** — group changes into release windows, freeze flags, rollback documentation *(6.3 — shipped v3.17.165)*
+- **Service-catalog governance** — approval gate on catalog item changes *(6.3 — shipped v3.17.165)*
 - MSP-named sample role templates seeded by `RoleTemplate.get_or_create_system_templates()`: Client, Client Admin, Technician, Tech Manager, Office Manager, Full Admin (in addition to the existing Owner/Administrator/Editor/Help Desk/IT Manager/Documentation Writer/Read-Only) *(shipped v3.17.164)*
 
 ## Phase 7 — Outsourcing, integrations, polish **(continuous track)**

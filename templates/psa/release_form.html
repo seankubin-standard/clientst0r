@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{% if is_edit %}Edit{% else %}New{% endif %} Release{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:release_list' %}">Releases</a></li>
+        <li class="breadcrumb-item active">{% if is_edit %}{{ release.release_number }}{% else %}New{% endif %}</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3"><i class="fas fa-rocket me-2"></i>{% if is_edit %}Edit {{ release.release_number }}{% else %}New Release Window{% endif %}</h2>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="card mb-3">
+                <div class="card-header"><strong>Details</strong></div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Title <span class="text-danger">*</span></label>
+                        <input type="text" name="title" class="form-control" required maxlength="200"
+                               value="{% if is_edit %}{{ release.title }}{% endif %}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-control" rows="3">{% if is_edit %}{{ release.description }}{% endif %}</textarea>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Scheduled Start <span class="text-danger">*</span></label>
+                            <input type="datetime-local" name="scheduled_start" class="form-control" required
+                                   value="{% if is_edit %}{{ release.scheduled_start|date:'Y-m-d\TH:i' }}{% endif %}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Scheduled End <span class="text-danger">*</span></label>
+                            <input type="datetime-local" name="scheduled_end" class="form-control" required
+                                   value="{% if is_edit %}{{ release.scheduled_end|date:'Y-m-d\TH:i' }}{% endif %}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header"><strong>Rollback Plan</strong></div>
+                <div class="card-body">
+                    <p class="small text-muted">Required before freezing the release. If anything goes wrong during deployment, this is the runbook for reverting.</p>
+                    <textarea name="rollback_plan" class="form-control" rows="6">{% if is_edit %}{{ release.rollback_plan }}{% endif %}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card mb-3">
+                <div class="card-header"><strong>Owner</strong></div>
+                <div class="card-body">
+                    {% if not is_edit %}
+                    <div class="mb-3">
+                        <label class="form-label">Organization <span class="text-danger">*</span></label>
+                        <select name="organization" class="form-select" required>
+                            <option value="">— pick a client —</option>
+                            {% for org in org_choices %}
+                            <option value="{{ org.id }}">{{ org.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% else %}
+                    <p class="small mb-3"><strong>Org:</strong> {{ release.organization.name }}</p>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="form-label">Release Manager</label>
+                        <select name="release_manager" class="form-select">
+                            <option value="">— unassigned —</option>
+                            {% for u in candidate_users %}
+                            <option value="{{ u.id }}" {% if is_edit and release.release_manager_id == u.id %}selected{% endif %}>{{ u.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100"><i class="fas fa-save me-1"></i>Save Release</button>
+            <a href="{% if is_edit %}{% url 'psa:release_detail' release.pk %}{% else %}{% url 'psa:release_list' %}{% endif %}" class="btn btn-outline-secondary w-100 mt-2">Cancel</a>
+        </div>
+    </div>
+</form>
+{% endblock %}

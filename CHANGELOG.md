@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.165] - 2026-04-30
+
+### Added — Phase 6.3 (closes Phase 6): Release management + Service-catalog governance
+- New `psa.ReleaseWindow` model — auto-numbered `REL-YYYY-NNNNN`. Bundles N ChangeRequest records into a single deployment window. Statuses: planned -> frozen -> completed (or rolled_back / cancelled). Freeze flag locks further additions; rollback_plan + rolled_back_at + rolled_back_reason fields capture failed-deploy detail.
+- New `psa.ServiceCatalogChange` model — proposal-and-approve workflow for service-catalog edits. When a `ServiceCatalogItem.requires_approval=True`, edits create a pending `ServiceCatalogChange` with `before_snapshot` + `after_snapshot` (JSON) instead of writing live. Approver applies the after_snapshot via `change.apply()`.
+- `ServiceCatalogItem` gets `requires_approval`, `last_published_at`, `last_published_by` fields.
+- 5 new RoleTemplate booleans: `release_view`, `release_manage`, `release_freeze`, `catalog_propose_change`, `catalog_approve_change`. Defaults set across all 13 system templates including the v3.17.164 MSP-named ones.
+- Pages: `/psa/releases/` queue + detail + form. Endpoints: add-change, remove-change, freeze, complete, rollback.
+- Pages: `/psa/catalog-changes/` queue + diff-view decide page.
+- "Bundled into release" card on ChangeRequest detail when applicable.
+- 5 new tests in `psa.tests` (ReleaseWindowTests + ServiceCatalogChangeTests + ReleasePermissionTests).
+
+### Phase 6 status: complete.
+- 6.1 Change requests + CAB (v3.17.158)
+- 6.2 Problem records + RCA (v3.17.160)
+- 6.3 Release management + service-catalog governance (v3.17.165)
+
+### Migrations
+`psa.0025_servicecatalogitem_last_published_at_and_more` (ReleaseWindow + ServiceCatalogChange + ServiceCatalogItem fields), `accounts.0026_roletemplate_catalog_approve_change_and_more` for the 5 RoleTemplate booleans.
+
 ## [3.17.164] - 2026-04-30
 
 ### Added — 6 MSP-named sample role templates
