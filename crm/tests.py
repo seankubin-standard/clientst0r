@@ -491,3 +491,49 @@ class CRMPermissionExtendedTests(TestCase):
         _bypass_2fa(c)
         resp = c.get(reverse('crm:commission_rule_list'))
         self.assertEqual(resp.status_code, 403)
+
+
+# ---------------------------------------------------------------------------
+# v3.17.154 — CRM feature toggle (SystemSetting.crm_enabled)
+# ---------------------------------------------------------------------------
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class FeatureToggleTests(TestCase):
+    """Verify the CRM dropdown is hidden when crm_enabled=False."""
+
+    def test_crm_dropdown_hidden_when_disabled(self):
+        from core.models import SystemSetting
+        s = SystemSetting.get_settings()
+        s.crm_enabled = False
+        s.save()
+        u = User.objects.create_user(
+            'crmtoggle_user', 'ct@x.com', 'pw',
+            is_staff=True, is_superuser=True,
+        )
+        c = Client()
+        c.force_login(u)
+        _bypass_2fa(c)
+        # Hit the dashboard which extends base.html. follow=True to chase
+        # any org-context redirects to a final 200 page that still has
+        # base.html's nav rendered.
+        r = c.get('/core/dashboard/', follow=True)
+        self.assertEqual(r.status_code, 200)
+        # CRM dropdown id should not be in the HTML when disabled
+        self.assertNotIn(b'id="crmDropdown"', r.content)
+
+    def test_crm_dropdown_shown_when_enabled(self):
+        from core.models import SystemSetting
+        s = SystemSetting.get_settings()
+        s.crm_enabled = True
+        s.save()
+        u = User.objects.create_user(
+            'crmtoggle_user2', 'ct2@x.com', 'pw',
+            is_staff=True, is_superuser=True,
+        )
+        c = Client()
+        c.force_login(u)
+        _bypass_2fa(c)
+        r = c.get('/core/dashboard/', follow=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'id="crmDropdown"', r.content)

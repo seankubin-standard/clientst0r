@@ -589,6 +589,7 @@ class SystemSetting(models.Model):
     inventory_enabled = models.BooleanField(default=True, help_text='Enable Inventory management')
     scheduling_enabled = models.BooleanField(default=True, help_text='Enable Scheduling and Task Management')
     psa_enabled = models.BooleanField(default=False, help_text='Enable native PSA / Service Desk feature (off by default)')
+    crm_enabled = models.BooleanField(default=False, help_text='Enable CRM / sales pipeline (leads, opportunities, campaigns, commissions). Off by default.')
     psa_portal_enabled = models.BooleanField(default=False, help_text='Allow customer portal access for PSA clients')
     psa_anonymous_ticket_form_enabled = models.BooleanField(default=False, help_text='Allow public/anonymous ticket submissions')
     psa_email_to_ticket_enabled = models.BooleanField(default=False, help_text='Convert inbound emails to tickets')
@@ -633,7 +634,7 @@ class SystemSetting(models.Model):
     lenovo_client_id = models.CharField(max_length=255, blank=True, help_text='Lenovo warranty API client ID')
     lenovo_client_secret = models.CharField(max_length=255, blank=True, help_text='Lenovo warranty API client secret')
 
-    # UI/UX Settings (Issue #59)
+    # UI/UX Settings
     stay_on_page_after_org_switch = models.BooleanField(default=True, help_text='Stay on current page when switching organizations instead of redirecting to dashboard')
 
     # Map Settings (Issue #57)

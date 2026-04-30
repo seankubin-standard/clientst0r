@@ -1058,3 +1058,78 @@ class ClientHealthViewTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r['Content-Type'].split(';')[0].strip(), 'text/csv')
         self.assertIn(b'Client', r.content)
+
+
+# ---------------------------------------------------------------------------
+# v3.17.154 — Generated report download dispositions (PDF inline / others attachment)
+# ---------------------------------------------------------------------------
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class GeneratedReportInlinePDFTests(TestCase):
+    """generated_download returns inline for PDFs and attachment for others."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from accounts.models import Membership, RoleTemplate
+        from core.models import Organization
+        from reports.models import GeneratedReport, ReportTemplate
+        from django.core.files.base import ContentFile
+
+        self.org = Organization.objects.create(
+            name='InlinePDFCo', slug='inline-pdf-co',
+        )
+        self.user = User.objects.create_user(
+            'ipdf_owner', 'o@x.com', 'pw',
+            is_staff=True, is_superuser=True,
+        )
+        Membership.objects.create(
+            user=self.user, organization=self.org,
+            role='owner', is_active=True,
+        )
+        self.template = ReportTemplate.objects.create(
+            name='InlineTpl',
+            organization=self.org,
+            report_type='asset_summary',
+            query_template='',
+        )
+
+        # PDF report
+        self.pdf_report = GeneratedReport.objects.create(
+            template=self.template,
+            organization=self.org,
+            generated_by=self.user,
+            format='pdf',
+            status='completed',
+        )
+        self.pdf_report.file.save(
+            'sample.pdf', ContentFile(b'%PDF-1.4 fake pdf body'),
+        )
+
+        # CSV report
+        self.csv_report = GeneratedReport.objects.create(
+            template=self.template,
+            organization=self.org,
+            generated_by=self.user,
+            format='csv',
+            status='completed',
+        )
+        self.csv_report.file.save(
+            'sample.csv', ContentFile(b'a,b\n1,2\n'),
+        )
+
+    def test_pdf_returns_inline(self):
+        self.client.force_login(self.user)
+        r = self.client.get(f'/reports/generated/{self.pdf_report.pk}/download/')
+        self.assertEqual(r.status_code, 200)
+        cd = r.get('Content-Disposition', '')
+        self.assertTrue(cd.startswith('inline'),
+                        f'Expected inline disposition, got {cd!r}')
+
+    def test_csv_returns_attachment(self):
+        self.client.force_login(self.user)
+        r = self.client.get(f'/reports/generated/{self.csv_report.pk}/download/')
+        self.assertEqual(r.status_code, 200)
+        cd = r.get('Content-Disposition', '')
+        self.assertTrue(cd.startswith('attachment'),
+                        f'Expected attachment disposition, got {cd!r}')

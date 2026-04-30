@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.154] - 2026-04-29
+
+### Fixed
+- **"Issue #59" badge** on Settings → General removed (internal issue-tracker reference shouldn't be visible to end users). Comments in `accounts/views.py`, `core/settings_views.py`, `core/models.py` cleaned up the same way.
+- **Generated reports view/download** — PDFs now open inline in a new tab (`target="_blank"`), other formats (CSV/XLSX) download as attachments. The `generated_download` view now decides based on `format`. Both list and detail pages show "View PDF" or "Download X" button as appropriate. PDFs that were previously force-attaching now render in the browser. Also: `generate_report` view now actually populates the `FileField` so the file is downloadable (was previously only marking status='completed' without writing a file).
+- **`/inbox/` 404** — added a redirect view at `/inbox/` → `/psa/ai/inbox/` for legacy bookmarks. Found no stale templates pointing here.
+- **Procurement permission gates verified** — confirmed `procurement_approve_pr` is required for `requisition_decide` (managers only) and `procurement_create_pr` is sufficient for `requisition_form` (any tech). `requisition_to_po` now accepts either `procurement_approve_pr` or `procurement_create_po`. Added inline help text on PR form: "Submit when ready — a manager will review before it becomes a PO." Requisition list now shows "My requisitions" view by default for non-approvers + a "Pending approval" filter shortcut for approvers. Submit button on PR detail is shown only to the requester (or admins) when status='draft'.
+
+### Added
+- **CRM feature toggle** — new `SystemSetting.crm_enabled` boolean (default False, mirroring `psa_enabled`). When off, the CRM navbar dropdown is hidden. Toggleable from Settings → General. Existing CRM URLs still work for direct access; the toggle only governs navigation visibility. Optional `@require_crm_enabled` decorator added to `crm/views.py` for views that want extra safety.
+
+### Migration
+`core.0049_systemsetting_crm_enabled` adds `crm_enabled` to SystemSetting.
+
+
 ## [3.17.153] - 2026-04-29
 
 ### Added — Phase 5.2: Commission engine + Lead scoring + Sales funnel report

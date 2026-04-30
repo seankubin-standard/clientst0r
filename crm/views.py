@@ -16,12 +16,13 @@ Surfaces:
 """
 from datetime import timedelta
 from decimal import Decimal
+from functools import wraps
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count, Q, Sum
-from django.http import HttpResponseBadRequest, HttpResponseNotAllowed, JsonResponse
+from django.http import Http404, HttpResponseBadRequest, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -31,6 +32,27 @@ from django.views.decorators.http import require_POST
 from accounts.permission_utils import require_perm, user_has_perm
 from audit.models import AuditLog
 from core.models import Organization
+
+
+def require_crm_enabled(view_func):
+    """
+    View decorator: 404 if CRM is globally disabled (SystemSetting.crm_enabled=False).
+    Optional safety net — the navigation already hides CRM links when off.
+    Pair with @login_required first.
+    """
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        from core.models import SystemSetting
+        try:
+            if not SystemSetting.get_settings().crm_enabled:
+                raise Http404("CRM is not enabled")
+        except Http404:
+            raise
+        except Exception:
+            raise Http404("CRM is not enabled")
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
 
 from .forms import CampaignForm, LeadForm, OpportunityForm
 from .models import Campaign, Commission, CommissionRule, Lead, Opportunity

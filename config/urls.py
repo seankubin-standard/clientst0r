@@ -14,6 +14,9 @@ urlpatterns = [
     # Favicon
     path('favicon.ico', RedirectView.as_view(url=settings.STATIC_URL + 'images/favicon.svg', permanent=True)),
 
+    # Legacy compatibility — see v3.17.154 fix; old bookmarks to /inbox/ now bounce to PSA AI inbox.
+    path('inbox/', RedirectView.as_view(url='/psa/ai/inbox/', permanent=False), name='legacy_inbox'),
+
     # PWA offline fallback page (no login required, cached by service worker)
     path('offline/', TemplateView.as_view(template_name='core/offline.html'), name='offline'),
 

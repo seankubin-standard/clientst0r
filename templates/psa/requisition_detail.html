@@ -20,11 +20,13 @@
     </h2>
     <div class="btn-group flex-wrap">
         {% if item.status == 'draft' %}
+            {% if request.user == item.requested_by or request.user.is_superuser %}
             <a href="{% url 'psa:requisition_edit' item.pk %}" class="btn btn-outline-secondary"><i class="fas fa-pen"></i> Edit</a>
             <form method="post" action="{% url 'psa:requisition_submit' item.pk %}" class="d-inline">
                 {% csrf_token %}
                 <button class="btn btn-primary"><i class="fas fa-paper-plane"></i> Submit for approval</button>
             </form>
+            {% endif %}
         {% endif %}
         {% if item.status == 'submitted' and can_approve %}
             <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveModal"><i class="fas fa-check"></i> Approve</button>

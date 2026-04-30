@@ -75,9 +75,17 @@
                                                     <i class="bi bi-eye"></i>
                                                 </a>
                                                 {% if report.file %}
-                                                <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-outline-success" title="Download">
-                                                    <i class="bi bi-download"></i>
+                                                {% with ext=report.format|lower %}
+                                                {% if ext == 'pdf' %}
+                                                <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-outline-primary" title="View PDF" target="_blank" rel="noopener">
+                                                    <i class="bi bi-eye"></i> View PDF
                                                 </a>
+                                                {% else %}
+                                                <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-outline-success" title="Download {{ ext|upper }}">
+                                                    <i class="bi bi-download"></i> Download {{ ext|upper }}
+                                                </a>
+                                                {% endif %}
+                                                {% endwith %}
                                                 {% endif %}
                                             </div>
                                         </td>

@@ -3998,7 +3998,7 @@ def dispatch_assign(request):
 # Procurement (Phase 4.1) — Purchase Requisitions + Purchase Orders
 # ---------------------------------------------------------------------------
 
-from accounts.permission_utils import require_perm  # noqa: E402
+from accounts.permission_utils import require_perm, user_has_perm  # noqa: E402
 
 
 def _procurement_save_lines(item, line_model, request):
@@ -4046,9 +4046,24 @@ def requisition_list(request):
     status = request.GET.get('status')
     if status in {c[0] for c in PurchaseRequisition.STATUS_CHOICES}:
         qs = qs.filter(status=status)
+
+    # Mine vs. everyone — non-approvers see only their own PRs by default.
+    can_approve = user_has_perm(request.user, 'procurement_approve_pr')
+    mine_param = request.GET.get('mine')
+    if can_approve:
+        # Approvers see all by default; ?mine=1 narrows to their own.
+        view_mine = mine_param == '1'
+    else:
+        # Techs without approve perm see only their PRs (always).
+        view_mine = True
+    if view_mine:
+        qs = qs.filter(requested_by=request.user)
+
     return render(request, 'psa/requisition_list.html', {
         'requisitions': qs.order_by('-requested_at')[:200],
         'status_filter': status or '',
+        'view_mine': view_mine,
+        'can_approve': can_approve,
     })
 
 
@@ -4238,10 +4253,21 @@ def requisition_decide(request, pk):
 
 @login_required
 @require_psa_enabled
-@require_perm('procurement_create_po')
 @require_http_methods(['POST'])
 def requisition_to_po(request, pk):
-    """Convert an approved PR into a draft PO with the same line items."""
+    """Convert an approved PR into a draft PO with the same line items.
+
+    Either approve-PR or create-PO permission is sufficient — managers who
+    approve the PR are usually the same people kicking off the PO step.
+    """
+    if not (
+        user_has_perm(request.user, 'procurement_approve_pr')
+        or user_has_perm(request.user, 'procurement_create_po')
+    ):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied(
+            "You don't have the 'procurement_approve_pr' or 'procurement_create_po' permission."
+        )
     from .models import (
         PurchaseRequisition, PurchaseOrder, PurchaseOrderLineItem,
     )

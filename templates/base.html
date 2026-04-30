@@ -168,6 +168,7 @@
                         </ul>
                     </li>
                     {% endif %}
+                    {% if crm_enabled %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="crmDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-chart-pie"></i> {% trans "CRM" %}
@@ -184,6 +185,7 @@
                             <li><a class="dropdown-item" href="{% url 'crm:commission_rule_list' %}"><i class="fas fa-cogs"></i> {% trans "Commission Rules" %}</a></li>
                         </ul>
                     </li>
+                    {% endif %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="reportsDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-chart-bar"></i> {% trans "Reports" %}

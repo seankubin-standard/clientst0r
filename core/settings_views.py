@@ -156,8 +156,11 @@ def settings_general(request):
         elif request.POST.get('clear_logo') == 'on':
             settings.custom_logo = None
 
-        # Issue #59: UI/UX Settings
+        # UI/UX Settings
         settings.stay_on_page_after_org_switch = request.POST.get('stay_on_page_after_org_switch') == 'on'
+
+        # CRM Module toggle
+        settings.crm_enabled = request.POST.get('crm_enabled') == 'on'
 
         # Issue #57: Map Settings
         settings.map_default_zoom = int(request.POST.get('map_default_zoom', 4))

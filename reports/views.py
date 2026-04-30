@@ -469,26 +469,24 @@ def generate_report(request, pk):
         )
 
         # In a real implementation, this would trigger a Celery task
-        # For now, we'll mark it as completed immediately
-        from .generators import REPORT_GENERATORS
+        # For now, we'll generate synchronously and write to the FileField.
+        from django.core.files.base import ContentFile
+        from .generators import generate_report as _generate_report
 
         try:
-            generator_class = REPORT_GENERATORS.get(template.report_type)
-            if generator_class:
-                generator = generator_class(org)
-                data = generator.generate()
+            filename, bytes_data = _generate_report(
+                template,
+                output_format=report_format,
+                organization=org,
+                parameters=parameters,
+            )
+            report.file.save(filename, ContentFile(bytes_data), save=False)
+            report.file_size = len(bytes_data) if bytes_data else 0
+            report.status = 'completed'
+            report.completed_at = timezone.now()
+            report.save()
 
-                # Store the data (in production, would generate actual file)
-                report.status = 'completed'
-                report.completed_at = timezone.now()
-                report.save()
-
-                messages.success(request, f'Report "{template.name}" generated successfully.')
-            else:
-                report.status = 'failed'
-                report.error_message = 'No generator found for this report type'
-                report.save()
-                messages.error(request, 'Failed to generate report: No generator found.')
+            messages.success(request, f'Report "{template.name}" generated successfully.')
         except Exception as e:
             report.status = 'failed'
             report.error_message = str(e)
@@ -543,7 +541,9 @@ def generated_detail(request, pk):
 @login_required
 @require_perm('reports_view_dashboards')
 def generated_download(request, pk):
-    """Download a generated report"""
+    """View / download a generated report. PDFs render inline in a new
+    window (the calling template uses target=_blank); CSV / XLSX / etc.
+    download as attachments."""
     orgs = get_user_organizations(request.user)
     report = get_object_or_404(
         GeneratedReport,
@@ -551,11 +551,19 @@ def generated_download(request, pk):
         organization__in=orgs
     )
 
-    if report.file:
-        return FileResponse(report.file.open('rb'), as_attachment=True)
-    else:
+    if not report.file:
         messages.error(request, 'Report file not found.')
         return redirect('reports:generated_detail', pk=pk)
+
+    fmt = (report.format or '').lower()
+    is_pdf = fmt == 'pdf' or report.file.name.lower().endswith('.pdf')
+    response = FileResponse(report.file.open('rb'), as_attachment=not is_pdf)
+    if is_pdf:
+        # Force inline rendering in browser
+        filename = report.file.name.split('/')[-1]
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['Content-Type'] = 'application/pdf'
+    return response
 
 
 @login_required

@@ -3392,3 +3392,80 @@ class QuoteToPOTests(TestCase):
         self.assertEqual(
             PurchaseOrder.objects.filter(source_quote=self.quote).count(), 0,
         )
+
+
+# ---------------------------------------------------------------------------
+# v3.17.154 — Procurement gates (techs request, managers approve)
+# ---------------------------------------------------------------------------
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ProcurementGateTests(TestCase):
+    """Confirm requisition_decide is gated by procurement_approve_pr."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        from psa.models import PurchaseRequisition, PurchaseRequisitionLineItem
+        from decimal import Decimal
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ProcGateOrg', slug='proc-gate-org')
+
+        # Tech: can create, cannot approve
+        self.tech_role = RoleTemplate.objects.create(
+            name='ProcGateTech', is_system_template=False,
+            procurement_view=True, procurement_create_pr=True,
+            procurement_approve_pr=False, procurement_create_po=False,
+        )
+        self.tech = User.objects.create_user(
+            username='gate_tech', password='pw', email='gt@x.com')
+        Membership.objects.create(
+            user=self.tech, organization=self.org,
+            role=Role.EDITOR, role_template=self.tech_role,
+            is_active=True,
+        )
+
+        # Admin / superuser
+        self.admin = User.objects.create_user(
+            username='gate_admin', password='pw', email='ga@x.com',
+            is_staff=True, is_superuser=True,
+        )
+        Membership.objects.create(
+            user=self.admin, organization=self.org,
+            role=Role.ADMIN, is_active=True,
+        )
+
+        self.pr = PurchaseRequisition.objects.create(
+            organization=self.org, title='Need a switch',
+            requested_by=self.tech, status='submitted',
+            tax_rate=Decimal('0'),
+        )
+        PurchaseRequisitionLineItem.objects.create(
+            requisition=self.pr, description='Switch',
+            quantity=Decimal('1'), unit_price=Decimal('100'),
+        )
+        self.pr.recompute_totals()
+        self.pr.save()
+
+    def test_tech_cannot_decide_pr(self):
+        c = Client()
+        c.force_login(self.tech)
+        r = c.post(f'/psa/requisitions/{self.pr.pk}/decide/', {
+            'decision': 'approve',
+            'decision_note': 'no',
+        })
+        # require_perm raises PermissionDenied -> 403
+        self.assertEqual(r.status_code, 403)
+        self.pr.refresh_from_db()
+        self.assertEqual(self.pr.status, 'submitted')
+
+    def test_admin_can_decide_pr(self):
+        c = Client()
+        c.force_login(self.admin)
+        r = c.post(f'/psa/requisitions/{self.pr.pk}/decide/', {
+            'decision': 'approve',
+            'decision_note': 'OK',
+        })
+        self.assertIn(r.status_code, [200, 302])
+        self.pr.refresh_from_db()
+        self.assertEqual(self.pr.status, 'approved')

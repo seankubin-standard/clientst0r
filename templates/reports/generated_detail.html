@@ -15,9 +15,20 @@
                     </h4>
                     <div class="btn-group">
                         {% if report.file %}
-                        <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-success">
-                            <i class="bi bi-download me-2"></i>Download
+                        {% with ext=report.format|lower %}
+                        {% if ext == 'pdf' %}
+                        <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-primary" target="_blank" rel="noopener">
+                            <i class="bi bi-eye me-2"></i>View PDF
                         </a>
+                        {% else %}
+                        <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-success">
+                            <i class="bi bi-download me-2"></i>Download {{ ext|upper }}
+                        </a>
+                        {% endif %}
+                        <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-outline-secondary" title="Download original file">
+                            <i class="bi bi-file-earmark-arrow-down me-2"></i>Download original
+                        </a>
+                        {% endwith %}
                         {% endif %}
                         <a href="{% url 'reports:generated_list' %}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left me-2"></i>Back to List

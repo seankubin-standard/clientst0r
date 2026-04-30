@@ -22,11 +22,12 @@ def organization_context(request):
             'inventory_enabled': settings.inventory_enabled,
             'scheduling_enabled': settings.scheduling_enabled,
             'psa_enabled': settings.psa_enabled,
+            'crm_enabled': settings.crm_enabled,
         }
         system_settings = settings
     except Exception:
         # If settings don't exist or there's an error, default to all enabled
-        # EXCEPT psa_enabled which is opt-in.
+        # EXCEPT psa_enabled and crm_enabled which are opt-in.
         feature_toggles = {
             'monitoring_enabled': True,
             'global_kb_enabled': True,
@@ -35,6 +36,7 @@ def organization_context(request):
             'inventory_enabled': True,
             'scheduling_enabled': True,
             'psa_enabled': False,
+            'crm_enabled': False,
         }
         system_settings = None
 

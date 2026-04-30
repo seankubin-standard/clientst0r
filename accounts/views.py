@@ -22,7 +22,7 @@ logger = logging.getLogger('accounts')
 @login_required
 def switch_organization(request, org_id):
     """
-    Switch the current organization context (Issue #59: Stay on current page option).
+    Switch the current organization context (stay-on-current-page option).
     """
     org = get_object_or_404(Organization, id=org_id, is_active=True)
 
@@ -48,7 +48,7 @@ def switch_organization(request, org_id):
     request.session.modified = True  # Force session save
     messages.success(request, f"Switched to {org.name}")
 
-    # Issue #59: Check if user wants to stay on current page
+    # Check if user wants to stay on current page
     from core.models import SystemSetting
     settings = SystemSetting.get_settings()
 
@@ -79,7 +79,7 @@ def switch_to_global_view(request):
     """
     Switch to global view (clear organization context).
     Available to superusers and staff users (MSP techs), not tenant users.
-    Issue #59: Stay on current page option.
+    Stay-on-current-page option.
     """
     # Check if user is staff (MSP tech) or superuser
     is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
@@ -96,7 +96,7 @@ def switch_to_global_view(request):
 
     messages.success(request, "Switched to Global View")
 
-    # Issue #59: Check if user wants to stay on current page
+    # Check if user wants to stay on current page
     from core.models import SystemSetting
     settings = SystemSetting.get_settings()
 
