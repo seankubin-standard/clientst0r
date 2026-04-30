@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.172] - 2026-04-30
+
+### Documentation
+- **Roadmap: Phase 7 polish-backlog sub-bullet annotated for v3.17.171.** The tenant-isolation test-suite restore and the `/api/passwords/<id>/` audit-log crash fix are now reflected in `docs/ROADMAP.md`, so the rendered surfaces (in-app, About card, GitHub, JSON feed) all show the recent polish work.
+
 ## [3.17.171] - 2026-04-30
 
 ### Fixed
