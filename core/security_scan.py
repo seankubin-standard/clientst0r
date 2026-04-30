@@ -6,9 +6,10 @@ Provides vulnerability scanning using pip-audit and dependency checking.
 
 import subprocess
 import json
-from datetime import datetime
 from pathlib import Path
 import logging
+
+from django.utils import timezone
 
 logger = logging.getLogger('core')
 
@@ -33,7 +34,7 @@ def run_vulnerability_scan():
             return {
                 'status': 'clean',
                 'vulnerabilities': 0,
-                'scan_time': datetime.now(),
+                'scan_time': timezone.now(),
                 'details': []
             }
         else:
@@ -44,14 +45,14 @@ def run_vulnerability_scan():
                 return {
                     'status': 'vulnerabilities_found',
                     'vulnerabilities': len(vulnerabilities),
-                    'scan_time': datetime.now(),
+                    'scan_time': timezone.now(),
                     'details': vulnerabilities
                 }
             except json.JSONDecodeError:
                 return {
                     'status': 'clean',
                     'vulnerabilities': 0,
-                    'scan_time': datetime.now(),
+                    'scan_time': timezone.now(),
                     'details': []
                 }
 
@@ -60,7 +61,7 @@ def run_vulnerability_scan():
         return {
             'status': 'error',
             'vulnerabilities': None,
-            'scan_time': datetime.now(),
+            'scan_time': timezone.now(),
             'error': 'Scan timeout'
         }
     except Exception as e:
@@ -68,7 +69,7 @@ def run_vulnerability_scan():
         return {
             'status': 'error',
             'vulnerabilities': None,
-            'scan_time': datetime.now(),
+            'scan_time': timezone.now(),
             'error': str(e)
         }
 

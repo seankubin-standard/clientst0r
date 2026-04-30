@@ -2,7 +2,7 @@
 Report Generators for different report types
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.db.models import Count, Q, Avg, Sum
 from django.utils import timezone
 
@@ -64,7 +64,7 @@ class AssetSummaryReport(ReportGenerator):
             'inactive_assets': counts['inactive'],
             'recent_assets': counts['recent'],
             'by_type': list(by_type),
-            'generated_at': datetime.now().isoformat(),
+            'generated_at': timezone.now().isoformat(),
         }
 
 
@@ -100,7 +100,7 @@ class AssetLifecycleReport(ReportGenerator):
         return {
             'total_assets': assets.count(),
             'age_distribution': age_ranges,
-            'generated_at': datetime.now().isoformat(),
+            'generated_at': timezone.now().isoformat(),
         }
 
 
@@ -134,7 +134,7 @@ class PasswordAuditReport(ReportGenerator):
             'totp_percentage': round((totp_enabled / passwords.count() * 100) if passwords.count() > 0 else 0, 2),
             'recently_updated': recently_updated,
             'by_category': list(by_category),
-            'generated_at': datetime.now().isoformat(),
+            'generated_at': timezone.now().isoformat(),
         }
 
 
@@ -171,7 +171,7 @@ class DocumentUsageReport(ReportGenerator):
             'recent_documents': recent_docs,
             'by_category': list(by_category),
             'by_type': list(by_type),
-            'generated_at': datetime.now().isoformat(),
+            'generated_at': timezone.now().isoformat(),
         }
 
 
@@ -201,7 +201,7 @@ class MonitorUptimeReport(ReportGenerator):
             'warning': warning_count,
             'uptime_percentage': round((up_count / monitors.count() * 100) if monitors.count() > 0 else 0, 2),
             'by_status': list(by_status),
-            'generated_at': datetime.now().isoformat(),
+            'generated_at': timezone.now().isoformat(),
         }
 
 
@@ -246,7 +246,7 @@ class ExpirationForecastReport(ReportGenerator):
             'total_expirations': expirations.count(),
             'forecast': forecast,
             'by_type': list(by_type),
-            'generated_at': datetime.now().isoformat(),
+            'generated_at': timezone.now().isoformat(),
         }
 
 
@@ -290,7 +290,7 @@ class OrganizationMetricsReport(ReportGenerator):
                 'documents': document_count,
                 'monitors': monitor_count,
             },
-            'generated_at': datetime.now().isoformat(),
+            'generated_at': timezone.now().isoformat(),
         }
 
 
@@ -666,7 +666,6 @@ def generate_report(template, output_format='pdf', organization=None, parameters
     import csv
     import io
     import json as _json
-    from datetime import datetime
 
     cls = REPORT_GENERATORS.get(template.report_type)
     if cls is None:
@@ -680,7 +679,7 @@ def generate_report(template, output_format='pdf', organization=None, parameters
 
     fmt = (output_format or 'pdf').lower()
     safe_name = (template.name or 'report').replace(' ', '_')
-    stamp = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
+    stamp = timezone.now().strftime('%Y%m%d-%H%M%S')
 
     if fmt == 'csv':
         buf = io.StringIO()

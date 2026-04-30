@@ -93,6 +93,7 @@ Not a single phase — runs alongside 1-6.
 - **Polish backlog** — test coverage gaps, permission edge cases, audit improvements, mobile UI fixes, onboarding docs, import-tool maturity, API stability, third-party trust signals *(continuous track)*
   - Tenant-isolation security-test suite restored from rotted state; latent `/api/passwords/<id>/` audit-log crash fixed *(shipped v3.17.171)*
   - Removed deprecated `datetime.utcnow()` / `datetime.now()` from core views; bug-report timestamp no longer mislabels server-local time as UTC *(shipped v3.17.173)*
+  - Codebase-wide sweep of deprecated datetime calls; fixes tz-naive query bug in audit-log cleanup + expired-session cleanup on non-UTC servers *(shipped v3.17.174)*
 
 ## Phase 9 — Security alert ingestion: EDR / AV / Firewall on the dashboard **(M)** [shipped — v3.17.168]
 

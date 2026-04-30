@@ -18,7 +18,7 @@ import shutil
 import psutil
 import django
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 logger = logging.getLogger('core')
 
@@ -800,13 +800,13 @@ def maintenance(request):
 
         if action == 'clear_expired_sessions':
             # Clear expired sessions
-            Session.objects.filter(expire_date__lt=datetime.now()).delete()
+            Session.objects.filter(expire_date__lt=timezone.now()).delete()
             messages.success(request, 'Expired sessions cleared successfully.')
 
         elif action == 'cleanup_audit_logs':
             # Clean up audit logs older than specified days
             days = int(request.POST.get('days', 90))
-            cutoff_date = datetime.now() - timedelta(days=days)
+            cutoff_date = timezone.now() - timedelta(days=days)
             deleted_count = AuditLog.objects.filter(timestamp__lt=cutoff_date).delete()[0]
             messages.success(request, f'Deleted {deleted_count} audit log entries older than {days} days.')
 
@@ -898,11 +898,11 @@ def maintenance(request):
         'total_orgs': Organization.objects.count(),
         'active_orgs': Organization.objects.filter(is_active=True).count(),
         'audit_logs_count': AuditLog.objects.count(),
-        'audit_logs_30d': AuditLog.objects.filter(timestamp__gte=datetime.now() - timedelta(days=30)).count(),
-        'audit_logs_90d': AuditLog.objects.filter(timestamp__gte=datetime.now() - timedelta(days=90)).count(),
-        'audit_logs_older_90d': AuditLog.objects.filter(timestamp__lt=datetime.now() - timedelta(days=90)).count(),
-        'active_sessions': Session.objects.filter(expire_date__gte=datetime.now()).count(),
-        'expired_sessions': Session.objects.filter(expire_date__lt=datetime.now()).count(),
+        'audit_logs_30d': AuditLog.objects.filter(timestamp__gte=timezone.now() - timedelta(days=30)).count(),
+        'audit_logs_90d': AuditLog.objects.filter(timestamp__gte=timezone.now() - timedelta(days=90)).count(),
+        'audit_logs_older_90d': AuditLog.objects.filter(timestamp__lt=timezone.now() - timedelta(days=90)).count(),
+        'active_sessions': Session.objects.filter(expire_date__gte=timezone.now()).count(),
+        'expired_sessions': Session.objects.filter(expire_date__lt=timezone.now()).count(),
     }
 
     # Database table sizes
@@ -1271,7 +1271,6 @@ def settings_snyk(request):
     """Snyk security scanning settings."""
     from .models import SnykScan
     from django.db.models import Sum, Count, Q
-    from datetime import datetime
 
     settings = SystemSetting.get_settings()
 
@@ -2542,7 +2541,6 @@ def export_data(request):
     """Export data in specified format."""
     from django.http import JsonResponse, HttpResponse
     import json
-    from datetime import datetime
 
     if request.method != 'POST':
         return JsonResponse({'success': False, 'message': 'Invalid request method'})
@@ -2584,7 +2582,7 @@ def export_data(request):
             formatted_data = export_data
 
         # Generate filename
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
         filename = f'clientst0r_export_{export_type}_{timestamp}.json'
 
         # Return as downloadable file

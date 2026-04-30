@@ -12,6 +12,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
+from django.utils import timezone
 from cryptography.fernet import Fernet
 
 
@@ -226,7 +227,7 @@ class Command(BaseCommand):
         # Backup current media
         if media_root.exists():
             import shutil
-            backup_media = media_root.parent / f'media_backup_{int(datetime.now().timestamp())}'
+            backup_media = media_root.parent / f'media_backup_{int(timezone.now().timestamp())}'
             shutil.copytree(media_root, backup_media)
             self.stdout.write(f'Current media backed up to: {backup_media}')
 

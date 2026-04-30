@@ -8,11 +8,11 @@ import subprocess
 import json
 import tarfile
 import gzip
-from datetime import datetime
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
+from django.utils import timezone
 from cryptography.fernet import Fernet
 
 
@@ -54,7 +54,7 @@ class Command(BaseCommand):
         output_dir = Path(options['output_dir'])
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
         backup_name = f'clientst0r_backup_{timestamp}'
 
         self.stdout.write(self.style.SUCCESS(f'Starting backup: {backup_name}'))

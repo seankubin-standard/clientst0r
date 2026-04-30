@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.174] - 2026-04-30
+
+### Fixed
+- **Bug fix in audit-log retention queries.** `core/settings_views.py` was running `AuditLog.objects.filter(timestamp__lt=datetime.now() - timedelta(days=days))` and `Session.objects.filter(expire_date__lt=datetime.now())` — the right-hand side was a *naive* datetime (server-local time) while the database columns are timezone-aware. With `USE_TZ=True`, Django emits a `RuntimeWarning: DateTimeField received a naive datetime ... while time zone support is active`, and the comparison silently treats the naive value as being in the configured `TIME_ZONE` rather than UTC. On non-UTC servers, audit-log cleanup and expired-session cleanup were applying a window shifted by the server's UTC offset. Now uses `timezone.now()` consistently.
+
+### Changed
+- **Sweep of deprecated `datetime.utcnow()` / lazy `datetime.now()` use across the codebase** (Phase 7 polish). Files updated: `core/settings_views.py` (8 sites), `core/security_scan.py` (5), `reports/generators.py` (8 incl. one `utcnow`), `core/management/commands/backup.py`, `core/management/commands/build_mobile_app.py`, `core/management/commands/restore.py`, plus dead `from datetime import datetime` imports pruned. All converted to `django.utils.timezone.now()`. Tests: 65/65 (`core.tests` + `reports`) passing.
+- **Skipped intentionally:** `core/ai_abuse_control.py:_get_hours_until_reset` keeps `datetime.now()` because the AI rate-limit reset window is computed against server-local midnight (changing it would shift when daily limits roll over). `monitoring/models.py:155-163` keeps `datetime.now()` for its inline HTTP-response stopwatch (the proper primitive there is `time.monotonic()` — separate refactor). `integrations/providers/halo.py` token-expiry tracking is internal arithmetic, low priority. `scripts/network_scanner.py` is a standalone CLI script with no Django context; `datetime.now()` (which is *not* deprecated) is correct there.
+
 ## [3.17.173] - 2026-04-30
 
 ### Fixed
