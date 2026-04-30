@@ -1,6 +1,6 @@
 # Client St0r — Roadmap
 
-> Living plan. Phase 1 in progress. Update as phases complete.
+> Living plan. Phases 1–6 + 9 + 31 (Vault Access Rules) complete. Phase 7 in progress (continuous track). Update as phases complete.
 
 ## Phasing principle
 
@@ -8,17 +8,17 @@ Foundations first — engines that *enable* downstream features. Then revenue-re
 
 ---
 
-## Phase 1 — Contract / agreement engine deepening **(M · foundation)** [in progress]
+## Phase 1 — Contract / agreement engine deepening **(M · foundation)** [complete]
 
-ClientSt0r has the basics; mature PSAs have years of edge cases baked in. Without this, profitability reporting (Phase 3) is incomplete.
+Mature contract engine — beyond the basics. Required for accurate profitability reporting (Phase 3).
 
-- Per-contract **overage rules** (different rate for billable hours past allowance — formalize what's half-modelled today)
-- **Role-based inclusion/exclusion** — e.g. "T1 work included, T3 work billable at $X"
-- **Prepaid block hours with rollover** — % rollover, expiry dates
-- **Auto-renewal** — N days before end_date, optional auto-create-next-period
-- **Proration** — mid-month start/cancel
-- **Bundled services** — line items per agreement (managed AV + backup + monitoring as one)
-- Agreement **profitability snapshot** — revenue vs. cost-of-delivery this period
+- Per-contract **overage rules** — different rate for billable hours past allowance *(1.1 — shipped v3.17.126)*
+- **Role-based inclusion/exclusion** — e.g. "T1 work included, T3 work billable at $X" *(1.1 — shipped v3.17.126)*
+- **Prepaid block hours with rollover** — % rollover, expiry dates *(1.1 — shipped v3.17.126)*
+- **Auto-renewal** — N days before end_date, auto-create next period via `psa_auto_renew_contracts` cron *(1.2 — shipped v3.17.130)*
+- **Proration** — mid-month start/cancel *(1.1 — shipped v3.17.126)*
+- **Bundled services** — line items per agreement via `ContractBundleItem` model with dynamic editor *(1.2 — shipped v3.17.130)*
+- Agreement **profitability snapshot** — revenue vs. cost-of-delivery this period, surfaced on contract detail page *(1.2 — shipped v3.17.130)*
 
 ## Phase 2 — Resource management foundation **(M · foundation)** [complete]
 
@@ -563,6 +563,78 @@ Dependencies: none direct. Strictly smaller than Phase 24.
 
 **Goal:** Provide remote access without building a full RMM stack.
 
+## Phase 32 — Remote Network Discovery Import **(M · future / late-stage)** [planned]
+
+A technician opens an Organization in ClientSt0r, picks a Location, and clicks **Generate Network Discovery Script**. ClientSt0r issues a temporary one-time-use token bound to that single org + location, generates a downloadable PowerShell script, and the tech runs it on a Windows host inside the client's network. The script does a safe (non-intrusive, non-credentialed) sweep of the local subnets, collects IP / MAC / hostname / vendor data, and uploads the results back to ClientSt0r. ClientSt0r imports / updates Asset records under that Org + Location, deduping by MAC and by org+location+IP.
+
+**Roadmap item — placed near the end of the roadmap as a future / late-stage feature.** The user request explicitly says do not turn this into an RMM agent: no persistent agents, no permanent API keys, no exploit scanning. Strictly safe, auditable, scoped, MSP-friendly network discovery.
+
+### Models (new app, e.g. `network_discovery/`)
+
+- **`NetworkDiscoveryToken`** — `id`, `organization` FK, `location` FK, `created_by`, `token_hash` (only the hash; full token never re-displayable), `expires_at`, `revoked_at`, `used_at`, `max_uses` (default 1), `use_count`, `source_ip_last_used`, `user_agent_last_used`, `notes`, audit timestamps.
+- **`NetworkDiscoveryImport`** — `id`, `organization`, `location`, `token` FK, `uploaded_by_user`, `source_ip`, `device_count`, `imported_count`, `updated_count`, `skipped_count`, `error_count`, `raw_payload` (JSON, optional summarized form), `created_at`.
+- **`NetworkDiscoveryAssetResult`** — `id`, `import` FK, `organization`, `location`, `asset` FK (nullable; set when matched / created), `ip_address`, `mac_address`, `hostname`, `vendor`, `device_type`, `discovery_method`, `status`, `raw` JSON, `created_at`.
+
+### Endpoints
+
+- `POST /orgs/<org_id>/locations/<location_id>/network-discovery/generate/` — authenticated; gates on a new `network_discovery_generate` RoleTemplate boolean. Returns the script file + the one-time token displayed once on screen (never again).
+- `GET /orgs/<org_id>/locations/<location_id>/network-discovery/download/<token_id>/` — re-downloads the script (token still hidden; re-renders only the script body with the token already embedded server-side at first generation).
+- `POST /api/network-discovery/upload/` — public, **token-only** auth. Token is single-use (or limited-use), short-lived, scoped to one (org, location), POST-only, write-only — cannot read anything. Validates payload size + IP/MAC/hostname formats. Rate-limited.
+- `POST /orgs/<org_id>/locations/<location_id>/network-discovery/revoke/<token_id>/` — revokes immediately.
+- `GET /orgs/<org_id>/locations/<location_id>/network-discovery/imports/` — import history.
+
+### PowerShell script behavior
+
+- Auto-detects active local IPv4 subnets from active network adapters
+- Optional params: `-Subnet`, `-ServerUrl`, `-Token`, `-OrgId`, `-LocationId`, `-TimeoutMs`, `-MaxHosts`, `-SkipUpload`, `-OutputJsonPath`
+- Default: ping sweep / `Test-Connection`, ARP table collection, optional reverse-DNS, MAC harvest from `arp -a` / `Get-NetNeighbor`
+- Optional lightweight enrichment: probe ports 80 / 443 / 22 / 3389 / 445 only — for device-type classification (workstation / server / router / printer / unknown). Never destructive, never credentialed, never vulnerability scan.
+- Runs on Windows PowerShell 5.1+ and PowerShell 7+
+- Doesn't require admin unless necessary
+- Always writes a local JSON summary before upload
+- Shows count of discovered devices and upload result
+
+### Asset import behavior
+
+1. Match by MAC first.
+2. If no MAC match, match by `(organization, location, ip_address)`.
+3. On match: update missing fields only; never overwrite manually-entered names; bump `last_seen` / discovery metadata.
+4. On no match: create a new Asset with `organization`, `location`, name = hostname → IP → MAC, `asset_type` = "Network Discovered Device" (or "Unknown Network Device"), IP, MAC, vendor, notes "Discovered by Remote Network Discovery Import".
+5. Optional dry-run / preview mode.
+
+### Security requirements
+
+- Token is **temporary** (short expiry, default 15 min)
+- Scoped to **one org + one location** only
+- **Write-only** — can't read anything; only POST to the discovery upload endpoint
+- **Single-use by default** (or limited-use with expiration) — `max_uses=1`, `use_count` tracked
+- Server stores **only a hashed version** of the token; full plaintext shown once at generation, then never again
+- Revocable from the UI
+- Every generation, download, upload, import event audit-logged (user, org, location, source IP, count, errors)
+- Upload endpoint rate-limited
+- Payload size validated; all IP/MAC/hostname fields validated
+- Generation requires existing authenticated user permissions
+- The PowerShell script clearly shows the ClientSt0r server URL it will upload to but contains **no permanent credentials**
+
+### UI
+
+- Network Discovery section on Organization detail page (location-scoped)
+- "Generate Network Discovery Script" button after a Location is picked
+- Token expiration shown
+- Last generated scripts list
+- Revoke buttons
+- Import history with imported / updated / skipped / error counts per import
+- Last scan summary
+- Warning banner: **"Run this only on networks you are authorized to scan."**
+
+### Tests
+
+Token generation; expiration; revocation; valid upload; expired token rejected; revoked token rejected; cross-org / cross-location upload rejected; duplicate MAC updates existing asset; duplicate IP/location updates existing asset; new devices create assets; unauthorized users cannot generate scripts; payload validation; rate limiting (if testable).
+
+### Goal
+
+Provide MSP-friendly remote network discovery without standing up a full RMM agent. Everything is **temporary, scoped, auditable**, and bound to a single org + location. Not a backdoor. Not a persistent agent.
+
 ---
 
 ## Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock **(L · keystone)**
@@ -654,6 +726,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 29 — Commercial Operations Ecosystem | Continuous · meta | ongoing | runs alongside |
 | 30 — Endpoint Remote Access (alt to Phase 24) | L | 4-6 weeks | none |
 | 31 — Vault GeoIP / IP / Time Access Rules | S | shipped v3.17.163 | extends FirewallMiddleware GeoIP infra |
+| 32 — Remote Network Discovery Import | M | 2-3 weeks | future / late-stage — non-RMM, scoped, single-use tokens |
 | 8 — Mobile apps + GPS auto-time + Timeclock | L | 10-13 weeks | Phase 2 (WorkingHours); positioned last as the largest single undertaking |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.

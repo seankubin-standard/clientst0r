@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.170] - 2026-04-30
+
+### Changed
+- **Phase 1 (Contract engine deepening) marked complete in the roadmap.** Header status now `[complete]` so the `/core/roadmap.json` polling feed reflects reality. Each of the seven sub-bullets is annotated with the version it shipped at: per-contract overage rules, role-based inclusion/exclusion, prepaid block hours with rollover, and proration → 1.1 (v3.17.126); auto-renewal, bundled services, and agreement profitability snapshot → 1.2 (v3.17.130). "Living plan" header note refreshed: Phases 1–6 + 9 + 31 complete; Phase 7 in progress (continuous track).
+
+### Added — Future / late-stage roadmap entry
+- **Phase 32 — Remote Network Discovery Import** added near the end of the roadmap as a future / late-stage feature (planned, not yet implemented). Spec covers: a new `network_discovery/` app with `NetworkDiscoveryToken` / `NetworkDiscoveryImport` / `NetworkDiscoveryAssetResult` models; five endpoints (generate, download, public token-only POST upload, revoke, import history); a downloadable PowerShell script that does a non-credentialed local sweep (ping + ARP + reverse DNS + optional 80/443/22/3389/445 probe); asset import with MAC-first then (org, location, IP) dedupe; security guarantees (single-use scoped tokens with 15-min default expiry, hashed-only token storage, write-only POST endpoint, full audit trail, rate limiting); UI section on the Org detail page; comprehensive test plan. **Explicitly not an RMM agent** — temporary, scoped, auditable, no persistent agents, no permanent credentials. Sizing-table row added.
+
 ## [3.17.169] - 2026-04-30
 
 ### Changed
