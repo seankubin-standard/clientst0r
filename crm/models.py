@@ -4,10 +4,13 @@ crm/models.py — CRM sales pipeline.
 Lead: pre-qualification — somebody who *might* become a customer.
 Opportunity: a deal in flight, scoped to a specific Organization.
 Campaign: a marketing/outreach effort that produces leads.
+SalesActivity: a polymorphic touchpoint log against a Lead, Opportunity,
+or client Organization (Phase 5.3).
 """
 from decimal import Decimal
 from django.conf import settings as django_settings
 from django.db import models
+from django.utils import timezone
 
 
 class Campaign(models.Model):
@@ -329,3 +332,87 @@ class Commission(models.Model):
 
     def __str__(self):
         return f'{self.user.username}: ${self.amount} ({self.get_status_display()})'
+
+
+class SalesActivity(models.Model):
+    """
+    A logged sales touchpoint — call, email, meeting, note, demo, etc.
+    Pinned to exactly one of: Lead, Opportunity, or Organization (client).
+    Driven by users manually OR by inbound capture endpoints (Phase 5.3).
+    """
+    ACTIVITY_TYPES = [
+        ('call', 'Phone Call'),
+        ('email', 'Email'),
+        ('meeting', 'Meeting'),
+        ('demo', 'Demo'),
+        ('note', 'Note'),
+        ('proposal_sent', 'Proposal Sent'),
+        ('contract_signed', 'Contract Signed'),
+        ('inbound', 'Inbound (auto-captured)'),
+        ('other', 'Other'),
+    ]
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='crm_sales_activities_msp',
+        help_text='MSP tenant that owns the activity log.',
+    )
+    # Polymorphic — exactly one set
+    lead = models.ForeignKey(
+        'crm.Lead', on_delete=models.CASCADE, related_name='activities',
+        null=True, blank=True,
+    )
+    opportunity = models.ForeignKey(
+        'crm.Opportunity', on_delete=models.CASCADE, related_name='activities',
+        null=True, blank=True,
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='crm_sales_activities_client',
+        null=True, blank=True,
+    )
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES, default='note')
+    subject = models.CharField(max_length=200)
+    body = models.TextField(blank=True)
+    occurred_at = models.DateTimeField(default=timezone.now,
+        help_text='When the activity actually happened (manual entry can backdate).')
+    duration_minutes = models.PositiveIntegerField(null=True, blank=True,
+        help_text='Optional — for calls / meetings.')
+    outcome = models.CharField(max_length=200, blank=True,
+        help_text='Free-form: "Booked discovery call next week"')
+    # Inbound capture metadata
+    source = models.CharField(max_length=40, blank=True,
+        choices=[('manual', 'Manual'), ('web_form', 'Web Form'),
+                 ('imap', 'Email (IMAP)'), ('api', 'REST API')],
+        default='manual')
+    raw_payload = models.JSONField(default=dict, blank=True,
+        help_text='For inbound activities — store the raw email/form data for audit.')
+
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'crm_sales_activities'
+        ordering = ['-occurred_at']
+        indexes = [
+            models.Index(fields=['organization', '-occurred_at']),
+            models.Index(fields=['lead', '-occurred_at']),
+            models.Index(fields=['opportunity', '-occurred_at']),
+            models.Index(fields=['client_org', '-occurred_at']),
+        ]
+        verbose_name_plural = 'Sales activities'
+
+    def __str__(self):
+        target = self.lead or self.opportunity or self.client_org or '?'
+        return f'{self.get_activity_type_display()} on {target} @ {self.occurred_at:%Y-%m-%d}'
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        # Exactly one of lead / opportunity / client_org must be set
+        targets = sum(bool(x) for x in [self.lead_id, self.opportunity_id, self.client_org_id])
+        if targets != 1:
+            raise ValidationError('SalesActivity must reference exactly one of '
+                                   'lead / opportunity / client_org.')

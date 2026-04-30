@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Campaign, Commission, CommissionRule, Lead, Opportunity
+from .models import Campaign, Commission, CommissionRule, Lead, Opportunity, SalesActivity
 
 
 @admin.register(Campaign)
@@ -65,3 +65,19 @@ class CommissionAdmin(admin.ModelAdmin):
     autocomplete_fields = ('user', 'rule', 'approved_by')
     raw_id_fields = ('opportunity',)
     readonly_fields = ('earned_at',)
+
+
+@admin.register(SalesActivity)
+class SalesActivityAdmin(admin.ModelAdmin):
+    list_display = (
+        'activity_type', 'subject', 'occurred_at',
+        'lead', 'opportunity', 'client_org', 'user', 'source',
+    )
+    list_filter = ('activity_type', 'source', 'organization')
+    search_fields = ('subject', 'body', 'outcome')
+    autocomplete_fields = ('user',)
+    raw_id_fields = ('lead', 'opportunity', 'client_org', 'organization')
+    readonly_fields = ('created_at', 'updated_at')
+
+    def has_module_permission(self, request):
+        return request.user.is_active and request.user.is_staff

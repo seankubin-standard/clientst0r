@@ -494,6 +494,171 @@ class CRMPermissionExtendedTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Phase 5.3 — SalesActivity model + activity timeline + lead capture
+# ---------------------------------------------------------------------------
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class SalesActivityModelTests(TestCase):
+    def test_clean_requires_one_target(self):
+        from django.core.exceptions import ValidationError
+        from core.models import Organization
+        from crm.models import Lead, Opportunity, SalesActivity
+        msp = Organization.objects.create(name='SAM', slug='sam')
+        client_o = Organization.objects.create(name='SAC', slug='sac')
+        lead = Lead.objects.create(organization=msp, company_name='LeadCo')
+        opp = Opportunity.objects.create(
+            organization=msp, client_org=client_o, name='Deal',
+        )
+
+        # No target → ValidationError
+        a = SalesActivity(organization=msp, subject='No target')
+        with self.assertRaises(ValidationError):
+            a.clean()
+
+        # Two targets → ValidationError
+        a2 = SalesActivity(
+            organization=msp, lead=lead, opportunity=opp, subject='Two',
+        )
+        with self.assertRaises(ValidationError):
+            a2.clean()
+
+        # Exactly one → ok
+        a3 = SalesActivity(organization=msp, lead=lead, subject='Just lead')
+        a3.clean()  # should not raise
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ActivityTimelineViewTests(TestCase):
+    def test_lead_detail_renders_activities(self):
+        from core.models import Organization
+        from crm.models import Lead, SalesActivity
+        msp = Organization.objects.create(name='ATM', slug='atm')
+        u = User.objects.create_superuser(
+            username='atu', email='atu@x.com', password='pw',
+        )
+        lead = Lead.objects.create(organization=msp, company_name='TimelineCo')
+        SalesActivity.objects.create(
+            organization=msp, lead=lead,
+            activity_type='call', subject='Initial outreach',
+            body='Made a cold call.', outcome='Pitched solution',
+        )
+        c = Client()
+        c.force_login(u)
+        _bypass_2fa(c)
+        r = c.get(reverse('crm:lead_detail', kwargs={'pk': lead.pk}))
+        if r.status_code != 200:
+            r = c.get(reverse('crm:lead_detail', kwargs={'pk': lead.pk}), follow=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'Activity timeline', r.content)
+        self.assertIn(b'Initial outreach', r.content)
+
+    def test_activity_add_creates_row(self):
+        from core.models import Organization
+        from crm.models import Lead, SalesActivity
+        msp = Organization.objects.create(name='AAM', slug='aam')
+        u = User.objects.create_superuser(
+            username='aau', email='aau@x.com', password='pw',
+        )
+        lead = Lead.objects.create(organization=msp, company_name='AddCo')
+        c = Client()
+        c.force_login(u)
+        _bypass_2fa(c)
+        url = reverse('crm:activity_add', kwargs={'scope': 'lead', 'pk': lead.pk})
+        r = c.post(url, {
+            'activity_type': 'meeting',
+            'subject': 'Discovery call',
+            'body': 'Discussed needs.',
+            'outcome': 'Move to qualified',
+            'duration_minutes': '45',
+        })
+        self.assertIn(r.status_code, (302, 200))
+        self.assertEqual(SalesActivity.objects.filter(lead=lead).count(), 1)
+        a = SalesActivity.objects.get(lead=lead)
+        self.assertEqual(a.subject, 'Discovery call')
+        self.assertEqual(a.duration_minutes, 45)
+        self.assertEqual(a.source, 'manual')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WebFormLeadCaptureTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        from core.models import Organization
+        # Need an active MSP org to receive the lead
+        self.msp = Organization.objects.create(
+            name='WebCaptureMSP', slug='webcapturemsp',
+        )
+
+    def test_creates_lead_and_activity(self):
+        from crm.models import Lead, SalesActivity
+        c = Client()
+        url = reverse('crm:lead_capture_web')
+        r = c.post(url, {
+            'company_name': 'NewProspect Inc',
+            'email': 'prospect@example.com',
+            'first_name': 'Pat',
+            'last_name': 'Doe',
+            'phone': '555-1212',
+            'notes': 'Need help with backups.',
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertTrue(body.get('success'))
+        lead = Lead.objects.get(pk=body['lead_id'])
+        self.assertEqual(lead.company_name, 'NewProspect Inc')
+        self.assertEqual(lead.contact_email, 'prospect@example.com')
+        self.assertEqual(lead.source, 'web_form')
+        self.assertEqual(lead.status, 'new')
+        # Auto SalesActivity attached
+        acts = SalesActivity.objects.filter(lead=lead)
+        self.assertEqual(acts.count(), 1)
+        self.assertEqual(acts.first().activity_type, 'inbound')
+        self.assertEqual(acts.first().source, 'web_form')
+
+    def test_honeypot_rejects_silently(self):
+        from crm.models import Lead
+        c = Client()
+        url = reverse('crm:lead_capture_web')
+        r = c.post(url, {
+            'company_name': 'BotCo',
+            'email': 'bot@example.com',
+            'website_url': 'http://spam.test',  # honeypot triggered
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertTrue(body.get('success'))  # silently accepted
+        self.assertFalse(Lead.objects.filter(company_name='BotCo').exists())
+
+    def test_missing_required_returns_400(self):
+        c = Client()
+        url = reverse('crm:lead_capture_web')
+        r = c.post(url, {'company_name': 'OnlyCompany'})  # email missing
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('error', r.json())
+
+    def test_rate_limit_returns_429(self):
+        from django.core.cache import cache
+        cache.clear()
+        c = Client()
+        url = reverse('crm:lead_capture_web')
+        # 10 successful submissions
+        for i in range(10):
+            r = c.post(url, {
+                'company_name': f'Co{i}',
+                'email': f'c{i}@example.com',
+            })
+            self.assertEqual(r.status_code, 200)
+        # 11th should be rate-limited
+        r = c.post(url, {
+            'company_name': 'OverflowCo',
+            'email': 'overflow@example.com',
+        })
+        self.assertEqual(r.status_code, 429)
+
+
+# ---------------------------------------------------------------------------
 # v3.17.154 — CRM feature toggle (SystemSetting.crm_enabled)
 # ---------------------------------------------------------------------------
 

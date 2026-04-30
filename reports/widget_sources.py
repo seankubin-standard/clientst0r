@@ -245,6 +245,34 @@ def client_health_breakdown(params):
     return {'labels': list(counts.keys()), 'data': list(counts.values())}
 
 
+# ---- Phase 5.3 — Recent sales activity -----------------------------------
+
+def recent_sales_activity(params):
+    """Last 10 sales activities across the entire MSP. Useful for sales mgr dashboard."""
+    try:
+        from crm.models import SalesActivity
+        rows = []
+        for a in SalesActivity.objects.select_related(
+            'lead', 'opportunity', 'client_org', 'user',
+        ).order_by('-occurred_at')[:10]:
+            target = (
+                a.lead.company_name if a.lead_id else (
+                    a.opportunity.name if a.opportunity_id else (
+                        a.client_org.name if a.client_org_id else '?'
+                    )
+                )
+            )
+            rows.append([
+                a.occurred_at.strftime('%m/%d %H:%M'),
+                a.get_activity_type_display(),
+                target[:30],
+                (a.user.username if a.user_id else 'anon'),
+            ])
+        return {'columns': ['When', 'Type', 'Target', 'Who'], 'rows': rows}
+    except Exception:
+        return {'columns': [], 'rows': []}
+
+
 # ---- Phase 4.3 — Auto-replenish ------------------------------------------
 
 def low_stock_items(params):
@@ -284,6 +312,8 @@ REGISTRY = {
     'client_health_breakdown': client_health_breakdown,
     # phase 4.3
     'low_stock_items': low_stock_items,
+    # phase 5.3
+    'recent_sales_activity': recent_sales_activity,
 }
 
 DATA_SOURCE_CHOICES = [
@@ -304,6 +334,7 @@ DATA_SOURCE_CHOICES = [
     ('sla_breach_trend', 'SLA breach trend 30d (line chart)', 'chart_line'),
     ('client_health_breakdown', 'Client health breakdown (pie)', 'chart_pie'),
     ('low_stock_items', 'Low stock items (table)', 'table'),
+    ('recent_sales_activity', 'Recent sales activity (table)', 'table'),
 ]
 
 

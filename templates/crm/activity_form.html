@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Log Sales Activity{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        {% if scope == 'lead' %}
+            <li class="breadcrumb-item"><a href="{% url 'crm:lead_list' %}">Leads</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'crm:lead_detail' target.pk %}">{{ target.company_name|truncatechars:40 }}</a></li>
+        {% elif scope == 'opportunity' %}
+            <li class="breadcrumb-item"><a href="{% url 'crm:opportunity_list' %}">Opportunities</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'crm:opportunity_detail' target.pk %}">{{ target.name|truncatechars:40 }}</a></li>
+        {% elif scope == 'org' %}
+            <li class="breadcrumb-item"><a href="{% url 'accounts:organization_detail' org_id=target.pk %}">{{ target.name|truncatechars:40 }}</a></li>
+        {% endif %}
+        <li class="breadcrumb-item active">Log activity</li>
+    </ol>
+</nav>
+
+<div class="card">
+    <div class="card-header py-2">
+        <strong><i class="fas fa-clock-rotate-left me-1"></i>Log sales activity</strong>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Activity type</label>
+                    <select name="activity_type" class="form-select">
+                        {% for code, label in activity_types %}
+                        <option value="{{ code }}"{% if code == 'note' %} selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">Subject <span class="text-danger">*</span></label>
+                    <input type="text" name="subject" class="form-control" required maxlength="200">
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">Body / details</label>
+                    <textarea name="body" class="form-control" rows="4"></textarea>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Occurred at</label>
+                    <input type="datetime-local" name="occurred_at" class="form-control"
+                           value="{% now 'Y-m-d\\TH:i' %}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Duration (minutes)</label>
+                    <input type="number" name="duration_minutes" class="form-control" min="0">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Outcome</label>
+                    <input type="text" name="outcome" class="form-control" maxlength="200"
+                           placeholder="e.g. Booked discovery call next week">
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-1"></i>Log activity
+                </button>
+                {% if scope == 'lead' %}
+                <a href="{% url 'crm:lead_detail' target.pk %}" class="btn btn-secondary">Cancel</a>
+                {% elif scope == 'opportunity' %}
+                <a href="{% url 'crm:opportunity_detail' target.pk %}" class="btn btn-secondary">Cancel</a>
+                {% elif scope == 'org' %}
+                <a href="{% url 'accounts:organization_detail' org_id=target.pk %}" class="btn btn-secondary">Cancel</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

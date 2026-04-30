@@ -35,4 +35,9 @@ urlpatterns = [
     path('commission-rules/', views.commission_rule_list, name='commission_rule_list'),
     path('commission-rules/new/', views.commission_rule_form, name='commission_rule_create'),
     path('commission-rules/<int:pk>/edit/', views.commission_rule_form, name='commission_rule_edit'),
+
+    # Phase 5.3 — Sales-activity timeline + lead capture
+    path('activities/<str:scope>/<int:pk>/add/', views.activity_add, name='activity_add'),
+    path('leads/capture/', views.lead_capture_web, name='lead_capture_web'),
+    path('api/leads/capture/', views.lead_capture_api, name='lead_capture_api'),
 ]

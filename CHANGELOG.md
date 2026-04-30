@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.155] - 2026-04-29
+
+### Added — Phase 5.3 (closes Phase 5): Sales-activity timeline + lead capture
+- New `crm.SalesActivity` model — polymorphic touchpoint log against a Lead, Opportunity, or client Organization. Activity types: call / email / meeting / demo / note / proposal_sent / contract_signed / inbound / other.
+- **Activity timeline** card on Lead detail + Opportunity detail pages (last 15 entries) with "Log activity" button.
+- **Web form lead capture** at `POST /crm/leads/capture/` — public, CSRF-exempt, honeypot anti-spam, IP rate-limited (10/min), creates `Lead` + auto `SalesActivity(activity_type='inbound', source='web_form')`. JSON response.
+- **REST API lead capture** at `POST /crm/api/leads/capture/` — same shape, gated on existing API-key auth (`Authorization: Bearer itdocs_live_<key>`).
+- **IMAP lead capture stub** at `crm/management/commands/poll_lead_inbox.py` — wired but full implementation deferred (Phase 5.4 follow-up).
+- New "Recent sales activity" dashboard widget.
+- 7 new tests in `crm.tests`.
+
+### Phase 5 status: complete.
+- 5.1 Lead/Opportunity/Campaign + pipeline Kanban (v3.17.152)
+- 5.2 Commissions + lead scoring + sales funnel (v3.17.153)
+- 5.3 Sales activity timeline + lead capture (v3.17.155)
+- Roadmap updated.
+
+### Migration
+`crm.0003_salesactivity`.
+
+
 ## [3.17.154] - 2026-04-29
 
 ### Fixed

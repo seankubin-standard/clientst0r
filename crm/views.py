@@ -27,6 +27,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from accounts.permission_utils import require_perm, user_has_perm
@@ -55,7 +56,7 @@ def require_crm_enabled(view_func):
 
 
 from .forms import CampaignForm, LeadForm, OpportunityForm
-from .models import Campaign, Commission, CommissionRule, Lead, Opportunity
+from .models import Campaign, Commission, CommissionRule, Lead, Opportunity, SalesActivity
 
 
 # ---------------------------------------------------------------------------
@@ -731,3 +732,181 @@ def commission_rule_form(request, pk=None):
         'instance': instance,
         'title': 'Edit Commission Rule' if instance else 'New Commission Rule',
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.3 — Sales-activity timeline
+# ---------------------------------------------------------------------------
+
+def _int_or_none(s):
+    try:
+        return int(s) if s else None
+    except (ValueError, TypeError):
+        return None
+
+
+@login_required
+@require_perm('crm_view')
+def activity_add(request, scope, pk):
+    """
+    Add a SalesActivity. scope is 'lead' | 'opportunity' | 'org'.
+    GET shows form; POST creates activity + redirects back.
+    """
+    target = None
+    if scope == 'lead':
+        target = get_object_or_404(Lead, pk=pk)
+        kwargs = {'lead': target, 'organization': target.organization}
+    elif scope == 'opportunity':
+        target = get_object_or_404(Opportunity, pk=pk)
+        kwargs = {'opportunity': target, 'organization': target.organization}
+    elif scope == 'org':
+        target = get_object_or_404(Organization, pk=pk)
+        # MSP tenant — typically the request user's primary active membership
+        from accounts.models import Membership
+        msp = Membership.objects.filter(
+            user=request.user, is_active=True
+        ).order_by('pk').first()
+        if not msp:
+            raise Http404
+        kwargs = {'client_org': target, 'organization': msp.organization}
+    else:
+        raise Http404
+
+    if request.method == 'POST':
+        SalesActivity.objects.create(
+            user=request.user,
+            activity_type=request.POST.get('activity_type') or 'note',
+            subject=(request.POST.get('subject') or '')[:200],
+            body=request.POST.get('body') or '',
+            occurred_at=request.POST.get('occurred_at') or timezone.now(),
+            duration_minutes=_int_or_none(request.POST.get('duration_minutes')),
+            outcome=(request.POST.get('outcome') or '')[:200],
+            source='manual',
+            **kwargs,
+        )
+        messages.success(request, 'Activity logged.')
+        if scope == 'lead':
+            return redirect('crm:lead_detail', pk=target.pk)
+        elif scope == 'opportunity':
+            return redirect('crm:opportunity_detail', pk=target.pk)
+        return redirect('accounts:organization_detail', org_id=target.pk)
+
+    return render(request, 'crm/activity_form.html', {
+        'scope': scope, 'target': target,
+        'activity_types': SalesActivity._meta.get_field('activity_type').choices,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.3 — Lead-capture endpoints (web form + REST API)
+# ---------------------------------------------------------------------------
+
+@require_POST
+@csrf_exempt
+def lead_capture_web(request):
+    """Public web form — POST. Rate-limited by IP. Honeypot anti-spam."""
+    from django.core.cache import cache
+
+    ip = request.META.get('REMOTE_ADDR', '0')
+    key = f'lead_capture:{ip}'
+    if cache.get(key, 0) >= 10:
+        return JsonResponse({'error': 'Rate limited. Try again later.'}, status=429)
+    cache.set(key, cache.get(key, 0) + 1, 60)
+
+    # Honeypot — hidden field that bots tend to fill in
+    if request.POST.get('website_url', '').strip():
+        return JsonResponse({'success': True})  # silently accept, no row written
+
+    # TODO: optional reCAPTCHA v3 hook — verify token via google api before
+    # accepting the submission. Wire when keys are configured.
+
+    company = (request.POST.get('company_name') or '').strip()
+    email = (request.POST.get('email') or '').strip()
+    if not company or not email:
+        return JsonResponse({'error': 'company_name and email are required.'}, status=400)
+
+    # MSP tenant — first active org receives the lead
+    msp = Organization.objects.filter(is_active=True).order_by('pk').first()
+    if not msp:
+        return JsonResponse({'error': 'No active organization to receive leads.'}, status=503)
+
+    lead = Lead.objects.create(
+        organization=msp,
+        company_name=company[:200],
+        contact_email=email[:200],
+        contact_first_name=(request.POST.get('first_name') or '')[:80],
+        contact_last_name=(request.POST.get('last_name') or '')[:80],
+        contact_phone=(request.POST.get('phone') or '')[:40],
+        website=(request.POST.get('website') or '')[:200],
+        notes=(request.POST.get('notes') or '')[:5000],
+        source='web_form',
+        status='new',
+    )
+    SalesActivity.objects.create(
+        organization=msp, lead=lead,
+        activity_type='inbound',
+        subject=f'Web form lead: {company[:160]}',
+        body=(request.POST.get('notes') or ''),
+        source='web_form',
+        raw_payload=dict(request.POST.lists()),
+    )
+    return JsonResponse({'success': True, 'lead_id': lead.id, 'lead_number': lead.pk})
+
+
+@require_POST
+@csrf_exempt
+def lead_capture_api(request):
+    """Authenticated REST endpoint for inbound leads.
+
+    Auth: `Authorization: Bearer itdocs_live_<key>` against the existing
+    `api.APIKey` model (mirrors `api/authentication.py`). The API key's
+    organization becomes the MSP tenant.
+    """
+    from api.models import APIKey
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    parts = auth_header.split()
+    if len(parts) != 2 or parts[0].lower() != 'bearer':
+        return JsonResponse({'error': 'Authorization: Bearer <api_key> required.'}, status=401)
+    api_key = APIKey.verify_key(parts[1])
+    if not api_key:
+        return JsonResponse({'error': 'Invalid API key.'}, status=401)
+
+    msp = api_key.organization
+
+    # Accept JSON or form-encoded
+    if request.content_type and 'application/json' in request.content_type:
+        try:
+            import json
+            data = json.loads(request.body.decode('utf-8') or '{}')
+        except (ValueError, UnicodeDecodeError):
+            return JsonResponse({'error': 'Invalid JSON body.'}, status=400)
+    else:
+        data = {k: v for k, v in request.POST.items()}
+
+    company = (data.get('company_name') or '').strip()
+    email = (data.get('email') or '').strip()
+    if not company or not email:
+        return JsonResponse({'error': 'company_name and email are required.'}, status=400)
+
+    lead = Lead.objects.create(
+        organization=msp,
+        company_name=company[:200],
+        contact_email=email[:200],
+        contact_first_name=(data.get('first_name') or '')[:80],
+        contact_last_name=(data.get('last_name') or '')[:80],
+        contact_phone=(data.get('phone') or '')[:40],
+        website=(data.get('website') or '')[:200],
+        notes=(data.get('notes') or '')[:5000],
+        source='api',
+        status='new',
+    )
+    SalesActivity.objects.create(
+        organization=msp, lead=lead,
+        activity_type='inbound',
+        subject=f'API lead: {company[:160]}',
+        body=(data.get('notes') or ''),
+        source='api',
+        raw_payload=data if isinstance(data, dict) else {},
+        user=api_key.user,
+    )
+    return JsonResponse({'success': True, 'lead_id': lead.id, 'lead_number': lead.pk})
