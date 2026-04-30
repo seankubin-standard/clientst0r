@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.175] - 2026-04-30
+
+### Fixed
+- **Migration `0017_auto_apply_gunicorn_fix` no longer spams banner/error output during test runs and on fresh dev installs.** The migration runs `scripts/fix_gunicorn_env.sh`, which targets the production systemd unit at `/etc/systemd/system/clientst0r-gunicorn.service`; on any host where that unit doesn't exist (test runners, CI, containers, fresh dev installs) the script exited with code 1 and the migration logged "Fix script exited with code 1" on every test DB setup. Now skips silently when (a) `'test' in sys.argv` or (b) the systemd unit file isn't present. Production installs behave identically. Surfaces in cleaner test output.
+
 ## [3.17.174] - 2026-04-30
 
 ### Fixed

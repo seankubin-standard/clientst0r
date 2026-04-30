@@ -17,6 +17,19 @@ def apply_gunicorn_fix(apps, schema_editor):
     Gunicorn to load the .env file, fixing encryption errors with
     demo data import and password operations.
     """
+    # Skip in test runs and on hosts without the production systemd unit.
+    # The fix script targets `/etc/systemd/system/clientst0r-gunicorn.service`
+    # and exits non-zero when that file isn't present, which logs noisy
+    # "exited with code 1" banners on every test DB setup, in fresh dev
+    # installs, in CI, and in containers without systemd. Skipping silently
+    # keeps the migration a no-op where there's nothing to fix.
+    if 'test' in sys.argv:
+        return
+
+    service_file = '/etc/systemd/system/clientst0r-gunicorn.service'
+    if not os.path.exists(service_file):
+        return
+
     fix_script_path = '/home/administrator/scripts/fix_gunicorn_env.sh'
 
     # Check if script exists
