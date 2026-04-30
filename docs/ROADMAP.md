@@ -47,18 +47,18 @@ Most-requested feature class. Big surface, but builds entirely on Phase 1+2 foun
 - **Executive scorecard** — single page rolling 30-day MSP KPIs *(3.6 wave A — shipped v3.17.146)*
 - **Client-health score** — composite of SLA hits, ticket velocity, NPS proxy, billing aging *(3.6 wave B — shipped v3.17.147)*
 
-## Phase 4 — Procurement workflow **(L)**
+## Phase 4 — Procurement workflow **(L)** **— shipped**
 
 Builds on existing distributor integrations (Ingram/Pax8/Synnex). Adds the workflow above the catalog.
 
-- `PurchaseRequisition` → approval → `PurchaseOrder`
-- POs auto-numbered + branded PDF + email-to-vendor (mirror Quote/Invoice pattern)
-- **Receiving** — partial receive, back-orders, serial-number capture into Asset records
-- **Vendor relationship** model — lead times, payment terms, contact preferences
-- **Stock minimums + auto-replenish** suggestion
-- **Drop-ship handling** — direct-to-customer flag with shipping address override
-- **Fulfillment tracking** — link POs to tickets/projects, status pipeline
-- **One-click PO from accepted quote** — converts quote line items to a draft PO
+- `PurchaseRequisition` → approval → `PurchaseOrder` *(4.1 — shipped v3.17.148)*
+- POs auto-numbered + branded PDF + email-to-vendor (mirror Quote/Invoice pattern) *(4.1 — shipped v3.17.148)*
+- **Receiving** — partial receive, back-orders, serial-number capture into Asset records *(4.2 — shipped v3.17.149)*
+- **Vendor relationship** model — lead times, payment terms, contact preferences *(4.3 — shipped v3.17.150)*
+- **Stock minimums + auto-replenish** suggestion *(4.3 — shipped v3.17.150)*
+- **Drop-ship handling** — direct-to-customer flag with shipping address override *(4.1 — shipped v3.17.148)*
+- **Fulfillment tracking** — link POs to tickets/projects, status pipeline *(4.1 — shipped v3.17.148)*
+- **One-click PO from accepted quote** — converts quote line items to a draft PO *(4.4 — shipped v3.17.151)*
 
 ## Phase 5 — CRM / sales pipeline **(L)**
 

@@ -3562,6 +3562,7 @@ def invoice_email(request, pk):
 @login_required
 @require_psa_enabled
 def quote_detail(request, pk):
+    from accounts.permission_utils import user_has_perm
     org = get_request_organization(request)
     qs = Quote.objects.select_related('client_org', 'organization', 'created_by')
     if org is not None:
@@ -3570,6 +3571,8 @@ def quote_detail(request, pk):
     return render(request, 'psa/quote_detail.html', {
         'item': item,
         'line_items': item.line_items.all(),
+        'can_create_po': user_has_perm(request.user, 'procurement_create_po'),
+        'linked_pos': item.purchase_orders.all().order_by('-created_at'),
     })
 
 
@@ -4919,3 +4922,104 @@ def vendor_form(request, pk=None):
         'payment_terms_choices': Vendor.PAYMENT_TERMS_CHOICES,
         'contact_method_choices': Vendor.CONTACT_METHOD_CHOICES,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.4 — One-click PO from accepted quote
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_create_po')
+def quote_to_po(request, pk):
+    """
+    POST: create a draft PurchaseOrder from an accepted Quote.
+    Copies line items, sets status='draft', links via po.source_quote
+    (and an audit-crumb in po.notes back to the source quote).
+
+    Optional vendor preselection via POST/GET ``vendor_id`` / ``vendor``.
+    """
+    from .models import Quote, PurchaseOrder, PurchaseOrderLineItem
+
+    org = get_request_organization(request)
+    qs = Quote.objects.select_related('client_org', 'organization')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    quote = get_object_or_404(qs, pk=pk)
+
+    if quote.status != 'accepted':
+        messages.error(request, 'Only accepted quotes can be converted to a PO.')
+        return redirect('psa:quote_detail', pk=quote.pk)
+
+    if request.method != 'POST':
+        # Optional GET-style preview / confirm; redirect for safety.
+        return redirect('psa:quote_detail', pk=quote.pk)
+
+    # Optional vendor pre-fill
+    vendor = None
+    vendor_id = request.POST.get('vendor_id') or request.GET.get('vendor') or ''
+    if vendor_id:
+        try:
+            from assets.models import Vendor
+            vendor = Vendor.objects.filter(pk=int(vendor_id)).first()
+        except (ValueError, TypeError):
+            vendor = None
+
+    po = PurchaseOrder(
+        organization=quote.organization,
+        client_org=quote.client_org,
+        source_quote=quote,
+        title=f'PO from quote {quote.quote_number}'[:200],
+        status='draft',
+        vendor=vendor,
+        vendor_name=(vendor.name if vendor else '')[:200] or 'Vendor TBD',
+        vendor_email=(getattr(vendor, 'contact_email', '') or '')[:254],
+        vendor_phone=(getattr(vendor, 'contact_phone', '') or '')[:40],
+        vendor_address=getattr(vendor, 'billing_address', '') or '',
+        currency=getattr(quote, 'currency', 'USD') or 'USD',
+        tax_rate=getattr(quote, 'tax_rate', 0) or 0,
+        notes=f'Auto-created from accepted quote {quote.quote_number}.',
+        created_by=request.user,
+    )
+    if vendor and getattr(vendor, 'default_lead_time_days', 0):
+        from datetime import timedelta, date as _date
+        po.expected_delivery_date = _date.today() + timedelta(days=vendor.default_lead_time_days)
+    po.save()  # PO number auto-assigned via save() override
+
+    # Copy line items — QuoteLineItem has description / quantity /
+    # unit_price / sort_order (no sku / distributor on quote lines).
+    for i, ql in enumerate(quote.line_items.all()):
+        PurchaseOrderLineItem.objects.create(
+            po=po,
+            description=ql.description or '',
+            sku=getattr(ql, 'sku', '') or '',
+            distributor_provider=getattr(ql, 'distributor_provider', '') or '',
+            quantity=ql.quantity or 0,
+            unit_price=ql.unit_price or 0,
+            sort_order=i,
+        )
+
+    po.recompute_totals()
+    po.save(update_fields=['subtotal', 'tax_amount', 'total', 'updated_at'])
+
+    # Audit-log the conversion
+    try:
+        AuditLog.log(
+            user=request.user, action='create',
+            organization=po.organization,
+            object_type='psa.PurchaseOrder',
+            object_id=po.pk,
+            object_repr=po.po_number,
+            description=f'Created PO {po.po_number} from quote {quote.quote_number}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+    except Exception:
+        pass
+
+    messages.success(
+        request,
+        f'PO {po.po_number} drafted from quote {quote.quote_number}. '
+        f'Pick a vendor and review before sending.',
+    )
+    return redirect('psa:po_edit', pk=po.pk)

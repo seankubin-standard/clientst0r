@@ -3284,3 +3284,111 @@ class AutoReplenishTests(TestCase):
         for pr in new_prs:
             for li in pr.line_items.all():
                 self.assertNotEqual(li.sku, 'PC-6')
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.4 — One-click PO from accepted quote
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class QuoteToPOTests(TestCase):
+    """v3.17.151: convert accepted Quote to draft PurchaseOrder."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        from psa.models import Quote, QuoteLineItem
+        from decimal import Decimal
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='Q2PO Co', slug='q2po-co')
+        _enable_psa_for(self.org)
+
+        # Buyer: full procurement perms (can create PO)
+        self.buyer_role = RoleTemplate.objects.create(
+            name='Q2POBuyer', is_system_template=False,
+            procurement_view=True, procurement_create_pr=True,
+            procurement_approve_pr=True, procurement_create_po=True,
+            procurement_send_po=True,
+        )
+        self.creator = User.objects.create_user(
+            username='q2po_buyer', password='pw', email='c@x.com')
+        Membership.objects.create(
+            user=self.creator, organization=self.org,
+            role=Role.ADMIN, role_template=self.buyer_role,
+            is_active=True,
+        )
+
+        # Tech (no procurement_create_po)
+        self.tech_role = RoleTemplate.objects.create(
+            name='Q2POTech', is_system_template=False,
+            procurement_view=True, procurement_create_pr=True,
+            procurement_approve_pr=False, procurement_create_po=False,
+            procurement_send_po=False,
+        )
+        self.tech = User.objects.create_user(
+            username='q2po_tech', password='pw', email='t@x.com')
+        Membership.objects.create(
+            user=self.tech, organization=self.org,
+            role=Role.EDITOR, role_template=self.tech_role,
+            is_active=True,
+        )
+
+        # Build an accepted quote with 2 line items
+        self.quote = Quote.objects.create(
+            organization=self.org, client_org=self.org,
+            title='Test Quote', status='accepted',
+            subtotal=Decimal('200'), tax_rate=Decimal('0.10'),
+            tax_amount=Decimal('20'), total=Decimal('220'),
+        )
+        QuoteLineItem.objects.create(
+            quote=self.quote, sort_order=0,
+            description='Switch', quantity=Decimal('1'), unit_price=Decimal('150'),
+        )
+        QuoteLineItem.objects.create(
+            quote=self.quote, sort_order=1,
+            description='Cable', quantity=Decimal('5'), unit_price=Decimal('10'),
+        )
+
+    def _login(self, user):
+        c = Client()
+        c.force_login(user)
+        s = c.session
+        s['current_organization_id'] = self.org.id
+        s.save()
+        return c
+
+    def test_convert_creates_draft_po(self):
+        from psa.models import PurchaseOrder
+        c = self._login(self.creator)
+        r = c.post(f'/psa/quotes/{self.quote.pk}/to-po/')
+        self.assertEqual(r.status_code, 302)
+        po = PurchaseOrder.objects.filter(source_quote=self.quote).first()
+        self.assertIsNotNone(po)
+        self.assertEqual(po.status, 'draft')
+        self.assertEqual(po.line_items.count(), self.quote.line_items.count())
+        # Notes carry the audit crumb
+        self.assertIn(self.quote.quote_number, po.notes)
+        # Redirect lands on PO edit
+        self.assertIn(f'/purchase-orders/{po.pk}/edit/', r.url)
+
+    def test_convert_blocked_for_non_accepted_quote(self):
+        from psa.models import PurchaseOrder
+        self.quote.status = 'sent'
+        self.quote.save(update_fields=['status'])
+        c = self._login(self.creator)
+        r = c.post(f'/psa/quotes/{self.quote.pk}/to-po/')
+        # Should redirect back to quote detail (no PO created)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(
+            PurchaseOrder.objects.filter(source_quote=self.quote).count(), 0,
+        )
+
+    def test_convert_blocked_without_permission(self):
+        c = self._login(self.tech)
+        r = c.post(f'/psa/quotes/{self.quote.pk}/to-po/')
+        # @require_perm should 403 (or redirect on some setups)
+        self.assertIn(r.status_code, [302, 403])
+        from psa.models import PurchaseOrder
+        self.assertEqual(
+            PurchaseOrder.objects.filter(source_quote=self.quote).count(), 0,
+        )

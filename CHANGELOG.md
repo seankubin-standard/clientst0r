@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.151] - 2026-04-29
+
+### Added — Phase 4.4: One-click PO from accepted quote (closes Phase 4)
+- "Convert to PO" button on accepted quote detail pages — POSTs to `/psa/quotes/<pk>/to-po/`, creates a draft `PurchaseOrder` with the quote's line items copied, lands the user on the PO edit page to pick a vendor + adjust shipping.
+- New `PurchaseOrder.source_quote` FK — clean reverse link from quote → POs and forward link from PO header → quote.
+- Optional vendor pre-fill via `?vendor=<id>` querystring (or POSTed `vendor_id`); auto-fills `vendor_name`, `vendor_email`, `vendor_phone`, `vendor_address`, and `expected_delivery_date` from vendor's `default_lead_time_days`.
+- Permission: `procurement_create_po` (owners + admins by default; techs can't).
+- 3 new tests in `psa.tests.QuoteToPOTests`.
+
+### Phase 4 status: complete.
+- 4.1 PR + PO + branded PDF + email (v3.17.148)
+- 4.2 Receiving + back-orders + serial capture (v3.17.149)
+- 4.3 Vendor metadata + stock minimums + auto-replenish (v3.17.150)
+- 4.4 Quote-to-PO (v3.17.151)
+- Phase 4 closed in `docs/ROADMAP.md`.
+
+### Migration
+`psa.0022_purchaseorder_source_quote` adds `source_quote` FK to PurchaseOrder.
+
 ## [3.17.150] - 2026-04-29
 
 ### Added — Phase 4.3: Vendor relationship + stock minimums + auto-replenish

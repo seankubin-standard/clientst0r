@@ -2200,6 +2200,11 @@ class PurchaseOrder(models.Model):
         PurchaseRequisition, on_delete=models.SET_NULL,
         related_name='purchase_orders', null=True, blank=True,
     )
+    source_quote = models.ForeignKey(
+        'psa.Quote', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='purchase_orders',
+        help_text='Phase 4.4: set when this PO was auto-created from an accepted quote.',
+    )
     po_number = models.CharField(max_length=30, unique=True)  # PO-YYYY-NNNNN
     # Phase 4.3 — link to assets.Vendor for procurement metadata.
     # vendor_name / email / phone / address remain as snapshot fields so

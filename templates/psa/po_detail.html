@@ -65,6 +65,9 @@
                     {% if item.requisition %}
                     <dt class="col-5">From PR</dt><dd class="col-7"><a href="{% url 'psa:requisition_detail' item.requisition.pk %}">{{ item.requisition.pr_number }}</a></dd>
                     {% endif %}
+                    {% if item.source_quote %}
+                    <dt class="col-5">From quote</dt><dd class="col-7"><a href="{% url 'psa:quote_detail' item.source_quote.pk %}">{{ item.source_quote.quote_number }}</a></dd>
+                    {% endif %}
                     <dt class="col-5">Subtotal</dt><dd class="col-7">{{ item.subtotal }} {{ item.currency }}</dd>
                     <dt class="col-5">Tax</dt><dd class="col-7">{{ item.tax_amount }} ({{ item.tax_rate }}%)</dd>
                     <dt class="col-5">Shipping</dt><dd class="col-7">{{ item.shipping_cost }}</dd>
