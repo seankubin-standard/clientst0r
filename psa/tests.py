@@ -4691,3 +4691,349 @@ class EmailThreadingNewTicketTests(TestCase, _EmailPollerSetup):
         self.assertIn('Please send help', em.body_text)
         # Cache field is set on the new ticket.
         self.assertEqual(t.last_inbound_message_id, '<fresh@example.com>')
+
+
+# ---------------------------------------------------------------------------
+# Phase 10.2 — Body cleanup helpers (pure functions; no IMAP needed)
+# ---------------------------------------------------------------------------
+
+class HtmlSanitizeTests(TestCase):
+    def test_strips_script_and_style(self):
+        from psa.email_parsing import sanitize_html
+        result = sanitize_html('<p>ok</p><script>alert(1)</script><style>p{color:red}</style>')
+        self.assertNotIn('<script', result)
+        self.assertNotIn('<style', result)
+        self.assertIn('<p>ok</p>', result)
+
+    def test_strips_iframe_object_embed(self):
+        from psa.email_parsing import sanitize_html
+        result = sanitize_html(
+            '<p>hi</p><iframe src=evil></iframe>'
+            '<object data=x.swf></object><embed src=y.swf>'
+        )
+        self.assertNotIn('iframe', result.lower())
+        self.assertNotIn('object', result.lower())
+        self.assertNotIn('embed', result.lower())
+
+    def test_strips_inline_event_handlers(self):
+        from psa.email_parsing import sanitize_html
+        result = sanitize_html('<a href="https://x.com" onclick="bad()">x</a>')
+        self.assertNotIn('onclick', result)
+        self.assertIn('href="https://x.com"', result)
+
+    def test_strips_remote_images(self):
+        from psa.email_parsing import sanitize_html
+        # img is not in the allowlist; bleach drops it entirely (strip=True).
+        result = sanitize_html('<p>hi</p><img src="https://tracker.example/p.gif">')
+        self.assertNotIn('<img', result)
+        self.assertIn('<p>hi</p>', result)
+
+    def test_links_get_safe_attrs(self):
+        from psa.email_parsing import sanitize_html
+        result = sanitize_html('<a href="https://x.com">x</a>')
+        self.assertIn('rel="noopener noreferrer"', result)
+        self.assertIn('target="_blank"', result)
+
+    def test_empty_input_returns_empty(self):
+        from psa.email_parsing import sanitize_html
+        self.assertEqual(sanitize_html(''), '')
+        self.assertEqual(sanitize_html(None), '')
+
+
+class SignatureStripTests(TestCase):
+    def test_rfc3676_sentinel_cuts_signature(self):
+        from psa.email_parsing import strip_signature
+        body = 'Hello there.\n\n-- \nAlice\nWidget Co.'
+        self.assertEqual(strip_signature(body), 'Hello there.')
+
+    def test_sent_from_iphone_heuristic(self):
+        from psa.email_parsing import strip_signature
+        self.assertEqual(strip_signature('Hi.\n\nSent from my iPhone\n'), 'Hi.')
+
+    def test_sent_from_android_heuristic(self):
+        from psa.email_parsing import strip_signature
+        self.assertEqual(strip_signature('Hi.\nSent from my Android device\n'), 'Hi.')
+
+    def test_no_signature_returns_input_unchanged(self):
+        from psa.email_parsing import strip_signature
+        self.assertEqual(strip_signature('Just a message.'), 'Just a message.')
+
+    def test_empty_input(self):
+        from psa.email_parsing import strip_signature
+        self.assertEqual(strip_signature(''), '')
+
+
+class QuotedReplyStripTests(TestCase):
+    def test_apple_gmail_on_wrote_header(self):
+        from psa.email_parsing import strip_quoted_reply
+        body = (
+            'Yes that worked, thanks.\n\n'
+            'On Tue, Mar 4, 2026 at 10:00 AM Alice <a@b> wrote:\n'
+            '> Try restarting it.\n'
+            '> Let me know.\n'
+        )
+        self.assertEqual(strip_quoted_reply(body), 'Yes that worked, thanks.')
+
+    def test_outlook_original_message_block(self):
+        from psa.email_parsing import strip_quoted_reply
+        body = (
+            'Reply text.\n\n'
+            '-----Original Message-----\n'
+            'From: Alice\n'
+            'Sent: Tuesday\n'
+        )
+        self.assertEqual(strip_quoted_reply(body), 'Reply text.')
+
+    def test_outlook_from_sent_to_subject_block(self):
+        from psa.email_parsing import strip_quoted_reply
+        body = (
+            'Reply.\n\n'
+            'From: Alice <a@b>\n'
+            'Sent: Tuesday\n'
+            'To: Bob\n'
+            'Subject: RE: thing\n'
+            'Hi Bob,\n'
+        )
+        self.assertEqual(strip_quoted_reply(body), 'Reply.')
+
+    def test_bare_gt_prefix_block(self):
+        from psa.email_parsing import strip_quoted_reply
+        body = 'Got it.\n\n> previous content\n> here\n'
+        self.assertEqual(strip_quoted_reply(body), 'Got it.')
+
+    def test_no_quote_returns_unchanged(self):
+        from psa.email_parsing import strip_quoted_reply
+        self.assertEqual(strip_quoted_reply('Plain reply.'), 'Plain reply.')
+
+
+def _build_raw_email_with_attachment(*, message_id, from_addr, to_addr, subject,
+                                     body, attachments):
+    """
+    Build a multipart/mixed email with text + attachments. ``attachments`` is
+    a list of (filename, mime, payload_bytes).
+    """
+    from email.mime.base import MIMEBase
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email import encoders
+
+    root = MIMEMultipart('mixed')
+    root['From'] = from_addr
+    root['To'] = to_addr
+    root['Subject'] = subject
+    root['Message-ID'] = message_id
+    root.attach(MIMEText(body, 'plain', 'utf-8'))
+    for filename, mime, payload in attachments:
+        maintype, _, subtype = mime.partition('/')
+        part = MIMEBase(maintype, subtype)
+        part.set_payload(payload)
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', 'attachment', filename=filename)
+        root.attach(part)
+    return root.as_bytes()
+
+
+class AttachmentIngestTests(TestCase, _EmailPollerSetup):
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orgatt')
+
+    def _run_poll(self, raw):
+        from psa.management.commands import psa_poll_email
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+    def test_allowlist_hit_creates_ticket_attachment(self):
+        from psa.models import TicketAttachment
+        raw = _build_raw_email_with_attachment(
+            message_id='<att-ok@example.com>',
+            from_addr='alice@example.com', to_addr='help@orgatt.example.com',
+            subject='Logs attached',
+            body='See attached.',
+            attachments=[('error.log', 'text/plain', b'2026-05-01 ERROR boom')],
+        )
+        self._run_poll(raw)
+
+        ticket = Ticket.objects.get(organization=self.org)
+        attachments = TicketAttachment.objects.filter(ticket=ticket)
+        self.assertEqual(attachments.count(), 1)
+        a = attachments.first()
+        self.assertEqual(a.filename, 'error.log')
+        self.assertEqual(a.content_type, 'text/plain')
+        self.assertGreater(a.size_bytes, 0)
+        self.assertFalse(a.is_internal)
+
+    def test_allowlist_miss_skips_attachment(self):
+        from psa.models import TicketAttachment
+        raw = _build_raw_email_with_attachment(
+            message_id='<att-block@example.com>',
+            from_addr='alice@example.com', to_addr='help@orgatt.example.com',
+            subject='Suspicious binary',
+            body='Run this.',
+            attachments=[('payload.exe', 'application/x-msdownload', b'MZ\x90\x00')],
+        )
+        self._run_poll(raw)
+
+        ticket = Ticket.objects.get(organization=self.org)
+        # Ticket got created (the email body went through), but attachment
+        # was rejected.
+        self.assertEqual(TicketAttachment.objects.filter(ticket=ticket).count(), 0)
+
+    def test_oversize_attachment_skipped(self):
+        from django.test import override_settings
+        from psa.models import TicketAttachment
+        raw = _build_raw_email_with_attachment(
+            message_id='<att-big@example.com>',
+            from_addr='alice@example.com', to_addr='help@orgatt.example.com',
+            subject='Huge log',
+            body='attached',
+            attachments=[('huge.log', 'text/plain', b'A' * 5000)],
+        )
+        # Drop the cap to 1024 bytes so 5000 bytes of payload is rejected.
+        with override_settings(PSA_EMAIL_ATTACHMENT_MAX_BYTES=1024):
+            self._run_poll(raw)
+
+        ticket = Ticket.objects.get(organization=self.org)
+        self.assertEqual(TicketAttachment.objects.filter(ticket=ticket).count(), 0)
+
+    def test_image_wildcard_in_allowlist_accepts_jpeg(self):
+        """``image/*`` allowlist entries should accept ``image/jpeg`` etc."""
+        from django.test import override_settings
+        from psa.models import TicketAttachment
+        raw = _build_raw_email_with_attachment(
+            message_id='<att-img@example.com>',
+            from_addr='alice@example.com', to_addr='help@orgatt.example.com',
+            subject='Screenshot',
+            body='see image',
+            attachments=[('shot.jpg', 'image/jpeg', b'\xff\xd8\xff\xe0fakejpeg')],
+        )
+        with override_settings(PSA_EMAIL_ATTACHMENT_MIME_ALLOWLIST=['image/*']):
+            self._run_poll(raw)
+
+        ticket = Ticket.objects.get(organization=self.org)
+        self.assertEqual(TicketAttachment.objects.filter(ticket=ticket).count(), 1)
+
+
+class ReplyBodyCleanupTests(TestCase, _EmailPollerSetup):
+    """
+    On replies to an existing ticket, the comment body should have the
+    customer's signature + quoted history stripped.
+    """
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orgclean')
+        self.ticket = self._make_ticket(self.org)
+        from psa.models import EmailMessage
+        EmailMessage.objects.create(
+            organization=self.org, ticket=self.ticket, ingestion_config=self.cfg,
+            direction='in', message_id='<seed-clean@example.com>',
+        )
+
+    def test_reply_comment_drops_signature_and_quote(self):
+        from psa.management.commands import psa_poll_email
+        from psa.models import TicketComment
+        body = (
+            'Yes that worked, thanks.\n\n'
+            '-- \n'
+            'Bob\n'
+            'Widget Co.\n\n'
+            'On Tue, Mar 4, 2026 at 10:00 AM Alice <a@b> wrote:\n'
+            '> Try restarting it.\n'
+        )
+        raw = _build_raw_email(
+            message_id='<reply-clean@example.com>',
+            from_addr='customer@example.com', to_addr='help@orgclean.example.com',
+            subject='no token',
+            in_reply_to='<seed-clean@example.com>',
+            body=body,
+        )
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+        c = TicketComment.objects.get(ticket=self.ticket)
+        self.assertEqual(c.body.strip(), 'Yes that worked, thanks.')
+        # The pristine raw body should still be on the EmailMessage row for
+        # the conversation panel.
+        from psa.models import EmailMessage
+        em = EmailMessage.objects.get(message_id='<reply-clean@example.com>')
+        self.assertIn('Widget Co.', em.body_text)
+        self.assertIn('On Tue', em.body_text)
+
+
+class HtmlBodyStoredSanitizedTests(TestCase, _EmailPollerSetup):
+    """
+    Inbound HTML bodies should be sanitized before being persisted to
+    EmailMessage.body_html so the conversation panel can render them safely.
+    """
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orghtml')
+
+    def test_inbound_html_body_is_sanitized(self):
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from psa.management.commands import psa_poll_email
+        from psa.models import EmailMessage
+        msg = MIMEMultipart('alternative')
+        msg['From'] = 'alice@example.com'
+        msg['To'] = 'help@orghtml.example.com'
+        msg['Subject'] = 'with html'
+        msg['Message-ID'] = '<htmlbody@example.com>'
+        msg.attach(MIMEText('hi', 'plain', 'utf-8'))
+        msg.attach(MIMEText(
+            '<p>hi</p><script>alert(1)</script>'
+            '<a href="https://x.com" onclick="bad()">x</a>',
+            'html', 'utf-8',
+        ))
+        raw = msg.as_bytes()
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+        em = EmailMessage.objects.get(message_id='<htmlbody@example.com>')
+        self.assertNotIn('<script', em.body_html)
+        self.assertNotIn('onclick', em.body_html)
+        self.assertIn('href="https://x.com"', em.body_html)
+
+
+class MalformedMimeTests(TestCase, _EmailPollerSetup):
+    """The poller must not crash on broken MIME — single bad message
+    can't take down the whole poll cycle."""
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orgmime')
+
+    def test_garbage_message_does_not_raise(self):
+        from psa.management.commands import psa_poll_email
+        # Not actually a valid RFC 822 message — just bytes.
+        raw = b'this is not really an email at all'
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+        # Either the poller created a "(no subject)" ticket from the garbage
+        # or it skipped silently — but it must not have raised.
+        # Either outcome is acceptable; the assertion is "we got here".
+        self.assertTrue(True)

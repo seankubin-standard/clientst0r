@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.177] - 2026-05-01
+
+### Added — Phase 10.2: Email body cleanup + attachment ingestion
+- **New `psa/email_parsing.py` helper module.** Three pure functions, no DB / network / Django dependencies:
+  - `sanitize_html(html)` — bleach-based, tight allowlist (block scripts, styles, iframes, objects, embeds, inline event handlers, remote images / tracking pixels). Surviving links get `rel="noopener noreferrer" target="_blank"`. Output is safe to render inside a sandboxed iframe in Phase 10.4's conversation panel.
+  - `strip_signature(text)` — RFC 3676 `\n-- \n` sentinel first; falls back to "Sent from my iPhone / Android / device" + "Get Outlook for iOS / Android" + "Sent via …" prefaces. Conservative: returns the input unchanged on no match.
+  - `strip_quoted_reply(text)` — three independent passes (Apple/Gmail "On … wrote:", Outlook `-----Original Message-----` / From-Sent-To-Subject block, trailing `>`-prefix block). Earliest match wins; only ever trims from the bottom.
+  - `clean_reply_body(text)` — convenience: quote first, then signature.
+- **Poller (`psa_poll_email`) now uses the helpers.** Reply comments to existing tickets get the customer's signature + quoted history stripped so the comment shows only what's new (full body still preserved on `EmailMessage.body_text` for the conversation panel). New tickets keep the full body so context isn't lost. Inbound HTML bodies are sanitized at write time before landing on `EmailMessage.body_html`.
+- **Attachment ingestion.** New `_ingest_attachments(msg, ticket=, comment=)` walks the message for parts with `Content-Disposition: attachment`, validates against MIME allowlist + size cap, and writes a `TicketAttachment` per accepted file. Rejected files are logged at WARNING level so ops can see what was dropped without crashing the poll loop. Filenames are stripped of path components defensively.
+- **New settings:** `PSA_EMAIL_ATTACHMENT_MAX_BYTES` (default 25 MB) + `PSA_EMAIL_ATTACHMENT_MIME_ALLOWLIST` (images, PDF, plain/CSV/HTML/markdown text, Office formats including .docx/.xlsx/.pptx, ZIP). `image/*`-style wildcard entries are honored. Override via Django settings or env per deployment.
+- **Tests:** 18 new tests across 7 classes — `HtmlSanitizeTests` (script/style/iframe/object/embed stripping, inline event handlers, remote images, link safety, empty input), `SignatureStripTests` (RFC 3676 sentinel, mobile prefaces, no-op, empty), `QuotedReplyStripTests` (Apple/Gmail, Outlook two forms, bare `>`-prefix, no-op), `AttachmentIngestTests` (allowlist hit, allowlist miss, oversize, `image/*` wildcard), `ReplyBodyCleanupTests` (full integration: customer reply with sig + quoted history → clean comment body, full body preserved on EmailMessage), `HtmlBodyStoredSanitizedTests` (poller integration), `MalformedMimeTests` (broken MIME doesn't crash the loop). 18/18 in <1s. Regression run on 10.1 threading suite + Phase4 + TicketLifecycle: 36/36 in 21s.
+
 ## [3.17.176] - 2026-05-01
 
 ### Added — Phase 10.1: Email-to-ticket threading via Message-ID

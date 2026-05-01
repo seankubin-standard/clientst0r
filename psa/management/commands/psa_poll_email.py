@@ -30,11 +30,15 @@ import re
 from email.header import decode_header
 from email.utils import parseaddr, getaddresses
 
+from django.conf import settings
+from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from psa.email_parsing import clean_reply_body, sanitize_html
 from psa.models import (
-    EmailIngestionConfig, EmailMessage, Ticket, TicketComment, TicketStatus,
+    EmailIngestionConfig, EmailMessage, Ticket, TicketAttachment,
+    TicketComment, TicketStatus,
 )
 
 
@@ -106,6 +110,70 @@ def _extract_text_body(msg) -> str:
     """Compatibility shim — preserves the v3.17.166 callable signature."""
     text, _ = _extract_bodies(msg)
     return text
+
+
+def _ingest_attachments(msg, *, ticket, comment) -> tuple[int, int]:
+    """
+    Walk ``msg`` for parts with ``Content-Disposition: attachment``, write
+    each one as a TicketAttachment if it passes the MIME allowlist + size
+    cap, and return (saved_count, skipped_count).
+
+    Skipped files are logged at WARNING level so ops can see what got
+    rejected without failing the whole poll cycle.
+    """
+    if not msg.is_multipart():
+        return 0, 0
+
+    max_bytes = getattr(settings, 'PSA_EMAIL_ATTACHMENT_MAX_BYTES',
+                        25 * 1024 * 1024)
+    allowlist = set(getattr(settings, 'PSA_EMAIL_ATTACHMENT_MIME_ALLOWLIST', []))
+
+    saved = 0
+    skipped = 0
+    for part in msg.walk():
+        disp = str(part.get('Content-Disposition') or '')
+        if 'attachment' not in disp.lower():
+            continue
+        payload = part.get_payload(decode=True)
+        if not payload:
+            continue
+
+        ctype = (part.get_content_type() or '').lower()
+        # Permit ``image/*`` shorthand in the allowlist.
+        ctype_match = (
+            ctype in allowlist
+            or any(p.endswith('/*') and ctype.startswith(p[:-1]) for p in allowlist)
+        )
+        if not ctype_match:
+            logger.warning(
+                'attachment rejected (mime not in allowlist): ticket=%s mime=%s',
+                ticket.ticket_number, ctype,
+            )
+            skipped += 1
+            continue
+        if len(payload) > max_bytes:
+            logger.warning(
+                'attachment rejected (oversize): ticket=%s mime=%s bytes=%d',
+                ticket.ticket_number, ctype, len(payload),
+            )
+            skipped += 1
+            continue
+
+        filename = _decode_header(part.get_filename() or '') or 'attachment'
+        # Strip path components defensively — never trust a header.
+        filename = filename.replace('/', '_').replace('\\', '_')[:255]
+
+        TicketAttachment.objects.create(
+            ticket=ticket,
+            comment=comment,
+            file=ContentFile(payload, name=filename),
+            filename=filename,
+            content_type=ctype[:100],
+            size_bytes=len(payload),
+            is_internal=False,
+        )
+        saved += 1
+    return saved, skipped
 
 
 def _thread_target(msg, organization) -> Ticket | None:
@@ -228,10 +296,15 @@ class Command(BaseCommand):
                             organization=config.organization,
                         ).first()
 
+                comment = None
                 if target is not None:
-                    TicketComment.objects.create(
+                    # Replies to an existing thread: drop the customer's
+                    # signature + the quoted history so the comment shows
+                    # only what's new.
+                    cleaned_reply = clean_reply_body(body)[:50000].strip()
+                    comment = TicketComment.objects.create(
                         ticket=target,
-                        body=body or '(empty email body)',
+                        body=cleaned_reply or body or '(empty email body)',
                         is_internal=False,
                         is_system=False,
                         author_name=from_name or from_email or 'email',
@@ -240,6 +313,8 @@ class Command(BaseCommand):
                     )
                     replied_count += 1
                 else:
+                    # New tickets keep the full body so context (quoted
+                    # screenshots / FYI) isn't lost.
                     target = Ticket.objects.create(
                         organization=config.organization,
                         subject=subject or '(no subject)',
@@ -256,10 +331,19 @@ class Command(BaseCommand):
                     )
                     created_count += 1
 
+                # Phase 10.2: ingest attachments (allowlist + size capped).
+                # Logged-only on rejection — never crash the poll loop.
+                try:
+                    _ingest_attachments(msg, ticket=target, comment=comment)
+                except Exception:
+                    logger.exception('attachment ingest failed for ticket %s',
+                                     target.ticket_number)
+
                 # Persist the inbound EmailMessage so the NEXT reply threads
                 # cleanly. Skip silently when Message-ID is missing or already
                 # seen — we don't want a single buggy mail client to crash
-                # the poll loop.
+                # the poll loop. body_html is sanitized at write time so the
+                # Phase 10.4 conversation panel can render it directly.
                 if message_id_hdr:
                     to_addrs = [addr for _, addr in
                                 getaddresses([_decode_header(msg.get('To', '')),
@@ -279,7 +363,7 @@ class Command(BaseCommand):
                             'subject': subject[:998],
                             'headers_raw': '\n'.join(f'{k}: {v}' for k, v in msg.items())[:16000],
                             'body_text': text_body[:50000],
-                            'body_html': html_body[:200000],
+                            'body_html': sanitize_html(html_body)[:200000],
                         },
                     )
                     if target.last_inbound_message_id != message_id_hdr:

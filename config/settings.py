@@ -635,3 +635,26 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# ---------------------------------------------------------------------------
+# PSA email-to-ticket — Phase 10.2 attachment ingestion limits.
+# Override per-deployment via env or local settings if needed.
+# ---------------------------------------------------------------------------
+PSA_EMAIL_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024  # 25 MB
+PSA_EMAIL_ATTACHMENT_MIME_ALLOWLIST = [
+    # Images
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+    # PDFs
+    'application/pdf',
+    # Plain text + structured text
+    'text/plain', 'text/csv', 'text/html', 'text/markdown',
+    # Office documents
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    # Archives commonly seen with logs / screenshots
+    'application/zip',
+]

@@ -142,13 +142,13 @@ The following are **planned / in-progress** items focused on MSP workflow consol
 **Roadmap item:** Advanced Email Processing & Ticket Intelligence. Extends the basic IMAP poller already shipped (v3.17.83+).
 
 Planned capabilities:
-- Advanced inbound email parsing (HTML + plain-text fallback) *(planned — Phase 10.2)*
+- Advanced inbound email parsing (HTML + plain-text fallback) *(10.2 — shipped v3.17.177)*
 - Thread reconstruction across replies + forwards *(10.1 — shipped v3.17.176)*
 - Reply correlation by Message-ID + In-Reply-To headers (more reliable than current subject-regex match) *(10.1 — shipped v3.17.176)*
-- Signature stripping *(planned — Phase 10.2)*
+- Signature stripping *(10.2 — shipped v3.17.177)*
 - Loop detection (ignore auto-responders) *(planned — Phase 10.3)*
 - Spam scoring before ticket creation *(planned — Phase 10.3)*
-- Attachment extraction with MIME-type allowlist *(planned — Phase 10.2)*
+- Attachment extraction with MIME-type allowlist *(10.2 — shipped v3.17.177)*
 - Automatic contact association (match sender email → existing contact / membership) *(planned — Phase 10.3)*
 - Per-client parsing rules *(planned — Phase 10.3)*
 - Ticket categorization (rule-based) *(planned — Phase 10.3)*
@@ -165,9 +165,12 @@ Planned capabilities:
 - Poller correlation order is now: (a) In-Reply-To against `EmailMessage.message_id` in the same org, (b) walk the References chain right-to-left, (c) subject-regex fallback (legacy tickets keep working), (d) create new ticket. Whichever path matches, the inbound message is persisted as an `EmailMessage` row so the next reply has something to chain against.
 - Tests cover header-threading, References-chain walking, subject-regex fallback for legacy replies, cross-org isolation, and new-ticket creation.
 
-### Sub-phase 10.2 — Body cleanup + attachment ingestion *(planned)*
+### Sub-phase 10.2 — Body cleanup + attachment ingestion *(shipped v3.17.177)*
 
-HTML-aware body extraction (bleach), signature & quoted-reply stripping, MIME-allowlisted attachment writes to `TicketAttachment`.
+- New `psa/email_parsing.py` helper module: `sanitize_html` (bleach with tight allowlist; strips scripts, styles, iframes, inline event handlers, remote images / tracking pixels; rewrites links with `rel="noopener noreferrer" target="_blank"`), `strip_signature` (RFC 3676 `\n-- \n` sentinel + mobile/marketing prefaces), `strip_quoted_reply` (Apple/Gmail "On … wrote:", Outlook `-----Original Message-----` / From-Sent-To-Subject block, trailing `>`-prefix block).
+- Reply comments to existing tickets get sig + quoted history stripped so only the new content shows. Full original body still preserved on `EmailMessage.body_text` for the Phase 10.4 conversation panel. New tickets keep the full body so context isn't lost.
+- Attachment ingestion via `_ingest_attachments`: walks parts for `Content-Disposition: attachment`, validates against `PSA_EMAIL_ATTACHMENT_MIME_ALLOWLIST` (default: images, PDF, text, Office, ZIP) + `PSA_EMAIL_ATTACHMENT_MAX_BYTES` (default 25 MB), writes accepted files as `TicketAttachment` rows linked to the new comment. Rejected files logged at WARNING level. Filenames sanitized.
+- Inbound HTML bodies are sanitized at write time before landing on `EmailMessage.body_html`.
 
 ### Sub-phase 10.3 — Routing rules + auto-responder & spam gating *(planned)*
 
