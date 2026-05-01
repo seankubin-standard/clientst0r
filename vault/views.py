@@ -477,11 +477,33 @@ def password_edit(request, pk):
                     password.expiry_notification_sent = False
                 password.save()
                 form.save_m2m()
+                AuditLog.log(
+                    user=request.user, action='update',
+                    organization=org, object_type='password',
+                    object_id=password.pk, object_repr=password.title,
+                    description=(
+                        f"Password '{password.title}' updated"
+                        + (f' (changed: {", ".join(form.changed_data)})'
+                           if form.changed_data else '')
+                    ),
+                    ip_address=request.META.get('REMOTE_ADDR'),
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+                    success=True,
+                )
                 messages.success(request, f"Password '{password.title}' updated successfully.")
                 return redirect('vault:password_detail', pk=password.pk)
             except EncryptionError as e:
                 # Handle malformed APP_MASTER_KEY error
                 error_msg = str(e)
+                AuditLog.log(
+                    user=request.user, action='update',
+                    organization=org, object_type='password',
+                    object_id=password.pk, object_repr=password.title,
+                    description=f"Password update FAILED — encryption error: {error_msg[:200]}",
+                    ip_address=request.META.get('REMOTE_ADDR'),
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+                    success=False,
+                )
                 if 'Invalid APP_MASTER_KEY format' in error_msg or 'base64' in error_msg.lower():
                     messages.error(
                         request,
@@ -497,6 +519,19 @@ def password_edit(request, pk):
                     )
                 else:
                     messages.error(request, f"Encryption error: {error_msg}")
+        else:
+            AuditLog.log(
+                user=request.user, action='update',
+                organization=org, object_type='password',
+                object_id=password.pk, object_repr=password.title,
+                description=(
+                    f"Password update FAILED — form validation: "
+                    f"{', '.join(form.errors.keys())}"
+                ),
+                ip_address=request.META.get('REMOTE_ADDR'),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+                success=False,
+            )
     else:
         form = PasswordForm(instance=password, organization=org)
 
@@ -518,7 +553,17 @@ def password_delete(request, pk):
 
     if request.method == 'POST':
         title = password.title
+        deleted_pk = password.pk
         password.delete()
+        AuditLog.log(
+            user=request.user, action='delete',
+            organization=org, object_type='password',
+            object_id=deleted_pk, object_repr=title,
+            description=f"Password '{title}' deleted",
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+            success=True,
+        )
         messages.success(request, f"Password '{title}' deleted successfully.")
         return redirect('vault:password_list')
 

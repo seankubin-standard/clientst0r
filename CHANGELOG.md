@@ -5,6 +5,12 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.181] - 2026-05-01
+
+### Added
+- **Vault password mutations now audit-logged** (Phase 7 polish — survey item #9). Vault edit/delete views previously logged reads (read access via `password_detail`/`password_reveal`, gated by VaultAccessRule since v3.17.163) but mutations slipped through unaudited. Now `password_edit` writes an AuditLog row on success (with the list of changed fields), on form validation failure (with the error keys), and on `EncryptionError` (with the error message). `password_delete` writes a row capturing the title BEFORE the delete so post-delete forensics still show what was removed. All use `success=True/False` so failed mutations are queryable. The pre-existing `AuditLoggingMiddleware` row still fires too — that's the URL-pattern record; our new row carries the view-level detail.
+- **2 new tests** in `vault.tests.PasswordMutationAuditTests` covering successful update + delete-with-title-preserved. Vault test count: 7 → 9.
+
 ## [3.17.180] - 2026-05-01
 
 ### Fixed

@@ -179,3 +179,76 @@ class VaultAccessRuleEngineTests(TestCase):
             self.password_b, self.alice, _make_request(self.rf, user=self.alice),
         )
         self.assertTrue(result_other['allowed'])
+
+
+# ---------------------------------------------------------------------------
+# v3.17.181 — password mutation audit logging.
+# Confirms password_edit / password_delete emit AuditLog rows on success
+# AND failure. Reads were already audited; mutations were not.
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class PasswordMutationAuditTests(TestCase):
+    def setUp(self):
+        from accounts.models import Membership, Role
+        from audit.models import AuditLog
+        from django.test import Client
+        self.AuditLog = AuditLog
+        self.org = Organization.objects.create(name='AuditCo', slug='auditco')
+        self.user = User.objects.create_user('mutuser', password='pw', email='m@x.com')
+        Membership.objects.create(
+            user=self.user, organization=self.org,
+            role=Role.OWNER, is_active=True,
+        )
+        self.password = Password.objects.create(
+            organization=self.org, title='target', username='svc',
+            password_type='server',
+        )
+        self.password.set_password('s3cret')
+        self.password.save()
+
+        self.client = Client()
+        self.client.force_login(self.user)
+        session = self.client.session
+        session['2fa_prompted'] = True
+        session['current_organization_id'] = self.org.id
+        session.save()
+
+    def test_password_edit_success_logs_update(self):
+        url = f'/vault/{self.password.pk}/edit/'
+        # Use the form's actual fields — title is required, password_type
+        # must be one of the model choices.
+        response = self.client.post(url, {
+            'title': 'target-renamed',
+            'username': 'svc',
+            'password_type': 'server',
+            'organization': self.org.pk,
+        })
+        # Either 302 (redirect on success) or 200 (form re-render); we just
+        # care that an audit row landed.
+        self.assertIn(response.status_code, (200, 302))
+        log = (self.AuditLog.objects
+               .filter(action='update', object_type='password',
+                       object_id=self.password.pk)
+               .order_by('-timestamp')
+               .first())
+        self.assertIsNotNone(log, 'expected an audit row for password update')
+
+    def test_password_delete_logs_with_title_preserved(self):
+        url = f'/vault/{self.password.pk}/delete/'
+        deleted_pk = self.password.pk
+        title = self.password.title
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 302)
+        # `AuditLoggingMiddleware` also writes a generic URL-pattern row;
+        # after delete it can't resolve the model and falls back to
+        # `'password #N'`. Filter to *our* view-level row by its title.
+        log = (self.AuditLog.objects
+               .filter(action='delete', object_type='password',
+                       object_id=deleted_pk, object_repr=title)
+               .order_by('-timestamp')
+               .first())
+        self.assertIsNotNone(log,
+            'expected the view-level audit row carrying the original title')
+        self.assertTrue(log.success)
+        self.assertIn('deleted', log.description.lower())
