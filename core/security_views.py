@@ -1,16 +1,43 @@
 """
 Security-related views - Package scanning, vulnerability monitoring
 """
+import io
+import json
+import logging
+
 from django.shortcuts import render, redirect
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.core.management import call_command
 from django.utils import timezone
+
 from .models import SystemPackageScan, PythonPackageScan
-import io
-import json
+
+
+logger = logging.getLogger(__name__)
+
+
+def _is_staff_or_superuser(user):
+    """Gate for system-admin views: Django superuser OR staff flag."""
+    return user.is_authenticated and (user.is_superuser or user.is_staff)
+
+
+def _staff_or_superuser_api(view_fn):
+    """
+    Decorator for JSON endpoints: return 403 JSON if the user isn't a
+    Django superuser or staff. Mirrors the inline check that used to be
+    duplicated at the top of every package-scanner API view.
+    """
+    from functools import wraps
+
+    @wraps(view_fn)
+    def wrapped(request, *args, **kwargs):
+        if not _is_staff_or_superuser(request.user):
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        return view_fn(request, *args, **kwargs)
+    return wrapped
 
 
 @login_required
@@ -58,12 +85,10 @@ def package_scanner_dashboard(request):
 
 
 @login_required
+@_staff_or_superuser_api
 @require_http_methods(["POST"])
 def run_package_scan(request):
     """Run a package scan manually via web interface"""
-    if not (request.user.is_superuser or request.user.is_staff):
-        return JsonResponse({'error': 'Permission denied'}, status=403)
-
     try:
         # First, try to update the apt cache for latest data
         import subprocess
@@ -77,8 +102,11 @@ def run_package_scan(request):
             )
             if result.returncode == 0:
                 cache_updated = True
-        except:
-            pass  # Continue without cache update if it fails
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError) as exc:
+            # apt-get update can legitimately fail (no sudo, no network,
+            # nothing to update) — that's not an error for the scan itself,
+            # just continue with cached data. Log so ops can see *why*.
+            logger.info('apt-get update skipped before scan: %s', exc)
 
         # Run scan command
         out = io.StringIO()
@@ -132,6 +160,11 @@ def run_package_scan(request):
         })
 
     except Exception:
+        # Log the real exception so ops can triage what actually broke —
+        # before this fix the response just said "Scan failed" with no
+        # signal of the underlying cause (CalledProcessError vs.
+        # JSONDecodeError vs. permissions vs. OOM all looked identical).
+        logger.exception('Manual package scan failed')
         return JsonResponse({
             'success': False,
             'error': 'Scan failed'
@@ -139,12 +172,10 @@ def run_package_scan(request):
 
 
 @login_required
+@_staff_or_superuser_api
 @require_http_methods(["POST"])
 def update_packages(request):
     """Update system packages via web interface (OPTIONAL)"""
-    if not (request.user.is_superuser or request.user.is_staff):
-        return JsonResponse({'error': 'Permission denied'}, status=403)
-
     try:
         security_only = request.POST.get('security_only') == 'true'
         packages = request.POST.get('packages', '')

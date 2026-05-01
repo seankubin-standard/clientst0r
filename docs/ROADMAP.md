@@ -96,6 +96,7 @@ Not a single phase — runs alongside 1-6.
   - Codebase-wide sweep of deprecated datetime calls; fixes tz-naive query bug in audit-log cleanup + expired-session cleanup on non-UTC servers *(shipped v3.17.174)*
   - Auto-apply-gunicorn-fix migration silenced on test runners + fresh dev installs (no longer spams "Fix script exited with code 1" banners) *(shipped v3.17.175)*
   - Defender adapter flagged as a reference stub in label + test-connection message + module docstring so operators don't pick it expecting live alert flow *(shipped v3.17.179)*
+  - Silent `except Exception: pass` swallowers in `core/views.py` audit-log fallback + `core/security_views.py` scan handler tightened to log real exceptions; package-scanner JSON endpoints use a `_staff_or_superuser_api` decorator instead of inline checks *(shipped v3.17.180)*
 
 ## Phase 9 — Security alert ingestion: EDR / AV / Firewall on the dashboard **(M)** [shipped — v3.17.168]
 

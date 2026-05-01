@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.180] - 2026-05-01
+
+### Fixed
+- **Silent exception swallowers in `core/` now log instead of disappearing** (Phase 7 polish — survey items #2 + #4):
+  - `core/views.py` — the manual update-check endpoint had a double-catch around `AuditLog.objects.create()` to handle older DB schemas missing `extra_data`. The first catch is justified (legacy schema fallback), but the second `except Exception: pass` was hiding any real DB issue. Now logs via `logger.exception(...)` so a broken audit table is visible to ops.
+  - `core/security_views.py` — `run_package_scan()`'s outer `except Exception:` returned a generic "Scan failed" 500 with no signal of the actual failure. `CalledProcessError`, `JSONDecodeError`, permission errors, OOM all looked identical. Now logs the real exception via `logger.exception('Manual package scan failed')` before returning the same response, so ops can triage.
+  - `core/security_views.py` — the `try: subprocess.run(['sudo', '-n', 'apt-get', 'update']) except: pass` that wraps the optional pre-scan apt-cache refresh now narrows to `(TimeoutExpired, SubprocessError, FileNotFoundError)` and logs at INFO. Bare `except:` catches `KeyboardInterrupt` / `SystemExit` too — replaced.
+
+### Changed
+- **Two package-scanner API endpoints now use a decorator instead of inline staff-check** (Phase 7 polish — survey item #3). New `_staff_or_superuser_api` decorator at the top of `core/security_views.py` replaces the duplicated `if not (request.user.is_superuser or request.user.is_staff): return JsonResponse({'error': 'Permission denied'}, status=403)` block on `run_package_scan` and `update_packages`. Behavior identical (same 403 JSON response). The other 7 inline checks elsewhere in the file are deferred to a follow-up release — narrow scope keeps risk low.
+
 ## [3.17.179] - 2026-05-01
 
 ### Changed

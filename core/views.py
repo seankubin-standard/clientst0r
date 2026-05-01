@@ -324,6 +324,9 @@ def check_updates_now(request):
             extra_data=update_info
         )
     except Exception:
+        # Likely the legacy schema without `extra_data`. Try the slim row;
+        # if THAT fails too, log it — silently swallowing the second failure
+        # makes real DB issues invisible during update checks.
         try:
             AuditLog.objects.create(
                 action='update_check',
@@ -332,7 +335,7 @@ def check_updates_now(request):
                 username=request.user.username,
             )
         except Exception:
-            pass
+            logger.exception('Failed to write update_check audit log')
 
     if update_info.get('error'):
         messages.error(request, f"Failed to check for updates: {update_info['error']}")
