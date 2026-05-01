@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.182] - 2026-05-01
+
+### Changed — UX polish on Phase 9 forms
+- **Auto-Ticket Rule and Vendor Connection forms cleaned up** (user-reported sloppy layout). Both pages were minimal generic field loops with hand-rolled inline `<style>` blocks doing manual form-control styling that didn't match the rest of the project.
+  - **`security_alerts/forms.py`** — every widget now declares its Bootstrap class (`form-control` / `form-select` / `form-check-input`) explicitly. Several fields gained inline placeholders so empty fields show the expected shape (e.g. `priority code → "P1 / P2 / P3 / P4"`, `match_provider → "e.g. security_defender (blank = any provider)"`).
+  - **`templates/security_alerts/connection_form.html`** — full rewrite. Card-based layout with four sections: Identity (name + provider + category + client), Endpoint & credentials (base URL + encrypted credentials blob), Polling & activity (interval + active/sync toggles as form-switches), Notes. Webhook setup callout (when editing) now shows the URL and HMAC secret with one-click copy buttons. Required-field asterisks added.
+  - **`templates/security_alerts/rule_form.html`** — full rewrite. Card-based layout with five sections: Identity (name + priority + active toggle), Match clauses (provider + category + min severity + client, with an "ALL must match" badge to make the AND-semantics obvious), Action (action type + queue + priority code + assignee), Suppression window (with a "leave blank to never suppress" hint), Notes.
+  - Both forms now have proper "Back to list" buttons in the header, breadcrumbs, and the form-control classes come from widgets so the inline `<style>` blocks are gone.
+- **Tests:** `security_alerts.tests` 9/9 passing; templates parse clean.
+
 ## [3.17.181] - 2026-05-01
 
 ### Added

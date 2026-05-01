@@ -1,5 +1,15 @@
 from django import forms
-from .models import SecurityVendorConnection, SecurityAlertRule
+from .models import SecurityAlertRule, SecurityVendorConnection
+
+
+# Bootstrap 5 widget classes applied at form-class level so the templates
+# don't need ad-hoc CSS overrides (the previous inline `<style>` block in
+# rule_form.html / connection_form.html was working around this).
+_TEXT = {'class': 'form-control'}
+_SELECT = {'class': 'form-select'}
+_CHECK = {'class': 'form-check-input'}
+_NUMBER = {'class': 'form-control', 'inputmode': 'numeric'}
+_URL = {'class': 'form-control', 'inputmode': 'url'}
 
 
 class SecurityVendorConnectionForm(forms.ModelForm):
@@ -11,8 +21,18 @@ class SecurityVendorConnectionForm(forms.ModelForm):
             'poll_interval_minutes', 'is_active', 'sync_enabled', 'notes',
         ]
         widgets = {
-            'credentials_encrypted': forms.Textarea(attrs={'rows': 3}),
-            'notes': forms.Textarea(attrs={'rows': 3}),
+            'name': forms.TextInput(attrs=_TEXT),
+            'provider': forms.Select(attrs=_SELECT),
+            'category': forms.Select(attrs=_SELECT),
+            'client_org': forms.Select(attrs=_SELECT),
+            'base_url': forms.URLInput(attrs=_URL),
+            'credentials_encrypted': forms.Textarea(attrs={**_TEXT, 'rows': 3,
+                'placeholder': 'JSON or vendor-specific credential blob (encrypted at rest)'}),
+            'poll_interval_minutes': forms.NumberInput(attrs={**_NUMBER, 'min': 1, 'max': 1440}),
+            'is_active': forms.CheckboxInput(attrs=_CHECK),
+            'sync_enabled': forms.CheckboxInput(attrs=_CHECK),
+            'notes': forms.Textarea(attrs={**_TEXT, 'rows': 3,
+                'placeholder': 'Internal notes — e.g. who set this up, ticket links, vendor portal account.'}),
         }
 
 
@@ -28,5 +48,23 @@ class SecurityAlertRuleForm(forms.ModelForm):
             'notes',
         ]
         widgets = {
-            'notes': forms.Textarea(attrs={'rows': 3}),
+            'name': forms.TextInput(attrs=_TEXT),
+            'is_active': forms.CheckboxInput(attrs=_CHECK),
+            'priority': forms.NumberInput(attrs={**_NUMBER, 'min': 0, 'max': 9999}),
+            'match_provider': forms.TextInput(attrs={**_TEXT,
+                'placeholder': 'e.g. security_defender (blank = any provider)'}),
+            'match_category': forms.TextInput(attrs={**_TEXT,
+                'placeholder': 'e.g. security_edr (blank = any category)'}),
+            'match_severity_min': forms.Select(attrs=_SELECT),
+            'match_client_org': forms.Select(attrs=_SELECT),
+            'action': forms.TextInput(attrs={**_TEXT, 'placeholder': 'create_ticket'}),
+            'ticket_queue_id': forms.NumberInput(attrs=_NUMBER),
+            'ticket_priority_code': forms.TextInput(attrs={**_TEXT, 'placeholder': 'P1 / P2 / P3 / P4'}),
+            'ticket_assignee': forms.Select(attrs=_SELECT),
+            'suppress_start_hour': forms.NumberInput(attrs={**_NUMBER, 'min': 0, 'max': 23,
+                'placeholder': '0-23'}),
+            'suppress_end_hour': forms.NumberInput(attrs={**_NUMBER, 'min': 0, 'max': 23,
+                'placeholder': '0-23'}),
+            'notes': forms.Textarea(attrs={**_TEXT, 'rows': 3,
+                'placeholder': 'Why this rule exists; who owns it.'}),
         }
