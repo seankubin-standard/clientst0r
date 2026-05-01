@@ -228,6 +228,21 @@ class ScreenshotGenerator:
             ('organizations-grid', '/accounts/organizations/?view=grid'),
             ('processes', '/processes/'),
             ('system-updates', '/core/settings/updates/'),
+
+            # Phase 9 (v3.17.168) — Security alert ingestion + auto-ticket
+            # rules. Forms polished in v3.17.182.
+            ('security-alerts-list', '/security/alerts/'),
+            ('security-alerts-connections', '/security/connections/'),
+            ('security-alerts-connection-new', '/security/connections/new/'),
+            ('security-alerts-rules', '/security/rules/'),
+            ('security-alerts-rule-new', '/security/rules/new/'),
+
+            # Integrations forms polished in v3.17.183.
+            ('integrations-unifi-new', '/integrations/unifi/create/'),
+            ('integrations-m365-new', '/integrations/m365/create/'),
+
+            # Roadmap surfaces (in-app + JSON). Annotated through v3.17.185.
+            ('roadmap', '/core/roadmap/'),
         ]
         if ticket_number:
             pages.append(('psa-ticket-detail', f'/psa/t/{ticket_number}/'))

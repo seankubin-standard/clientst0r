@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.186] - 2026-05-01
+
+### Documentation
+- **Documentation refreshed with annotated screenshots for the recent polish wave.**
+  - `scripts/generate_screenshots_v2.py` extended with 8 new pages: Phase 9 surfaces (`security-alerts-list`, `security-alerts-connections`, `security-alerts-connection-new`, `security-alerts-rules`, `security-alerts-rule-new`) capturing the v3.17.182 form polish; `integrations-unifi-new` + `integrations-m365-new` capturing the v3.17.183 form polish; and a `roadmap` capture of the in-app `/core/roadmap/` page.
+  - **8 new PNGs** committed to `docs/screenshots/`. **16 existing PNGs refreshed** as a side effect of running the script against current live data (PSA ticket lists, dashboards, organizations, etc. have all shifted since the last capture run on 2026-04-29).
+  - **README updated** with three new gallery sections, each with descriptive captions explaining what the screenshot shows: "🛡️ Security Alert Ingestion (Phase 9, forms polished v3.17.182)", "🔌 Integration Connection Forms (polished v3.17.183)", "🗺️ Live Roadmap". The bottom "View All Screenshots" detail block also got matching entries.
+  - **Stale version badge** at the top of the README updated from v3.17.143 → v3.17.185.
+  - Total screenshot count in README: 46 → 60+.
+- The polished-form screenshots show the new card-based section layout with proper Bootstrap form-control widgets (replacing the old generic `{% for field in form %}` loops with hand-rolled inline `<style>`). The "Install Client St0r" PWA install prompt overlays a small portion of some captures — pre-existing system behavior, doesn't obscure the form structure.
+
 ## [3.17.185] - 2026-05-01
 
 ### Changed

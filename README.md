@@ -1,7 +1,7 @@
 # Client St0r
 
 [![GitHub Stars](https://img.shields.io/github/stars/agit8or1/clientst0r?style=social)](https://github.com/agit8or1/clientst0r/stargazers)
-[![Version 3.17.143](https://img.shields.io/badge/version-3.17.143-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
+[![Version 3.17.185](https://img.shields.io/badge/version-3.17.185-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green)](https://github.com/agit8or1/clientst0r)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-blue)](https://www.djangoproject.com/)
@@ -137,6 +137,38 @@ Client St0r is commonly evaluated as an **open-source IT Glue alternative** and 
 ![Distributors — Ingram / Pax8 / Synnex](docs/screenshots/integrations-distributors.png)
 ![Accounting — QuickBooks / Xero](docs/screenshots/integrations-accounting.png)
 
+### 🛡️ Security Alert Ingestion *(Phase 9 — v3.17.168, forms polished v3.17.182)*
+
+Unified triage queue for EDR / AV / firewall alerts from any vendor, plus auto-ticket rules that fire on matching inbound alerts.
+
+![Security alerts list](docs/screenshots/security-alerts-list.png)
+*Triage queue with severity / vendor / status filter chips. Bulk acknowledge, dismiss, and convert-to-ticket actions.*
+
+![Vendor connections](docs/screenshots/security-alerts-connections.png)
+*All connected providers with status pill, last-sync, and per-row Test / Sync / Edit actions.*
+
+![New vendor connection](docs/screenshots/security-alerts-connection-new.png)
+*Card-based form with sectioned layout (Identity, Endpoint & credentials, Polling & activity, Notes). Webhook URL + HMAC secret with one-click copy buttons appear when editing an existing connection.*
+
+![Auto-ticket rules](docs/screenshots/security-alerts-rules.png)
+*Rules list ordered by priority — lower numbers fire first.*
+
+![New auto-ticket rule](docs/screenshots/security-alerts-rule-new.png)
+*Match clauses, action, and suppression window grouped into clearly-labeled sections. The "ALL must match" badge on Match clauses makes the AND-semantics obvious.*
+
+### 🔌 Integration Connection Forms *(polished v3.17.183)*
+
+![New UniFi connection](docs/screenshots/integrations-unifi-new.png)
+*Self-hosted vs. cloud Site Manager mode toggle; self-hosted-only fields hide automatically when Cloud is selected. Setup-guide sidebar shows the API key procedure for both flavors.*
+
+![New M365 connection](docs/screenshots/integrations-m365-new.png)
+*Tenant ID + Azure app-registration credentials. Setup-guide sidebar lists the exact Graph API permissions required.*
+
+### 🗺️ Live Roadmap *(rendered from `docs/ROADMAP.md`)*
+
+![Live roadmap page](docs/screenshots/roadmap.png)
+*The roadmap is published in four places: the in-app `/core/roadmap/` page (shown), the About-page card, the GitHub markdown file at `docs/ROADMAP.md`, and a polling-friendly JSON feed at `/core/roadmap.json` for status pages and external dashboards.*
+
 A complete in-house ticketing system:
 
 **Ticketing & service desk**
@@ -175,7 +207,7 @@ A complete in-house ticketing system:
 </table>
 
 <details>
-<summary><strong>📋 View All Screenshots (46 total)</strong></summary>
+<summary><strong>📋 View All Screenshots (60+ total)</strong></summary>
 
 ### Core Features
 - [Dashboard](docs/screenshots/dashboard.png) - Main dashboard with random backgrounds
@@ -234,6 +266,20 @@ A complete in-house ticketing system:
 - [Security Dashboard](docs/screenshots/security-dashboard.png) - Security overview and vulnerability status
 - [Vulnerability Scans](docs/screenshots/vulnerability-scans.png) - Snyk scan history
 - [Scan Configuration](docs/screenshots/scan-configuration.png) - Security scan settings
+
+### Security Alert Ingestion *(Phase 9, v3.17.168 — forms polished v3.17.182)*
+- [Alerts list](docs/screenshots/security-alerts-list.png) - Unified triage queue with severity / vendor / status filter chips
+- [Vendor connections list](docs/screenshots/security-alerts-connections.png) - Status pill + last-sync + per-row test/sync actions
+- [New vendor connection form](docs/screenshots/security-alerts-connection-new.png) - Card-based layout; webhook URL + HMAC secret with copy buttons on edit
+- [Auto-ticket rules list](docs/screenshots/security-alerts-rules.png) - Rules ordered by priority; lower numbers fire first
+- [New auto-ticket rule form](docs/screenshots/security-alerts-rule-new.png) - Match clauses with "ALL must match" badge, action, suppression window
+
+### Integration Connection Forms *(polished v3.17.183)*
+- [New UniFi connection](docs/screenshots/integrations-unifi-new.png) - Self-hosted vs. cloud mode toggle; setup-guide sidebar
+- [New M365 connection](docs/screenshots/integrations-m365-new.png) - Tenant ID + Azure app credentials; required Graph permissions in sidebar
+
+### Live Roadmap
+- [Roadmap page](docs/screenshots/roadmap.png) - Rendered from `docs/ROADMAP.md`; also published as JSON feed at `/core/roadmap.json` for external status-page polling
 
 ### System Administration
 - [Settings](docs/screenshots/settings-general.png) - General system configuration

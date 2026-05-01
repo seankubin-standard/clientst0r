@@ -102,6 +102,7 @@ Not a single phase — runs alongside 1-6.
   - UniFi + M365 connection forms rewritten with the same card-section layout (the only other forms using the sloppy generic field-loop pattern; audit confirmed the rest of the integration forms were already clean) *(shipped v3.17.183)*
   - Bare `except:` clauses replaced with `except Exception:` across 24 sites in 12 modules — no more accidental `SystemExit`/`KeyboardInterrupt` swallowing *(shipped v3.17.184)*
   - `core/security_views.py` inline staff-check sweep finished — all 9 endpoints now use `@_staff_or_superuser_view` (HTML) or `@_staff_or_superuser_api` (JSON) decorators; latent silent `except Exception` in `run_python_scan` also logged *(shipped v3.17.185)*
+  - Documentation refresh: 8 new screenshots for Phase 9 + integration forms + the roadmap page; README updated with annotated captions; screenshot script extended with the new pages *(shipped v3.17.186)*
 
 ## Phase 9 — Security alert ingestion: EDR / AV / Firewall on the dashboard **(M)** [shipped — v3.17.168]
 
