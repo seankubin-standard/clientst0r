@@ -3028,6 +3028,11 @@ class EmailMessage(models.Model):
     ticket = models.ForeignKey(
         Ticket, on_delete=models.CASCADE,
         related_name='email_messages',
+        null=True, blank=True,
+        help_text='Phase 10.3: NULL only for quarantined inbound mail '
+                  'that was rejected before any ticket was created or '
+                  'matched. Normal inbound + outbound rows always have '
+                  'a ticket.',
     )
     ingestion_config = models.ForeignKey(
         EmailIngestionConfig,
@@ -3054,6 +3059,17 @@ class EmailMessage(models.Model):
 
     received_at = models.DateTimeField(default=timezone.now, db_index=True)
 
+    # Phase 10.3: quarantine flag for inbound mail that was rejected before
+    # ticket creation (auto-responder loop, DMARC fail, spam keywords).
+    # Quarantined rows still exist so admins can audit what got filtered.
+    # `ticket` may be NULL for quarantined inbound — there's no ticket to
+    # attach to.
+    was_quarantined = models.BooleanField(default=False, db_index=True,
+        help_text='Phase 10.3: True when the message was filtered out of the '
+                  'normal ingestion path (auto-responder, DMARC fail, spam).')
+    quarantine_reason = models.CharField(max_length=200, blank=True,
+        help_text='One-line reason; cross-check raw headers for detail.')
+
     class Meta:
         db_table = 'psa_email_messages'
         ordering = ['-received_at']
@@ -3066,6 +3082,7 @@ class EmailMessage(models.Model):
         indexes = [
             models.Index(fields=['ticket', 'received_at']),
             models.Index(fields=['organization', 'in_reply_to']),
+            models.Index(fields=['organization', 'was_quarantined', 'received_at']),
         ]
 
     def __str__(self):
@@ -3080,3 +3097,98 @@ class EmailMessage(models.Model):
         if not value:
             return []
         return [tok.strip() for tok in value.split() if tok.strip().startswith('<')]
+
+
+# ---------------------------------------------------------------------------
+# Phase 10.3 — Routing rules. Sender-domain → client-org auto-routing so a
+# generic MSP help@ mailbox can fan inbound mail out to the right client
+# tenant + queue + priority. Lower `order` fires first; first match wins.
+# ---------------------------------------------------------------------------
+
+class EmailRoutingRule(models.Model):
+    """
+    Per-MSP-tenant rule mapping sender-email shape to a client organization
+    (and optional queue / priority overrides).
+
+    `sender_domain_glob` matches against the sender's domain (everything
+    after the @). Supports plain domains (``acme.com``) and wildcard
+    subdomain patterns (``*.acme.com``). Whole-string match on full email
+    (``noreply@acme.com``) is also supported by including the @.
+    """
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_email_routing_rules',
+        help_text='MSP tenant that owns this rule.',
+    )
+    name = models.CharField(max_length=120,
+        help_text='Free-text label shown in the rules list.')
+    sender_domain_glob = models.CharField(max_length=200,
+        help_text='Match pattern. Examples: "acme.com" (exact domain), '
+                  '"*.acme.com" (any subdomain), "noreply@acme.com" '
+                  '(specific sender). Case-insensitive.')
+
+    target_client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_routing_targeted_by',
+        help_text='Client org to route matching alerts/tickets to.',
+    )
+    queue_override = models.ForeignKey(
+        Queue, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='email_routing_rules',
+        help_text='Optional queue override; falls back to the ingestion '
+                  'config default when blank.',
+    )
+    priority_override = models.ForeignKey(
+        TicketPriority, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='email_routing_rules',
+        help_text='Optional priority override; falls back to the ingestion '
+                  'config default when blank.',
+    )
+
+    enabled = models.BooleanField(default=True)
+    order = models.PositiveIntegerField(default=100,
+        help_text='Lower fires first; first match wins.')
+
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_email_routing_rules'
+        ordering = ['order', 'name']
+        indexes = [
+            models.Index(fields=['organization', 'enabled', 'order']),
+        ]
+
+    def __str__(self):
+        return f'{self.sender_domain_glob} → {self.target_client_org.name}'
+
+    def matches(self, sender_email: str) -> bool:
+        """
+        True if this rule's pattern matches ``sender_email``. The pattern
+        is matched against either the full email (when it contains @) or
+        just the domain part (when it doesn't).
+        """
+        if not sender_email or not self.sender_domain_glob:
+            return False
+        sender = sender_email.strip().lower()
+        pattern = self.sender_domain_glob.strip().lower()
+        # Pattern with @ → full-email comparison.
+        if '@' in pattern:
+            return _glob_match(pattern, sender)
+        # Otherwise compare against the domain only.
+        if '@' not in sender:
+            return False
+        domain = sender.split('@', 1)[1]
+        return _glob_match(pattern, domain)
+
+
+def _glob_match(pattern: str, value: str) -> bool:
+    """
+    Tiny glob matcher: ``*`` matches any number of characters in any
+    segment of the value. Used by ``EmailRoutingRule.matches`` and the
+    auto-responder detector. Stdlib ``fnmatch`` is fine for this — kept
+    explicit so the matching semantics are visible.
+    """
+    import fnmatch
+    return fnmatch.fnmatchcase(value, pattern)

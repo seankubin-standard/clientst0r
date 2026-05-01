@@ -5037,3 +5037,226 @@ class MalformedMimeTests(TestCase, _EmailPollerSetup):
         # or it skipped silently — but it must not have raised.
         # Either outcome is acceptable; the assertion is "we got here".
         self.assertTrue(True)
+
+
+# ---------------------------------------------------------------------------
+# Phase 10.3 — Auto-responder detection, DMARC verdict, spam keywords,
+# routing rules. Most of this is pure-function tests; integration tests at
+# the bottom drive the poller end-to-end with mocked IMAP.
+# ---------------------------------------------------------------------------
+
+class AutoResponderDetectionTests(TestCase):
+    def _msg(self, **headers):
+        import email
+        from email.mime.text import MIMEText
+        m = MIMEText('hi', 'plain', 'utf-8')
+        for k, v in headers.items():
+            del m[k]
+            m[k] = v
+        return email.message_from_bytes(m.as_bytes())
+
+    def test_auto_submitted_header_quarantines(self):
+        from psa.email_parsing import detect_auto_responder
+        m = self._msg(**{'Auto-Submitted': 'auto-replied'})
+        self.assertIn('Auto-Submitted', detect_auto_responder(m))
+
+    def test_x_autoreply_header_quarantines(self):
+        from psa.email_parsing import detect_auto_responder
+        m = self._msg(**{'X-Autoreply': 'yes'})
+        self.assertIn('X-Autoreply', detect_auto_responder(m))
+
+    def test_precedence_bulk_quarantines(self):
+        from psa.email_parsing import detect_auto_responder
+        m = self._msg(Precedence='bulk')
+        self.assertIn('Precedence', detect_auto_responder(m))
+
+    def test_subject_out_of_office_quarantines_when_no_header(self):
+        from psa.email_parsing import detect_auto_responder
+        m = self._msg(Subject='Out of Office: back Monday')
+        self.assertIn('subject heuristic', detect_auto_responder(m))
+
+    def test_normal_reply_passes_through(self):
+        from psa.email_parsing import detect_auto_responder
+        m = self._msg(Subject='Re: my support ticket')
+        self.assertEqual(detect_auto_responder(m), '')
+
+
+class AuthenticationResultsParseTests(TestCase):
+    def test_parses_dmarc_pass(self):
+        import email
+        raw = (
+            b'Authentication-Results: mx.example.com;\n'
+            b' spf=pass smtp.mailfrom=alice@example.com;\n'
+            b' dkim=pass header.d=example.com;\n'
+            b' dmarc=pass action=none\n'
+            b'From: alice@example.com\n'
+            b'Subject: hi\n\nbody\n'
+        )
+        m = email.message_from_bytes(raw)
+        from psa.email_parsing import parse_authentication_results
+        self.assertEqual(parse_authentication_results(m).get('dmarc'), 'pass')
+        self.assertEqual(parse_authentication_results(m).get('dkim'), 'pass')
+
+    def test_no_header_returns_empty(self):
+        import email
+        m = email.message_from_bytes(b'From: a@b\n\nx\n')
+        from psa.email_parsing import parse_authentication_results
+        self.assertEqual(parse_authentication_results(m), {})
+
+
+class SpamKeywordScoreTests(TestCase):
+    def test_score_zero_for_clean_text(self):
+        from psa.email_parsing import spam_keyword_score
+        self.assertEqual(spam_keyword_score('Please reset my password thanks'), 0)
+
+    def test_score_increments_per_pattern(self):
+        from psa.email_parsing import spam_keyword_score
+        text = 'CONGRATULATIONS WINNER! Claim your prize, Nigerian Prince here.'
+        # Hits: "congratulations ... winner" + "claim your prize" + "nigerian ... prince"
+        self.assertGreaterEqual(spam_keyword_score(text), 3)
+
+
+class EmailRoutingRuleMatchTests(TestCase):
+    def setUp(self):
+        from core.models import Organization
+        from psa.models import EmailRoutingRule
+        self.msp = Organization.objects.create(name='MSP', slug='routing-msp')
+        self.client_org = Organization.objects.create(name='Acme Co', slug='routing-acme')
+        self.rule_domain = EmailRoutingRule.objects.create(
+            organization=self.msp, name='Acme exact',
+            sender_domain_glob='acme.com', target_client_org=self.client_org,
+        )
+        self.rule_subdomain = EmailRoutingRule.objects.create(
+            organization=self.msp, name='Acme subs',
+            sender_domain_glob='*.acme.com', target_client_org=self.client_org,
+            order=200,
+        )
+        self.rule_specific_sender = EmailRoutingRule.objects.create(
+            organization=self.msp, name='Acme noreply',
+            sender_domain_glob='noreply@acme.com', target_client_org=self.client_org,
+            order=10,
+        )
+
+    def test_exact_domain_match(self):
+        self.assertTrue(self.rule_domain.matches('alice@acme.com'))
+        self.assertFalse(self.rule_domain.matches('alice@globex.com'))
+
+    def test_subdomain_glob_match(self):
+        self.assertTrue(self.rule_subdomain.matches('alerts@api.acme.com'))
+        # The wildcard "*.acme.com" pattern requires at least one subdomain
+        # before the suffix — bare "acme.com" should NOT match the subdomain rule.
+        self.assertFalse(self.rule_subdomain.matches('alice@acme.com'))
+
+    def test_full_email_match(self):
+        self.assertTrue(self.rule_specific_sender.matches('noreply@acme.com'))
+        self.assertFalse(self.rule_specific_sender.matches('alice@acme.com'))
+
+    def test_empty_inputs_no_match(self):
+        self.assertFalse(self.rule_domain.matches(''))
+        self.assertFalse(self.rule_domain.matches(None))
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class AutoResponderQuarantineIntegrationTests(TestCase, _EmailPollerSetup):
+    """Auto-responder inbound is persisted as quarantined and never creates
+    a ticket."""
+
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orgaresp')
+
+    def test_auto_submitted_inbound_does_not_create_ticket(self):
+        from psa.management.commands import psa_poll_email
+        from psa.models import EmailMessage
+        # Manually add Auto-Submitted via a header injected into a normal mime body.
+        raw = (
+            b'From: bot@example.com\r\n'
+            b'To: help@orgaresp.example.com\r\n'
+            b'Subject: out of office\r\n'
+            b'Message-ID: <bot-1@example.com>\r\n'
+            b'Auto-Submitted: auto-replied\r\n'
+            b'Content-Type: text/plain; charset=utf-8\r\n\r\n'
+            b'I am away.\r\n'
+        )
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+        # No ticket created.
+        from psa.models import Ticket
+        self.assertEqual(Ticket.objects.filter(organization=self.org).count(), 0)
+        # Quarantined EmailMessage row exists with no ticket and a reason.
+        em = EmailMessage.objects.get(message_id='<bot-1@example.com>')
+        self.assertTrue(em.was_quarantined)
+        self.assertIsNone(em.ticket_id)
+        self.assertIn('Auto-Submitted', em.quarantine_reason)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class RoutingRuleIntegrationTests(TestCase, _EmailPollerSetup):
+    """A sender-domain routing rule remaps inbound mail from the MSP's
+    config-org tenant to a client org tenant."""
+
+    def setUp(self):
+        self._seed_psa()
+        # config_org is the MSP that owns the routing rule.
+        self.msp_org, self.cfg = self._make_org_with_config('orgmsp-routing')
+        # client_org is the routing target.
+        from core.models import Organization
+        self.client_org = Organization.objects.create(
+            name='Routed Client', slug='routed-client',
+        )
+        from psa.models import EmailRoutingRule
+        EmailRoutingRule.objects.create(
+            organization=self.msp_org, name='Globex routing',
+            sender_domain_glob='globex.example',
+            target_client_org=self.client_org,
+        )
+
+    def test_inbound_from_matching_domain_lands_in_client_org(self):
+        from psa.management.commands import psa_poll_email
+        raw = _build_raw_email(
+            message_id='<route-1@globex.example>',
+            from_addr='alice@globex.example',
+            to_addr='help@orgmsp-routing.example.com',
+            subject='Printer down',
+            body='it does not work',
+        )
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+        # Ticket landed in client_org, NOT the MSP config_org.
+        self.assertEqual(Ticket.objects.filter(organization=self.client_org).count(), 1)
+        self.assertEqual(Ticket.objects.filter(organization=self.msp_org).count(), 0)
+
+    def test_inbound_from_unmatched_domain_stays_in_msp_org(self):
+        from psa.management.commands import psa_poll_email
+        raw = _build_raw_email(
+            message_id='<noroute-1@stranger.example>',
+            from_addr='alice@stranger.example',
+            to_addr='help@orgmsp-routing.example.com',
+            subject='Help',
+            body='hi',
+        )
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+        self.assertEqual(Ticket.objects.filter(organization=self.msp_org).count(), 1)
+        self.assertEqual(Ticket.objects.filter(organization=self.client_org).count(), 0)

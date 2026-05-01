@@ -35,10 +35,13 @@ from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from psa.email_parsing import clean_reply_body, sanitize_html
+from psa.email_parsing import (
+    clean_reply_body, detect_auto_responder, parse_authentication_results,
+    sanitize_html, spam_keyword_score,
+)
 from psa.models import (
-    EmailIngestionConfig, EmailMessage, Ticket, TicketAttachment,
-    TicketComment, TicketStatus,
+    EmailIngestionConfig, EmailMessage, EmailRoutingRule, Ticket,
+    TicketAttachment, TicketComment, TicketStatus,
 )
 
 
@@ -176,6 +179,56 @@ def _ingest_attachments(msg, *, ticket, comment) -> tuple[int, int]:
     return saved, skipped
 
 
+def _quarantine_reason(msg, *, dmarc_strict: bool, spam_threshold: int) -> str:
+    """
+    Phase 10.3: classify ``msg`` for quarantine BEFORE any ticket / contact
+    work happens. Returns a one-line reason string when the message should
+    be quarantined; '' otherwise.
+
+    Order:
+      1. Auto-responder / NDR / out-of-office headers + heuristics.
+      2. DMARC verdict (only enforced when ``dmarc_strict``).
+      3. Spam-keyword score (only enforced when ``spam_threshold > 0``).
+    """
+    reason = detect_auto_responder(msg)
+    if reason:
+        return reason
+
+    if dmarc_strict:
+        verdicts = parse_authentication_results(msg)
+        dmarc = verdicts.get('dmarc')
+        if dmarc and dmarc not in ('pass', 'bestguesspass'):
+            return f'DMARC verdict={dmarc}'
+
+    if spam_threshold > 0:
+        # Score against subject + body together — phishing subjects often
+        # contain markers the body avoids.
+        subject = _decode_header(msg.get('Subject') or '')
+        text_body, _html = _extract_bodies(msg)
+        score = spam_keyword_score(f'{subject}\n{text_body}')
+        if score >= spam_threshold:
+            return f'spam keyword score={score} (threshold={spam_threshold})'
+    return ''
+
+
+def _route_for_sender(sender_email: str, msp_org):
+    """
+    Phase 10.3: walk active EmailRoutingRule rows owned by ``msp_org``
+    in priority order; return the first match or None.
+    """
+    if not sender_email or msp_org is None:
+        return None
+    qs = (EmailRoutingRule.objects
+          .filter(organization=msp_org, enabled=True)
+          .select_related('target_client_org', 'queue_override',
+                          'priority_override')
+          .order_by('order', 'name'))
+    for rule in qs:
+        if rule.matches(sender_email):
+            return rule
+    return None
+
+
 def _thread_target(msg, organization) -> Ticket | None:
     """
     Header-based threading. Returns the matching Ticket or None.
@@ -267,6 +320,10 @@ class Command(BaseCommand):
             created_count = 0
             replied_count = 0
 
+            # Phase 10.3: per-config gating tunables.
+            dmarc_strict = bool(getattr(config, 'enforce_dmarc', False))
+            spam_threshold = int(getattr(config, 'spam_keyword_threshold', 0) or 0)
+
             for msg_id in ids:
                 typ, msg_data = mail.fetch(msg_id, '(RFC822)')
                 if typ != 'OK' or not msg_data or not msg_data[0]:
@@ -283,17 +340,59 @@ class Command(BaseCommand):
                 in_reply_to_hdr = (msg.get('In-Reply-To') or '').strip()[:998]
                 references_hdr = msg.get('References') or ''
 
+                # Phase 10.3: quarantine gate — auto-responder, DMARC, spam.
+                # Quarantined inbound is persisted with was_quarantined=True
+                # but NEVER creates a ticket. Skips threading + attachment
+                # ingest below.
+                quarantine = _quarantine_reason(
+                    msg, dmarc_strict=dmarc_strict, spam_threshold=spam_threshold,
+                )
+                if quarantine:
+                    if message_id_hdr:
+                        EmailMessage.objects.get_or_create(
+                            organization=config.organization,
+                            message_id=message_id_hdr,
+                            defaults={
+                                'ingestion_config': config,
+                                'direction': 'in',
+                                'in_reply_to': in_reply_to_hdr,
+                                'references': references_hdr[:8000],
+                                'from_email': (from_email or '')[:320],
+                                'subject': subject[:998],
+                                'headers_raw': '\n'.join(f'{k}: {v}' for k, v in msg.items())[:16000],
+                                'body_text': text_body[:50000],
+                                'body_html': sanitize_html(html_body)[:200000],
+                                'was_quarantined': True,
+                                'quarantine_reason': quarantine[:200],
+                            },
+                        )
+                    logger.info('quarantined inbound msg=%r reason=%s',
+                                message_id_hdr or '(no message-id)', quarantine)
+                    mail.store(msg_id, '+FLAGS', '\\Seen')
+                    continue
+
+                # Phase 10.3: routing rule — sender-domain glob → per-client
+                # remap. The MSP's configured ingestion-config organization
+                # is the *MSP tenant*; routing rules belong to the MSP and
+                # may redirect this message into one of its client orgs.
+                routing_rule = _route_for_sender(from_email, config.organization)
+                target_org = routing_rule.target_client_org if routing_rule else config.organization
+                target_queue = (routing_rule.queue_override if routing_rule and routing_rule.queue_override
+                                else config.default_queue)
+                target_priority = (routing_rule.priority_override if routing_rule and routing_rule.priority_override
+                                   else config.default_priority)
+
                 # Threading order:
                 # 1. In-Reply-To / References against existing EmailMessage rows
                 # 2. Subject-regex fallback (legacy tickets without captured headers)
                 # 3. New ticket
-                target = _thread_target(msg, config.organization)
+                target = _thread_target(msg, target_org)
                 if target is None:
                     m = ticket_pattern.search(subject)
                     if m:
                         target = Ticket.objects.filter(
                             ticket_number=m.group(0),
-                            organization=config.organization,
+                            organization=target_org,
                         ).first()
 
                 comment = None
@@ -316,11 +415,11 @@ class Command(BaseCommand):
                     # New tickets keep the full body so context (quoted
                     # screenshots / FYI) isn't lost.
                     target = Ticket.objects.create(
-                        organization=config.organization,
+                        organization=target_org,
                         subject=subject or '(no subject)',
                         description=body,
-                        queue=config.default_queue,
-                        priority=config.default_priority,
+                        queue=target_queue,
+                        priority=target_priority,
                         ticket_type=config.default_type,
                         status=new_status,
                         source='email',
@@ -349,8 +448,12 @@ class Command(BaseCommand):
                                 getaddresses([_decode_header(msg.get('To', '')),
                                               _decode_header(msg.get('Cc', ''))])
                                 if addr]
+                    # The unique-together is (organization, message_id) — use
+                    # the *post-routing* target_org so a client-routed reply
+                    # can later thread cleanly off the same Message-ID inside
+                    # the right tenant.
                     EmailMessage.objects.get_or_create(
-                        organization=config.organization,
+                        organization=target_org,
                         message_id=message_id_hdr,
                         defaults={
                             'ticket': target,

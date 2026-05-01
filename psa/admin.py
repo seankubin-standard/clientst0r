@@ -2,6 +2,8 @@ from django.contrib import admin
 
 from .models import (
     ClientPSASettings,
+    EmailMessage,
+    EmailRoutingRule,
     Queue,
     Ticket,
     TicketAttachment,
@@ -30,3 +32,26 @@ admin.site.register(TicketPriority)
 admin.site.register(TicketType)
 admin.site.register(TicketComment)
 admin.site.register(TicketAttachment)
+
+
+@admin.register(EmailRoutingRule)
+class EmailRoutingRuleAdmin(admin.ModelAdmin):
+    list_display = ('name', 'organization', 'sender_domain_glob',
+                    'target_client_org', 'queue_override', 'priority_override',
+                    'enabled', 'order')
+    list_filter = ('enabled', 'organization', 'target_client_org')
+    search_fields = ('name', 'sender_domain_glob', 'notes')
+    list_editable = ('enabled', 'order')
+    ordering = ('order', 'name')
+
+
+@admin.register(EmailMessage)
+class EmailMessageAdmin(admin.ModelAdmin):
+    list_display = ('message_id', 'direction', 'organization', 'ticket',
+                    'from_email', 'subject', 'was_quarantined', 'received_at')
+    list_filter = ('direction', 'was_quarantined', 'organization')
+    search_fields = ('message_id', 'in_reply_to', 'from_email', 'subject',
+                     'quarantine_reason')
+    date_hierarchy = 'received_at'
+    raw_id_fields = ('ticket', 'ingestion_config')
+    readonly_fields = ('received_at',)

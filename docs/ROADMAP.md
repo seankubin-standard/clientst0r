@@ -155,14 +155,14 @@ Planned capabilities:
 - Thread reconstruction across replies + forwards *(10.1 — shipped v3.17.176)*
 - Reply correlation by Message-ID + In-Reply-To headers (more reliable than current subject-regex match) *(10.1 — shipped v3.17.176)*
 - Signature stripping *(10.2 — shipped v3.17.177)*
-- Loop detection (ignore auto-responders) *(planned — Phase 10.3)*
-- Spam scoring before ticket creation *(planned — Phase 10.3)*
+- Loop detection (ignore auto-responders) *(10.3 — shipped v3.17.188)*
+- Spam scoring before ticket creation *(10.3 — shipped v3.17.188)*
 - Attachment extraction with MIME-type allowlist *(10.2 — shipped v3.17.177)*
-- Automatic contact association (match sender email → existing contact / membership) *(planned — Phase 10.3)*
-- Per-client parsing rules *(planned — Phase 10.3)*
-- Ticket categorization (rule-based) *(planned — Phase 10.3)*
+- Automatic contact association (match sender email → existing contact / membership) *(planned — Phase 10.3.1)*
+- Per-client parsing rules *(10.3 — shipped v3.17.188 via EmailRoutingRule)*
+- Ticket categorization (rule-based) *(10.3 — shipped v3.17.188 via routing rule queue/priority overrides)*
 - Ticket tagging
-- Email security validation (SPF / DKIM / DMARC inspection) *(planned — Phase 10.3)*
+- Email security validation (SPF / DKIM / DMARC inspection) *(10.3 — shipped v3.17.188; opt-in via enforce_dmarc)*
 - Outbound threading + per-ticket conversation panel *(planned — Phase 10.4)*
 - Ticket summarization (**OPTIONAL AI**)
 - Intent detection (**OPTIONAL AI**)
@@ -181,9 +181,14 @@ Planned capabilities:
 - Attachment ingestion via `_ingest_attachments`: walks parts for `Content-Disposition: attachment`, validates against `PSA_EMAIL_ATTACHMENT_MIME_ALLOWLIST` (default: images, PDF, text, Office, ZIP) + `PSA_EMAIL_ATTACHMENT_MAX_BYTES` (default 25 MB), writes accepted files as `TicketAttachment` rows linked to the new comment. Rejected files logged at WARNING level. Filenames sanitized.
 - Inbound HTML bodies are sanitized at write time before landing on `EmailMessage.body_html`.
 
-### Sub-phase 10.3 — Routing rules + auto-responder & spam gating *(planned)*
+### Sub-phase 10.3 — Routing rules + auto-responder & spam gating *(shipped v3.17.188)*
 
-Sender-domain → client-org auto-route, regex-driven priority/category/queue rules, vacation/NDR loop detection, SPF/DKIM/DMARC verdict gate.
+- New `EmailRoutingRule` model with sender-domain glob matching (exact `acme.com`, subdomain `*.acme.com`, full-email `noreply@acme.com`); MSP's generic `help@msp.com` mailbox now fans inbound mail to the right client tenant + queue + priority. First match wins, ordered by `order` (lower fires first).
+- Auto-responder detection via `detect_auto_responder()` — `Auto-Submitted`, `X-Autoreply`, `Precedence: bulk/list/junk`, NDR `multipart/report`, plus subject heuristics for "Out of Office" / "Vacation Auto-Reply" / "Undeliverable".
+- DMARC verdict gate — opt-in per-config (`enforce_dmarc`); reads upstream MTA's `Authentication-Results` header; no inline crypto / DNS.
+- Spam-keyword scorer — opt-in per-config (`spam_keyword_threshold > 0`); conservative pattern list (claim-your-prize, congratulations-winner, nigerian-prince, etc.).
+- Quarantined inbound persists with `was_quarantined=True` + reason but NEVER creates a ticket; admins triage via Django admin.
+- 16 new tests across 6 classes covering all four gates plus routing rule end-to-end.
 
 ### Sub-phase 10.4 — Outbound threading + conversation panel *(planned)*
 

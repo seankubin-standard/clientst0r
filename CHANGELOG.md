@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.188] - 2026-05-01
+
+### Added — Phase 10.3: Routing rules + auto-responder + DMARC/spam gating
+- **New `psa.EmailRoutingRule` model.** Per-MSP-tenant rule mapping sender-email shape (`acme.com` exact-domain, `*.acme.com` subdomain glob, `noreply@acme.com` specific sender) to a client `target_client_org` plus optional `queue_override` and `priority_override`. Rules ordered by `order` (lower fires first); first match wins. The MSP's generic `help@msp.com` mailbox can now fan inbound mail out to the right client tenant automatically.
+- **Quarantine flag on `EmailMessage`.** New `was_quarantined` boolean + `quarantine_reason` text field; `ticket` FK is now nullable (only NULL for quarantined inbound). Quarantined rows still exist in DB so admins can audit what got filtered. New index on `(organization, was_quarantined, received_at)` for efficient quarantine triage queries.
+- **New helpers in `psa/email_parsing.py`:**
+  - `detect_auto_responder(msg)` — checks `Auto-Submitted`, `X-Autoreply`, `X-Autorespond`, `X-Autoresponder`, `Precedence: bulk/list/junk`, NDR `multipart/report; report-type=delivery-status`, plus subject-based heuristics ("Out of Office", "Vacation Auto-Reply", "Auto-Reply", "Undeliverable"). Returns a one-line reason or empty string.
+  - `parse_authentication_results(msg)` — extracts SPF/DKIM/DMARC/ARC verdicts from upstream MTA's `Authentication-Results` header. No inline crypto / DNS — trusts the front-line MTA.
+  - `spam_keyword_score(text)` — counts distinct hits across a conservative pattern list (claim-your-prize, congratulations-winner, guaranteed-loan, viagra/cialis, nigerian-prince, crypto-investment-platform, wire-transfer-from-$, "act now"-style urgency).
+- **Poller integration.** Per-message order:
+  1. Quarantine gate — auto-responder → DMARC (when `enforce_dmarc` opt-in) → spam keywords (when threshold > 0). Quarantined rows persist with `was_quarantined=True` and never create or update a ticket.
+  2. Routing rule lookup — sender-domain match remaps `target_org`, `target_queue`, `target_priority`.
+  3. Existing 10.1 threading + 10.2 body cleanup runs only on non-quarantined mail.
+  - The post-routing `target_org` (not the config's MSP org) is what ends up on `EmailMessage.organization`, so future replies thread correctly inside the right client tenant.
+- **Django admin registration** for `EmailRoutingRule` and `EmailMessage` (filterable by `was_quarantined` for triage workflows).
+- **Tests:** 16 new across 6 classes — `AutoResponderDetectionTests` (5 cases), `AuthenticationResultsParseTests` (2), `SpamKeywordScoreTests` (2), `EmailRoutingRuleMatchTests` (4 — exact, subdomain, full-email, empty), `AutoResponderQuarantineIntegrationTests` (1), `RoutingRuleIntegrationTests` (2 — matched + unmatched). 16/16 in 0.4s. Phase 10.1 + 10.2 regression: 28/28 in 2s.
+- **Migration:** `psa/migrations/0028_email_routing_and_quarantine.py` — schema-only.
+
+### Design decisions baked in
+- **DMARC policy is opt-in.** `_quarantine_reason()` only enforces DMARC when the per-config `enforce_dmarc` flag is true. Default off because many tenants front this server with an MTA that already enforces DMARC at the SMTP layer; double-enforcing would silently drop legit mail with intermittent DKIM signing.
+- **Spam scoring is opt-in.** Threshold 0 (default) disables. Pattern list is deliberately conservative — false-positive quarantines are worse than letting one spam land in the triage queue.
+- **No bundled DKIM/SPF crypto.** We trust the upstream MTA's `Authentication-Results` header. Avoids a `dkimpy`/`spf` runtime dependency.
+
 ## [3.17.187] - 2026-05-01
 
 ### Tests

@@ -192,3 +192,109 @@ def clean_reply_body(text: str) -> str:
     so cutting the quote first leaves the sig in place to be stripped.
     """
     return strip_signature(strip_quoted_reply(text))
+
+
+# ---------------------------------------------------------------------------
+# Phase 10.3 — Auto-responder detection, DMARC verdict gate, spam keywords
+# ---------------------------------------------------------------------------
+
+# RFC 3834 + common vendor-specific markers. Each is a (header_name, value
+# regex) pair; presence of ANY pair classifies the message as an
+# auto-responder loop.
+_AUTO_RESPONDER_HEADERS = [
+    ('Auto-Submitted', re.compile(r'^auto-(replied|generated|notified)', re.IGNORECASE)),
+    ('X-Autoreply', re.compile(r'.+', re.IGNORECASE)),
+    ('X-Autorespond', re.compile(r'.+', re.IGNORECASE)),
+    ('X-Autoresponder', re.compile(r'.+', re.IGNORECASE)),
+    ('Precedence', re.compile(r'^(bulk|list|junk)\b', re.IGNORECASE)),
+    ('X-FC-MachineGenerated', re.compile(r'^true', re.IGNORECASE)),
+    ('X-POST-MessageClass', re.compile(r'9;\s*Autoresponder', re.IGNORECASE)),
+]
+
+# Subject-line heuristics. These fire only when the headers don't already
+# tell us — the headers are authoritative; the subject is a backstop for
+# clients that don't set them properly.
+_OOO_SUBJECT_PATTERNS = [
+    re.compile(r'\bout\s+of\s+(the\s+)?office\b', re.IGNORECASE),
+    re.compile(r'\bvacation\s+(auto[\s-]?reply|notice|response)\b', re.IGNORECASE),
+    re.compile(r'\bauto[\s-]?reply\b', re.IGNORECASE),
+    re.compile(r'\bautomatic(ally)?\s+generated\b', re.IGNORECASE),
+    re.compile(r'\b(undeliver|delivery\s+(failure|status))\b', re.IGNORECASE),
+]
+
+
+def detect_auto_responder(msg) -> str:
+    """
+    Inspect ``msg`` (an ``email.message.Message``) for auto-responder /
+    NDR / out-of-office markers. Returns a one-line reason string when
+    detected, or '' when the message looks like a normal human reply.
+
+    The poller treats any non-empty return as "quarantine, do not create
+    or update a ticket". The reason string lands on
+    ``EmailMessage.quarantine_reason``.
+    """
+    # 1. Authoritative: explicit auto-responder headers.
+    for header, pattern in _AUTO_RESPONDER_HEADERS:
+        value = msg.get(header)
+        if value and pattern.search(str(value)):
+            return f'auto-responder header: {header}: {str(value)[:80]}'
+
+    # 2. Bounce / NDR — multipart/report with delivery-status.
+    ctype = (msg.get_content_type() or '').lower()
+    if ctype == 'multipart/report':
+        report_type = (msg.get_param('report-type') or '').lower()
+        if report_type in ('delivery-status', 'disposition-notification'):
+            return f'NDR / delivery-status report (report-type={report_type})'
+
+    # 3. Subject-line heuristics — only used when no header signal fired.
+    subject = msg.get('Subject') or ''
+    for pattern in _OOO_SUBJECT_PATTERNS:
+        if pattern.search(subject):
+            return f'auto-responder subject heuristic: {pattern.pattern}'
+    return ''
+
+
+def parse_authentication_results(msg):
+    """
+    Parse the upstream MTA's ``Authentication-Results`` header and return a
+    dict like ``{'spf': 'pass', 'dkim': 'fail', 'dmarc': 'pass'}``. Verdicts
+    not present in the header are omitted.
+
+    Trusts the upstream MTA to have written the header — no inline crypto
+    or DNS lookups happen here. If the deployment fronts ClientSt0r with
+    Postfix / Exchange / M365 / Mailcow / iRedMail, that header is set
+    automatically.
+    """
+    out: dict[str, str] = {}
+    for header_value in msg.get_all('Authentication-Results') or []:
+        for tok in str(header_value).split(';'):
+            tok = tok.strip().lower()
+            for method in ('spf', 'dkim', 'dmarc', 'arc'):
+                if tok.startswith(f'{method}='):
+                    verdict = tok.split('=', 1)[1].split()[0]
+                    out[method] = verdict
+    return out
+
+
+# Common spammy n-grams. Score = number of distinct hits. Threshold-tuned
+# to be conservative — we'd rather let one spam in than auto-ticket on a
+# legitimate "winning" customer email (e.g. a partner congratulating us
+# on a sale uses many of these innocently).
+_SPAM_KEYWORDS = [
+    re.compile(r'\bclaim\s+your\s+(prize|winnings)\b', re.IGNORECASE),
+    re.compile(r'\b(act|reply)\s+(now|today)\b.{0,40}(limited|urgent)', re.IGNORECASE),
+    re.compile(r'\bcongratulations\b.{0,40}\b(winner|selected|chosen)\b', re.IGNORECASE),
+    re.compile(r'\bguaranteed\s+(loan|approval|income)\b', re.IGNORECASE),
+    re.compile(r'\b(viagra|cialis|levitra)\b', re.IGNORECASE),
+    re.compile(r'\b(nigerian|bank)\s+prince\b', re.IGNORECASE),
+    re.compile(r'\bcrypto(currency)?\s+(invest|investment|trading)\s+platform\b', re.IGNORECASE),
+    re.compile(r'\b(wire|bank)\s+transfer\s+from\s+\$\d', re.IGNORECASE),
+]
+
+
+def spam_keyword_score(text: str) -> int:
+    """Number of distinct spam-keyword pattern hits in ``text``. Caller
+    decides what threshold is "spam"."""
+    if not text:
+        return 0
+    return sum(1 for pat in _SPAM_KEYWORDS if pat.search(text))
