@@ -4386,3 +4386,308 @@ class IntegrationSDKTests(TestCase):
 
                 def sync(self, connection):
                     return {'ok': True, 'records_imported': 0, 'errors': []}
+
+
+# ---------------------------------------------------------------------------
+# Phase 10.1 — Email-to-ticket threading via Message-ID
+# ---------------------------------------------------------------------------
+
+class _FakeIMAP:
+    """
+    Stand-in for imaplib.IMAP4_SSL. Holds a list of (uid, raw_bytes)
+    messages and answers the small subset of methods the poller calls.
+    Records `seen_uids` so tests can assert the poller marked things read.
+    """
+    def __init__(self, messages):
+        self._messages = list(messages)
+        self.seen_uids = []
+
+    # imaplib API surface used by the poller
+    def login(self, *a, **kw):  # pragma: no cover - trivial
+        return ('OK', [b''])
+
+    def select(self, folder):
+        return ('OK', [str(len(self._messages)).encode()])
+
+    def search(self, charset, criterion):
+        ids = b' '.join(uid for uid, _ in self._messages)
+        return ('OK', [ids])
+
+    def fetch(self, uid, parts):
+        for u, raw in self._messages:
+            if u == uid:
+                return ('OK', [(b'%s (RFC822 {%d}' % (u, len(raw)), raw), b')'])
+        return ('NO', [])
+
+    def store(self, uid, flag, value):
+        self.seen_uids.append((uid, flag, value))
+        return ('OK', [b''])
+
+    def logout(self):
+        return ('BYE', [b''])
+
+
+def _build_raw_email(*, message_id, from_addr, to_addr, subject,
+                    body='Hello world', in_reply_to=None, references=None):
+    """Compose a minimal RFC 822 byte string for the fake IMAP server."""
+    headers = [
+        f'From: {from_addr}',
+        f'To: {to_addr}',
+        f'Subject: {subject}',
+        f'Message-ID: {message_id}',
+        'Content-Type: text/plain; charset=utf-8',
+        'MIME-Version: 1.0',
+    ]
+    if in_reply_to:
+        headers.append(f'In-Reply-To: {in_reply_to}')
+    if references:
+        headers.append(f'References: {references}')
+    return ('\r\n'.join(headers) + '\r\n\r\n' + body).encode('utf-8')
+
+
+class _EmailPollerSetup:
+    """Mixin: builds two orgs, two configs, and a base ticket per org."""
+
+    @classmethod
+    def _seed_psa(cls):
+        _setup_seed()
+
+    def _make_org_with_config(self, slug):
+        from psa.models import EmailIngestionConfig, Queue, TicketPriority, TicketType
+        org = Organization.objects.create(name=slug.upper(), slug=slug)
+        cfg = EmailIngestionConfig.objects.create(
+            organization=org,
+            name=f'{slug}-helpdesk',
+            imap_host='imap.example.com',
+            username=f'help@{slug}.example.com',
+            default_queue=Queue.objects.first(),
+            default_priority=TicketPriority.objects.first(),
+            default_type=TicketType.objects.first(),
+        )
+        cfg.set_password('imap-pw')
+        cfg.save()
+        return org, cfg
+
+    def _make_ticket(self, org, **overrides):
+        from psa.models import Queue, TicketPriority, TicketStatus, TicketType
+        defaults = dict(
+            organization=org,
+            subject='Existing ticket',
+            description='Pre-existing',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            source='email',
+            visibility='client',
+            client_can_view=True,
+            requester_email='customer@example.com',
+        )
+        defaults.update(overrides)
+        return Ticket.objects.create(**defaults)
+
+
+class EmailThreadingByInReplyToTests(TestCase, _EmailPollerSetup):
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orgthread')
+        self.ticket = self._make_ticket(self.org)
+        # Seed an inbound EmailMessage representing the original customer email
+        from psa.models import EmailMessage
+        self.original = EmailMessage.objects.create(
+            organization=self.org,
+            ticket=self.ticket,
+            ingestion_config=self.cfg,
+            direction='in',
+            message_id='<original-12345@example.com>',
+            from_email='customer@example.com',
+            subject='Original',
+        )
+        self.ticket.last_inbound_message_id = '<original-12345@example.com>'
+        self.ticket.save(update_fields=['last_inbound_message_id'])
+
+    def _run_poll_with(self, raw):
+        from psa.management.commands import psa_poll_email
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+        return fake
+
+    def test_in_reply_to_threads_to_existing_ticket(self):
+        from psa.models import EmailMessage, TicketComment
+        raw = _build_raw_email(
+            message_id='<reply-67890@example.com>',
+            from_addr='customer@example.com', to_addr='help@orgthread.example.com',
+            subject='no token here at all',
+            in_reply_to='<original-12345@example.com>',
+            body='Thanks, problem persists.',
+        )
+        self._run_poll_with(raw)
+
+        # Existing ticket got a new comment
+        comments = TicketComment.objects.filter(ticket=self.ticket)
+        self.assertEqual(comments.count(), 1)
+        self.assertIn('problem persists', comments.first().body)
+        # No new ticket created
+        self.assertEqual(Ticket.objects.filter(organization=self.org).count(), 1)
+        # Inbound EmailMessage row persisted
+        self.assertTrue(EmailMessage.objects.filter(message_id='<reply-67890@example.com>').exists())
+        # last_inbound_message_id updated
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.last_inbound_message_id, '<reply-67890@example.com>')
+
+
+class EmailThreadingByReferencesChainTests(TestCase, _EmailPollerSetup):
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orgrefs')
+        self.ticket = self._make_ticket(self.org)
+        from psa.models import EmailMessage
+        EmailMessage.objects.create(
+            organization=self.org, ticket=self.ticket, ingestion_config=self.cfg,
+            direction='in', message_id='<root-aaa@example.com>',
+        )
+
+    def test_references_chain_threads_when_in_reply_to_unknown(self):
+        from psa.management.commands import psa_poll_email
+        from psa.models import TicketComment
+        raw = _build_raw_email(
+            message_id='<grandchild@example.com>',
+            from_addr='customer@example.com', to_addr='help@orgrefs.example.com',
+            subject='Re: something',
+            # In-Reply-To points to a Message-ID we never saw, but References
+            # contains the original Message-ID that we DO have on file.
+            in_reply_to='<unknown-middle@example.com>',
+            references='<root-aaa@example.com> <unknown-middle@example.com>',
+            body='Tail of the chain.',
+        )
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+        self.assertEqual(TicketComment.objects.filter(ticket=self.ticket).count(), 1)
+        self.assertEqual(Ticket.objects.filter(organization=self.org).count(), 1)
+
+
+class EmailThreadingFallbackToSubjectTests(TestCase, _EmailPollerSetup):
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orgsubj')
+        self.ticket = self._make_ticket(self.org)
+
+    def test_subject_regex_still_matches_legacy_replies_without_headers(self):
+        from psa.management.commands import psa_poll_email
+        from psa.models import TicketComment
+        # Legacy inbound — no In-Reply-To, no References, but subject has the
+        # PSA-YYYY-NNNNNN token. The poller must still attach to the ticket.
+        raw = _build_raw_email(
+            message_id='<no-prior-record@example.com>',
+            from_addr='customer@example.com', to_addr='help@orgsubj.example.com',
+            subject=f'Re: [{self.ticket.ticket_number}] follow up',
+            body='Legacy reply with no threading headers.',
+        )
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+        self.assertEqual(TicketComment.objects.filter(ticket=self.ticket).count(), 1)
+
+
+class EmailThreadingCrossOrgIsolationTests(TestCase, _EmailPollerSetup):
+    """
+    Org A's Message-ID must not match when org B receives a reply that
+    happens to use the same value as In-Reply-To. Same Message-ID across
+    tenants is allowed; the (organization, message_id) unique constraint
+    + the org filter on the lookup keep them isolated.
+    """
+    def setUp(self):
+        self._seed_psa()
+        self.orgA, self.cfgA = self._make_org_with_config('orga')
+        self.orgB, self.cfgB = self._make_org_with_config('orgb')
+        self.ticketA = self._make_ticket(self.orgA, subject='A ticket')
+        from psa.models import EmailMessage
+        # Both orgs happen to have an EmailMessage with the same Message-ID
+        # value (legitimate — Message-IDs aren't globally unique across mail
+        # servers). The threading lookup must respect organization.
+        EmailMessage.objects.create(
+            organization=self.orgA, ticket=self.ticketA,
+            direction='in', message_id='<collision@example.com>',
+        )
+
+    def test_org_b_inbound_does_not_match_org_a_message_id(self):
+        from psa.management.commands import psa_poll_email
+        raw = _build_raw_email(
+            message_id='<orgb-new@example.com>',
+            from_addr='other@example.com', to_addr='help@orgb.example.com',
+            subject='no ticket token',
+            in_reply_to='<collision@example.com>',
+            body='If isolation is broken this lands on org A.',
+        )
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfgB.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+        # org A still has exactly the seeded ticket with no new comments.
+        from psa.models import TicketComment
+        self.assertEqual(Ticket.objects.filter(organization=self.orgA).count(), 1)
+        self.assertEqual(TicketComment.objects.filter(ticket=self.ticketA).count(), 0)
+        # org B got a brand-new ticket — the In-Reply-To went unmatched.
+        self.assertEqual(Ticket.objects.filter(organization=self.orgB).count(), 1)
+
+
+class EmailThreadingNewTicketTests(TestCase, _EmailPollerSetup):
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orgnew')
+
+    def test_unknown_inbound_creates_ticket_and_emailmessage(self):
+        from psa.management.commands import psa_poll_email
+        from psa.models import EmailMessage
+        raw = _build_raw_email(
+            message_id='<fresh@example.com>',
+            from_addr='alice@customer.example', to_addr='help@orgnew.example.com',
+            subject='Printer down',
+            body='Please send help.',
+        )
+        fake = _FakeIMAP([(b'1', raw)])
+        original = psa_poll_email.imaplib.IMAP4_SSL
+        psa_poll_email.imaplib.IMAP4_SSL = lambda *a, **kw: fake
+        try:
+            from django.core.management import call_command
+            call_command('psa_poll_email', config_id=self.cfg.pk, verbosity=0)
+        finally:
+            psa_poll_email.imaplib.IMAP4_SSL = original
+
+        tickets = Ticket.objects.filter(organization=self.org)
+        self.assertEqual(tickets.count(), 1)
+        t = tickets.first()
+        self.assertEqual(t.subject, 'Printer down')
+        self.assertEqual(t.requester_email, 'alice@customer.example')
+
+        em = EmailMessage.objects.get(organization=self.org, message_id='<fresh@example.com>')
+        self.assertEqual(em.ticket_id, t.id)
+        self.assertEqual(em.direction, 'in')
+        self.assertEqual(em.from_email, 'alice@customer.example')
+        self.assertIn('Please send help', em.body_text)
+        # Cache field is set on the new ticket.
+        self.assertEqual(t.last_inbound_message_id, '<fresh@example.com>')

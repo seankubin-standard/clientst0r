@@ -137,25 +137,45 @@ MSPs run a stack of security tools that all alert independently — SentinelOne,
 
 The following are **planned / in-progress** items focused on MSP workflow consolidation and operational visibility. None are positioned as fully implemented. Items overlapping with already-shipped phases are noted as "Extends X" so the deltas are explicit. AI-assisted features are clearly marked **OPTIONAL AI**.
 
-## Phase 10 — Advanced Email-to-Ticket Engine **(M)**
+## Phase 10 — Advanced Email-to-Ticket Engine **(M)** [in progress]
 
 **Roadmap item:** Advanced Email Processing & Ticket Intelligence. Extends the basic IMAP poller already shipped (v3.17.83+).
 
 Planned capabilities:
-- Advanced inbound email parsing (HTML + plain-text fallback)
-- Thread reconstruction across replies + forwards
-- Reply correlation by Message-ID + In-Reply-To headers (more reliable than current subject-regex match)
-- Signature stripping
-- Loop detection (ignore auto-responders)
-- Spam scoring before ticket creation
-- Attachment extraction with MIME-type allowlist
-- Automatic contact association (match sender email → existing contact / membership)
-- Per-client parsing rules
-- Ticket categorization (rule-based)
+- Advanced inbound email parsing (HTML + plain-text fallback) *(planned — Phase 10.2)*
+- Thread reconstruction across replies + forwards *(10.1 — shipped v3.17.176)*
+- Reply correlation by Message-ID + In-Reply-To headers (more reliable than current subject-regex match) *(10.1 — shipped v3.17.176)*
+- Signature stripping *(planned — Phase 10.2)*
+- Loop detection (ignore auto-responders) *(planned — Phase 10.3)*
+- Spam scoring before ticket creation *(planned — Phase 10.3)*
+- Attachment extraction with MIME-type allowlist *(planned — Phase 10.2)*
+- Automatic contact association (match sender email → existing contact / membership) *(planned — Phase 10.3)*
+- Per-client parsing rules *(planned — Phase 10.3)*
+- Ticket categorization (rule-based) *(planned — Phase 10.3)*
 - Ticket tagging
-- Email security validation (SPF / DKIM / DMARC inspection)
+- Email security validation (SPF / DKIM / DMARC inspection) *(planned — Phase 10.3)*
+- Outbound threading + per-ticket conversation panel *(planned — Phase 10.4)*
 - Ticket summarization (**OPTIONAL AI**)
 - Intent detection (**OPTIONAL AI**)
+
+### Sub-phase 10.1 — Threading + Message-ID correlation *(shipped v3.17.176)*
+
+- New `EmailMessage` model captures every inbound (and later, outbound) email's Message-ID, In-Reply-To, References, headers, and bodies. Unique per `(organization, message_id)` so cross-tenant Message-ID collisions never thread incorrectly.
+- New `Ticket.last_inbound_message_id` cache feeds outbound threading in 10.4.
+- Poller correlation order is now: (a) In-Reply-To against `EmailMessage.message_id` in the same org, (b) walk the References chain right-to-left, (c) subject-regex fallback (legacy tickets keep working), (d) create new ticket. Whichever path matches, the inbound message is persisted as an `EmailMessage` row so the next reply has something to chain against.
+- Tests cover header-threading, References-chain walking, subject-regex fallback for legacy replies, cross-org isolation, and new-ticket creation.
+
+### Sub-phase 10.2 — Body cleanup + attachment ingestion *(planned)*
+
+HTML-aware body extraction (bleach), signature & quoted-reply stripping, MIME-allowlisted attachment writes to `TicketAttachment`.
+
+### Sub-phase 10.3 — Routing rules + auto-responder & spam gating *(planned)*
+
+Sender-domain → client-org auto-route, regex-driven priority/category/queue rules, vacation/NDR loop detection, SPF/DKIM/DMARC verdict gate.
+
+### Sub-phase 10.4 — Outbound threading + conversation panel *(planned)*
+
+Threaded outbound replies (`In-Reply-To`/`References` set from `Ticket.last_inbound_message_id`), per-ticket "Email Conversation" panel showing rendered HTML & raw headers.
 
 **Goal:** Reduce dispatcher and technician overhead while improving ticket workflow accuracy.
 

@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.176] - 2026-05-01
+
+### Added — Phase 10.1: Email-to-ticket threading via Message-ID
+- **New `psa.EmailMessage` model.** Captures every inbound email's `Message-ID`, `In-Reply-To`, `References`, raw headers, plain-text body, and HTML body. Unique per `(organization, message_id)` so a Message-ID collision across tenants never threads incorrectly. Indexed on `(ticket, received_at)` and `(organization, in_reply_to)` for the lookup paths the poller and (future) outbound-reply helper use.
+- **New `Ticket.last_inbound_message_id` cache field.** Stores the most recent inbound Message-ID per ticket so Phase 10.4's outbound replies can set their `In-Reply-To` header without a join. Updated by the poller on every match/create.
+- **`psa_poll_email` now threads by header before falling back to subject regex.** Correlation order: (a) `In-Reply-To` against an existing `EmailMessage.message_id` in the same organization, (b) walk the `References` chain right-to-left and try the same org-scoped lookup, (c) the existing subject-regex fallback, (d) create a new ticket. The inbound `EmailMessage` row is persisted regardless so the next reply chains cleanly. Cross-org isolation is enforced by filtering the lookup by organization — same Message-ID across tenants never threads wrong.
+- **Body extraction now captures plain-text and HTML separately.** The new `_extract_bodies()` helper returns both; the poller writes them to `EmailMessage.body_text` and `EmailMessage.body_html`. Phase 10.2 will replace the crude regex tag-strip with `bleach`-based sanitization. The pre-existing `_extract_text_body()` callable is preserved as a compatibility shim.
+- **Tests:** 5 new test classes in `psa/tests.py` — `EmailThreadingByInReplyToTests`, `EmailThreadingByReferencesChainTests`, `EmailThreadingFallbackToSubjectTests`, `EmailThreadingCrossOrgIsolationTests`, `EmailThreadingNewTicketTests`. Mock IMAP via a tiny `_FakeIMAP` stub — no live network. 5/5 passing in 0.7s; targeted regression on the existing PSA test classes (Phase4 / TicketLifecycle / SLA / TimeTracking) 18/18 passing in 36s.
+- **Migration:** schema-only (`psa/migrations/0027_email_message_threading.py`) — adds `psa_email_messages` table + `last_inbound_message_id` column. No data backfill: synthetic Message-IDs wouldn't appear in real customer replies, so the In-Reply-To path can't fire on legacy tickets via that route; the subject-regex fallback (still in place) handles them.
+
 ## [3.17.175] - 2026-04-30
 
 ### Fixed

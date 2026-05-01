@@ -286,6 +286,12 @@ class Ticket(models.Model):
     vendor_ticket_number = models.CharField(max_length=100, blank=True)
     vendor_contact = models.CharField(max_length=200, blank=True)
 
+    # Phase 10.1: cache of the most recent inbound email Message-ID, used by
+    # outbound replies (Phase 10.4) to set the In-Reply-To header so the
+    # client's mail client threads the conversation correctly. Updated by
+    # the email poller on every inbound match/create.
+    last_inbound_message_id = models.CharField(max_length=998, blank=True)
+
     # Closure
     CLOSURE_CATEGORIES = [
         ('fixed', 'Fixed'),
@@ -2991,3 +2997,86 @@ class TicketShare(models.Model):
 
     def __str__(self):
         return f'{self.ticket.ticket_number} -> {self.partner_org.name}'
+
+
+# ---------------------------------------------------------------------------
+# Phase 10.1 — Email-to-ticket threading: capture every inbound and outbound
+# email by Message-ID so replies thread correctly via In-Reply-To/References,
+# not just by subject-regex matching.
+# ---------------------------------------------------------------------------
+
+class EmailMessage(models.Model):
+    """
+    One record per email received or sent. Inbound rows are written by the
+    `psa_poll_email` poller; outbound rows are written by the threaded-reply
+    helper (Phase 10.4). The Message-ID is the join key that lets the next
+    inbound reply chain back to the right ticket without depending on the
+    customer keeping the `[PSA-YYYY-NNNNNN]` token in the subject line.
+
+    Cross-org isolation is enforced at the (organization, message_id) unique
+    constraint: org A's Message-ID never matches when org B receives a reply.
+    """
+    DIRECTION_CHOICES = [
+        ('in', 'Inbound'),
+        ('out', 'Outbound'),
+    ]
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_email_messages',
+    )
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE,
+        related_name='email_messages',
+    )
+    ingestion_config = models.ForeignKey(
+        EmailIngestionConfig,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='email_messages',
+    )
+
+    direction = models.CharField(max_length=3, choices=DIRECTION_CHOICES)
+    message_id = models.CharField(max_length=998, db_index=True,
+        help_text='RFC 5322 Message-ID, including angle brackets')
+    in_reply_to = models.CharField(max_length=998, blank=True, db_index=True,
+        help_text='Header value if this message replied to another')
+    references = models.TextField(blank=True,
+        help_text='Whitespace-separated chain of parent Message-IDs')
+
+    from_email = models.CharField(max_length=320, blank=True)
+    to_emails = models.JSONField(default=list, blank=True)
+    subject = models.CharField(max_length=998, blank=True)
+
+    headers_raw = models.TextField(blank=True,
+        help_text='Full raw headers; useful for debugging threading + DMARC later')
+    body_text = models.TextField(blank=True)
+    body_html = models.TextField(blank=True)
+
+    received_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = 'psa_email_messages'
+        ordering = ['-received_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['organization', 'message_id'],
+                name='uniq_psa_email_message_per_org',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['ticket', 'received_at']),
+            models.Index(fields=['organization', 'in_reply_to']),
+        ]
+
+    def __str__(self):
+        return f'[{self.direction}] {self.message_id} -> {self.ticket.ticket_number}'
+
+    @staticmethod
+    def parse_references(value: str) -> list[str]:
+        """
+        References / In-Reply-To are whitespace-separated `<id@host>` tokens.
+        Walk the chain right-to-left: the rightmost ID is the immediate parent.
+        """
+        if not value:
+            return []
+        return [tok.strip() for tok in value.split() if tok.strip().startswith('<')]
