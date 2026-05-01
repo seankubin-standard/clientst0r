@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.187] - 2026-05-01
+
+### Tests
+- **Baseline coverage for the `imports/` app** (Phase 7 polish — survey #6). The ITGlue / Hudu / CSV / MagicPlan ingestion pipeline previously had a 3-line stub `tests.py` despite handling customer data. New `imports/tests.py` adds **34 tests across 7 classes** covering:
+  - `OrganizationMatcherNormalizationTests` — `normalize_name` lowercase + suffix stripping (LLC / Inc / Corp / Ltd / Co / Company in plain, period, and comma forms), special-character removal, whitespace collapsing, empty/None inputs.
+  - `OrganizationMatcherSimilarityTests` — `similarity_score` returns 100 for identical names, 100 for suffix-only differences (because both normalize identically), low scores for unrelated names, 0 for empty inputs.
+  - `OrganizationMatcherMatchTests` — `find_best_match` returns existing org when above threshold, None when below; `match_or_create` matches existing, creates new when no match (with `Imported from <source_id>` description), and `dry_run=True` returns an unsaved `Organization` instance.
+  - `ImportJobLifecycleTests` — `__str__` representation with and without target org; `mark_running` / `mark_completed` / `mark_failed` set status + timestamps + error message; `add_log` appends with timestamps; `can_rollback` returns True only for completed non-rolled-back non-dry-run jobs.
+  - `ImportJobRollbackTests` — full rollback flow: imported assets are deleted, organizations created during the import are deleted, organizations that were *matched* (already existed) are NEVER deleted; job is marked `rolled_back` with the user + timestamp; `rollback()` raises `ValueError` when called on an ineligible job.
+  - `OrganizationMappingConstraintTests` + `ImportMappingConstraintTests` — unique-together constraints (`(import_job, source_id)` and `(import_job, source_type, source_id)`) enforced at the DB level. Same source ID across different jobs / different source types still allowed.
+  - `CSVImportPreviewTests` — `read_csv_preview` reads headers + first N rows, caps at `max_rows`, handles UTF-8 BOM (Excel exports), rewinds the file object so callers can re-read.
+- 34/34 passing in 17s.
+
 ## [3.17.186] - 2026-05-01
 
 ### Documentation
