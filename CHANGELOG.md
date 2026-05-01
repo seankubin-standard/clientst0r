@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.183] - 2026-05-01
+
+### Changed — Form polish round 2
+- **UniFi + M365 connection forms cleaned up.** Audit after v3.17.182 found the same sloppy pattern (generic `{% for field in form %}` flat loops with no section grouping) on two more integration forms.
+  - **`templates/integrations/unifi_form.html`** — full rewrite. Card-based layout with three sections: Identity (name + mode + active toggle), Controller endpoint (host + verify_ssl, only relevant in self-hosted mode), Credentials (api_key always; username + password as "optional self-hosted extras" with explanation that they unlock WLAN/VLAN/firewall data). Existing JS that toggles self-hosted-only fields when mode=cloud is preserved. The setup-guide sidebar (self-hosted + cloud variants) is preserved with FontAwesome icons in the headers. Required-field asterisks added (only on creation; on edit credentials are optional).
+  - **`templates/integrations/m365_form.html`** — full rewrite. Card-based layout with two sections: Tenant identity (name + tenant_id + active toggle), App registration credentials (client_id + client_secret side-by-side). Setup-guide sidebar preserved.
+- **Audit clean:** other integration forms (`omada_form.html`, `grandstream_form.html`, `rmm_form.html`, `distributor_form.html`, `accounting_form.html`, `integration_form.html`, `psa_form.html`) already use explicit field rendering — not affected. `templates/docs/template_form.html`'s inline `<style>` block is for the WYSIWYG editor (TinyMCE / Quill), not form-control faking — left alone. `templates/locations/location_form.html` only uses the for-loop for error aggregation; the form fields are properly tabbed and explicit — left alone.
+
 ## [3.17.182] - 2026-05-01
 
 ### Changed — UX polish on Phase 9 forms

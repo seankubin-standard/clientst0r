@@ -1,39 +1,114 @@
 {% extends "base.html" %}
 {% block title %}{{ action }} UniFi Connection - {{ system_settings.custom_company_name|default:system_settings.site_name|default:"Client St0r" }}{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="fas fa-network-wired"></i> {{ action }} UniFi Connection</h2>
-    <a href="{% url 'integrations:integration_list' %}" class="btn btn-outline-secondary">
-        <i class="fas fa-arrow-left"></i> Back
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-network-wired me-2"></i>{{ action }} UniFi Connection</h2>
+    <a href="{% url 'integrations:integration_list' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Back to integrations
     </a>
 </div>
+
+<p class="text-muted">Pull devices, sites, and (self-hosted only) WLANs / VLANs / firewall rules from a UniFi Network controller into ClientSt0r. Credentials are encrypted at rest.</p>
+
 <div class="row">
     <div class="col-lg-8">
-        <div class="card">
-            <div class="card-body">
-                <form method="post" id="unifi-form">
-                    {% csrf_token %}
-                    {% for field in form %}
-                    <div class="mb-3 {% if field.html_name == 'host' or field.html_name == 'verify_ssl' or field.html_name == 'username' or field.html_name == 'password' %}self-hosted-field{% endif %}">
-                        <label class="form-label">{{ field.label }}</label>
-                        {{ field }}
-                        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-                        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        <form method="post" id="unifi-form" novalidate>
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            {# ─── Identity ─────────────────────────────────────── #}
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-id-card me-2"></i>Identity</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-7 mb-3">
+                            <label for="{{ form.name.id_for_label }}" class="form-label">Connection name <span class="text-danger">*</span></label>
+                            {{ form.name }}
+                            <div class="form-text">Free-text label shown in the integrations list.</div>
+                            {% if form.name.errors %}<div class="invalid-feedback d-block">{{ form.name.errors|join:", " }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label for="{{ form.mode.id_for_label }}" class="form-label">Mode <span class="text-danger">*</span></label>
+                            {{ form.mode }}
+                            <div class="form-text">Self-hosted controller vs. cloud Site Manager.</div>
+                            {% if form.mode.errors %}<div class="invalid-feedback d-block">{{ form.mode.errors|join:", " }}</div>{% endif %}
+                        </div>
                     </div>
-                    {% endfor %}
-                    <div class="mt-3">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> {{ action }} Connection
-                        </button>
-                        <a href="{% url 'integrations:integration_list' %}" class="btn btn-outline-secondary ms-2">Cancel</a>
+                    <div class="form-check form-switch">
+                        {{ form.is_active }}
+                        <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Connection enabled (poller will sync this controller)</label>
                     </div>
-                </form>
+                </div>
             </div>
-        </div>
+
+            {# ─── Connection (self-hosted only) ────────────────── #}
+            <div class="card mb-3 self-hosted-field">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-server me-2"></i>Controller endpoint</h5>
+                </div>
+                <div class="card-body">
+                    <p class="form-text mt-0 mb-3">Fields below apply to <strong>self-hosted</strong> mode only. Cloud mode uses the fixed Site Manager URL — leave these blank.</p>
+                    <div class="mb-3">
+                        <label for="{{ form.host.id_for_label }}" class="form-label">Controller URL</label>
+                        {{ form.host }}
+                        <div class="form-text">e.g. <code>https://192.168.1.1</code> or <code>https://unifi.example.com:8443</code>.</div>
+                        {% if form.host.errors %}<div class="invalid-feedback d-block">{{ form.host.errors|join:", " }}</div>{% endif %}
+                    </div>
+                    <div class="form-check">
+                        {{ form.verify_ssl }}
+                        <label class="form-check-label" for="{{ form.verify_ssl.id_for_label }}">Verify TLS certificate</label>
+                        <div class="form-text">Disable only if the controller has a self-signed cert and you can't load a CA on this server.</div>
+                    </div>
+                </div>
+            </div>
+
+            {# ─── Credentials ───────────────────────────────────── #}
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-key me-2"></i>Credentials</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="{{ form.api_key.id_for_label }}" class="form-label">API key {% if not form.instance.pk %}<span class="text-danger">*</span>{% endif %}</label>
+                        {{ form.api_key }}
+                        <div class="form-text">{{ form.api_key.help_text }}</div>
+                        {% if form.api_key.errors %}<div class="invalid-feedback d-block">{{ form.api_key.errors|join:", " }}</div>{% endif %}
+                    </div>
+
+                    <div class="self-hosted-field">
+                        <p class="form-text mt-0 mb-2"><strong>Optional self-hosted extras</strong> — username + password unlock the legacy API for WLAN, VLAN, and firewall data. Devices-only sync works without them.</p>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.username.id_for_label }}" class="form-label">Username</label>
+                                {{ form.username }}
+                                {% if form.username.errors %}<div class="invalid-feedback d-block">{{ form.username.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.password.id_for_label }}" class="form-label">Password</label>
+                                {{ form.password }}
+                                {% if form.password.errors %}<div class="invalid-feedback d-block">{{ form.password.errors|join:", " }}</div>{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+                <a href="{% url 'integrations:integration_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>{{ action }} Connection</button>
+            </div>
+        </form>
     </div>
+
     <div class="col-lg-4">
         <div class="card mb-3">
-            <div class="card-header">Self-hosted Setup</div>
+            <div class="card-header"><i class="fas fa-server me-2"></i>Self-hosted Setup</div>
             <div class="card-body small">
                 <ol class="ps-3 mb-0">
                     <li>Log into UniFi OS (your controller URL)</li>
@@ -44,7 +119,7 @@
             </div>
         </div>
         <div class="card">
-            <div class="card-header">Cloud (Site Manager) Setup</div>
+            <div class="card-header"><i class="fas fa-cloud me-2"></i>Cloud (Site Manager) Setup</div>
             <div class="card-body small">
                 <ol class="ps-3 mb-0">
                     <li>Go to <a href="https://account.ui.com" target="_blank" rel="noopener">account.ui.com</a> → <strong>API Keys</strong></li>
@@ -53,13 +128,13 @@
                     <li>Leave the host URL blank — the cloud API URL is used automatically</li>
                 </ol>
                 <div class="alert alert-info mt-2 mb-0 py-1 px-2 small">
-                    Cloud mode retrieves sites and devices across all your UI.com-managed hosts.
-                    WLAN/VLAN/firewall data is not available via the Site Manager API.
+                    Cloud mode retrieves sites and devices across all your UI.com-managed hosts. WLAN/VLAN/firewall data is not available via the Site Manager API.
                 </div>
             </div>
         </div>
     </div>
 </div>
+
 <script>
 (function () {
     var modeSelect = document.getElementById('id_mode');
