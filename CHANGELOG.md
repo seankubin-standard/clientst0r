@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.179] - 2026-05-01
+
+### Changed
+- **Defender adapter clearly flagged as a reference stub.** The Microsoft Defender for Endpoint security-alert provider in `security_alerts/adapters/defender.py` doesn't call the Graph API yet — it accepts a connection and returns an empty alert list. Previous label/messaging didn't make that obvious enough; an operator could pick it from the Connections dropdown and expect live alert flow. Now: (a) the dropdown label reads "Microsoft Defender for Endpoint (reference stub — no live alerts)", (b) the `test_connection` success message says explicitly "no live Graph API call is wired up. No alerts will be ingested until the adapter is fleshed out.", (c) the module docstring leads with "Not a working Graph API integration" and says explicitly not to enable it on a production tenant. Phase 7 polish-backlog item — closes the survey's #10 "TODO comments for deferred integration adapters".
+
 ## [3.17.178] - 2026-05-01
 
 ### Documentation
