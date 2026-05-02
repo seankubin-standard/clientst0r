@@ -535,3 +535,81 @@ class PortalPreferencesTests(TestCase):
         self.assertTrue(fresh.profile.portal_notify_ticket_reply)
         self.assertFalse(fresh.profile.portal_notify_status_change)
         self.assertTrue(fresh.profile.portal_notify_csat_invite)
+
+    def test_post_persists_phone_and_sms_preference(self):
+        from django.contrib.auth.models import User as _U
+        c = Client()
+        self._login(c)
+        c.post('/portal/preferences/', data={
+            'phone': '+15551234567',
+            'sms_status': 'on',
+        })
+        fresh = _U.objects.get(pk=self.user.pk)
+        self.assertEqual(fresh.profile.phone, '+15551234567')
+        self.assertTrue(fresh.profile.portal_notify_sms_status_change)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class PortalSMSNotifyTests(TestCase):
+    """v3.17.238: SMS portal user on ticket status change."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role, UserProfile
+        from core.models import Organization, SystemSetting
+        from psa.models import (
+            ClientPSASettings, Queue, Ticket, TicketPriority,
+            TicketStatus, TicketType,
+        )
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.sms_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='SMSCo', slug='sms-co')
+        ClientPSASettings.objects.create(organization=cls.org, portal_enabled=True)
+        cls.user = User.objects.create_user('sms-user', 'sms@x.com', 'pw')
+        Membership.objects.create(user=cls.user, organization=cls.org,
+                                   role=Role.READONLY, is_active=True)
+        profile, _ = UserProfile.objects.get_or_create(user=cls.user)
+        profile.phone = '+15551234567'
+        profile.portal_notify_sms_status_change = True
+        profile.save()
+
+        cls.ticket = Ticket.objects.create(
+            organization=cls.org, subject='SMS test',
+            requester_email='sms@x.com',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            client_can_view=True,
+        )
+
+    def test_notify_portal_status_change_sends_sms_when_user_opted_in(self):
+        from psa.notifications import notify_portal_status_change
+        from unittest.mock import patch
+        with patch('psa.notifications.core_send_sms_proxy', create=True):
+            with patch('core.sms.send_sms') as mock_send:
+                mock_send.return_value = {'success': True}
+                result = notify_portal_status_change(self.ticket)
+                self.assertEqual(result['sms'], 'sent')
+                self.assertTrue(mock_send.called)
+                args, kwargs = mock_send.call_args
+                self.assertEqual(args[0], '+15551234567')
+                self.assertIn(self.ticket.ticket_number, args[1])
+
+    def test_notify_portal_status_change_skips_when_opted_out(self):
+        from accounts.models import UserProfile
+        from psa.notifications import notify_portal_status_change
+        UserProfile.objects.filter(user=self.user).update(portal_notify_sms_status_change=False)
+        result = notify_portal_status_change(self.ticket)
+        self.assertEqual(result['sms'], 'opted out')
+
+    def test_notify_portal_status_change_skips_when_no_user_account(self):
+        from psa.notifications import notify_portal_status_change
+        self.ticket.requester_email = 'unknown-person@example.com'
+        self.ticket.save(update_fields=['requester_email'])
+        result = notify_portal_status_change(self.ticket)
+        self.assertEqual(result['sms'], 'no user account')

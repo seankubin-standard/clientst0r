@@ -636,10 +636,17 @@ def preferences(request):
         profile.portal_notify_ticket_reply = request.POST.get('reply') == 'on'
         profile.portal_notify_status_change = request.POST.get('status') == 'on'
         profile.portal_notify_csat_invite = request.POST.get('csat') == 'on'
+        profile.portal_notify_sms_status_change = request.POST.get('sms_status') == 'on'
+        # v3.17.238: portal user can supply / update phone for SMS.
+        new_phone = (request.POST.get('phone') or '').strip()[:50]
+        if new_phone != profile.phone:
+            profile.phone = new_phone
         profile.save(update_fields=[
             'portal_notify_ticket_reply',
             'portal_notify_status_change',
             'portal_notify_csat_invite',
+            'portal_notify_sms_status_change',
+            'phone',
             'updated_at',
         ])
         messages.success(request, 'Preferences saved.')

@@ -490,6 +490,12 @@ class UserProfile(BaseModel):
         default=True,
         help_text='Email me a CSAT survey link when one of my tickets is resolved.',
     )
+    portal_notify_sms_status_change = models.BooleanField(
+        default=False,
+        help_text='v3.17.238: text my profile phone when one of my tickets '
+                  'changes status. Requires SMS to be enabled globally and a '
+                  'phone number on file. Off by default since SMS often costs.',
+    )
 
     # Authentication Source (for SSO tracking)
     auth_source = models.CharField(

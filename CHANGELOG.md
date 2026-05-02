@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.238] - 2026-05-02
+
+### Added — Phase 12 SMS ticket communication for portal users
+Portal users can opt in to receive a text message when one of their tickets changes status. Reuses the existing `core.sms.send_sms` plumbing + `_sms_globally_enabled` gate that staff notifications already use.
+
+- **New `UserProfile.portal_notify_sms_status_change`** field (default False, migration `accounts.0031`). Off by default since SMS often costs money — explicit opt-in.
+- **New `notify_portal_status_change(ticket)` helper** in `psa/notifications.py`. Resolves the recipient via `ticket.requester_email` → User → UserProfile; returns early on every check (no email, no user account, no profile, opted out, SMS globally disabled, no phone).
+- **Signal hook in `_fire_ticket_workflow`** — fires on every status change (parallel to the CSAT hook from v3.17.231).
+- **Portal preferences page** gains a phone field + SMS toggle. Standard message rates note included.
+
+### Tests
+- 4 new tests:
+  - Helper sends SMS via `core.sms.send_sms` with the correct recipient + body when user is opted in.
+  - Skips with `opted out` when the flag is False.
+  - Skips with `no user account` when no User matches the email.
+  - Preferences POST persists phone + SMS toggle round-trip.
+
+### Roadmap
+- Phase 12 sub-bullet "SMS ticket communication" annotated `*(shipped v3.17.238 — opt-in SMS on status change via existing core.sms plumbing)*`.
+
 ## [3.17.237] - 2026-05-02
 
 ### Added — Phase 12 Threaded customer communication

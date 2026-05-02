@@ -105,6 +105,15 @@ def _fire_ticket_workflow(sender, instance, created, **kwargs):
     except Exception:
         logger.exception('PSA CSAT survey hook failed')
 
+    # Phase 12 v8 (v3.17.238): SMS portal-side requester on status change.
+    try:
+        prior_status_id = prior.get('status_id')
+        if prior_status_id is not None and prior_status_id != instance.status_id:
+            from .notifications import notify_portal_status_change
+            notify_portal_status_change(instance)
+    except Exception:
+        logger.exception('PSA portal SMS notify hook failed')
+
 
 @receiver(post_save, sender=TicketComment)
 def _fire_comment_workflow(sender, instance, created, **kwargs):

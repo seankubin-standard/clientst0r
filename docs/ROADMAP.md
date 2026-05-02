@@ -278,7 +278,7 @@ Planned capabilities:
 - Portal announcements *(shipped v3.17.232 — per-org banners on the portal home with severity, expiry, dismissable flag + per-session dismissal endpoint; managed via Django admin in v1)*
 - Customer approval workflows
 - Threaded customer communication *(shipped v3.17.237 — `TicketComment.parent_comment` self-FK + portal "Reply to this comment" button + indented thread render)*
-- SMS ticket communication (using existing SMS provider plumbing)
+- SMS ticket communication (using existing SMS provider plumbing) *(shipped v3.17.238 — opt-in `portal_notify_sms_status_change` flag + `notify_portal_status_change` helper hooked into the status-change signal; phone field on portal preferences page)*
 - Customer escalation workflows *(shipped v3.17.236 — `Ticket.escalated_at/by/reason` fields + portal endpoint that stamps fields and creates a `[Escalated by client]` public comment)*
 - Customer-facing knowledge base *(`Document.is_client_visible` shipped earlier; portal KB search shipped; featured + view counts shipped v3.17.234)*
 - Customer ticket voting / prioritization *(shipped v3.17.235 — `psa.TicketVote` model + portal toggle endpoint + thumbs-up button on ticket detail)*

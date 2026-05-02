@@ -154,3 +154,38 @@ def notify_tech_scheduled(ticket, *, by_user=None, prior_due_date=None):
         ok, err = _send_sms(user, body_sms)
         out['sms'] = 'sent' if ok else f'fail: {err}'
     return out
+
+
+def notify_portal_status_change(ticket):
+    """
+    Phase 12 v8 (v3.17.238): SMS the portal-side requester when their
+    ticket changes status. Best-effort — failures log. Returns a dict
+    mirroring `notify_tech_*` shape so callers can inspect outcomes.
+
+    Resolves the recipient via `ticket.requester_email`. If the email
+    doesn't match a User, or that User's profile has the SMS opt-in
+    flag off, returns silently — no fallback attempt to email-only here
+    since email-on-status-change already lives elsewhere in the
+    codebase via Phase 12 portal notify_status_change preference.
+    """
+    if not ticket.requester_email:
+        return {'sms': 'no recipient'}
+    try:
+        from django.contrib.auth.models import User
+        user = User.objects.filter(email=ticket.requester_email).first()
+    except Exception:
+        return {'sms': 'lookup error'}
+    if not user:
+        return {'sms': 'no user account'}
+    profile = _user_profile(user)
+    if not profile:
+        return {'sms': 'no profile'}
+    if not profile.portal_notify_sms_status_change:
+        return {'sms': 'opted out'}
+    if not _sms_globally_enabled():
+        return {'sms': 'sms globally off'}
+
+    status_name = getattr(ticket.status, 'name', '') if ticket.status_id else ''
+    body_sms = f'Ticket {ticket.ticket_number}: status changed to {status_name}'[:160]
+    ok, err = _send_sms(user, body_sms)
+    return {'sms': 'sent' if ok else f'fail: {err}'}
