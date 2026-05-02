@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.200] - 2026-05-02
+
+### Tests
+- **Baseline coverage for the `files/` app** (Phase 7 polish Wave 2 — 10th of 16 originally-untested apps). `Attachment` is the generic file-attachment model used across the app (asset photos, doc uploads, vehicle receipts). Files are stored under per-org / per-entity paths and served via X-Accel-Redirect. **9 tests across 2 classes:**
+  - `AttachmentUploadPathTests` (5) — `attachment_upload_path()` is the load-bearing tenant-isolation boundary on disk. Tests confirm: first path segment is `str(org.id)`, then `entity_type`, then `entity_id`; original extension preserved; **filename is a UUID, NOT the user-supplied string** (defense against path-traversal / malicious filenames); two different orgs producing files for the same entity-id can't collide.
+  - `AttachmentModelTests` (4) — `__str__` includes filename + entity pointer; `size_kb` rounds to 2 decimals; `for_organization()` filtering; `(organization, entity_type, entity_id)` index returns correct rows (regression guard for future migrations dropping the index).
+- 9/9 in 1.5 s. **No production bugs surfaced.** The `_optimize_image()` codepath isn't exercised here — it requires real image bytes; that's a follow-up for a deeper file-handling test pass.
+
+### Milestone
+- This is **release v3.17.200** — the 200th patch in the 3.17.x line. Counting from v3.17.171 (this session's start), 30 releases shipped. Pace has been ~1 release per ~10 minutes of work, including doc-only releases.
+
 ## [3.17.199] - 2026-05-02
 
 ### Tests
