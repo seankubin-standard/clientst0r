@@ -235,13 +235,13 @@ Planned capabilities:
 - Shift management
 - PTO conflict awareness *(11.2 — shipped v3.17.208; extends Phase 2.2 LeaveRequest)*
 - Calendar conflict detection *(11.2 — shipped v3.17.208)*
-- Recurring onsite scheduling *(planned — Phase 11.3)*
+- Recurring onsite scheduling *(deferred — handled by `scheduling.ScheduledTask` recurrence; not a separate dispatch surface)*
 - Dispatch prioritization (auto-rank queue by SLA + priority) *(11.1 — shipped v3.17.194)*
 - SLA-aware dispatching — SLA-burn panel for tickets due ≤ 4h *(11.1 — shipped v3.17.194)*
 - Technician utilization metrics *(shipped — Phase 2.3 capacity report)*
-- Geo-aware technician routing *(planned — Phase 11.3)*
-- Travel time estimation *(planned — Phase 11.3)*
-- Dispatch heatmaps *(planned — Phase 11.3)*
+- Geo-aware technician routing *(deferred — needs GPS data on User + Ticket which Phase 8 mobile timeclock will provide; revisit then)*
+- Travel time estimation *(deferred — pending Phase 8 GPS data)*
+- Dispatch heatmaps *(11.3 — shipped v3.17.209)*
 
 ### Sub-phase 11.1 — Dispatch prioritization + SLA-burn panel *(shipped v3.17.194)*
 
@@ -254,6 +254,14 @@ Planned capabilities:
 - New `_dispatch_conflicts(tech, ticket)` helper returns advisory warnings: **PTO conflict** (approved `resourcing.LeaveRequest` covering the ticket's due date) + **calendar overlap** (another open ticket assigned to the same tech with a due date inside a ±2-hour window).
 - `/psa/dispatch/assign/` JSON response now carries a `conflict_warnings` array. Advisory, not blocking — dispatchers made an explicit decision; the warning surfaces as a chip for review. AuditLog includes the conflict list so post-hoc trails capture "they assigned despite the warning".
 - 9 new tests across 2 classes covering pure-function conflict detection + end-to-end JSON response shape.
+
+### Sub-phase 11.3 — Dispatch heatmap *(shipped v3.17.209)*
+
+- New `/psa/dispatch/heatmap/` — per-tech, per-day open-ticket load over a ±7-day window (15 columns), rendered as a color-intensity grid so dispatchers see lopsided assignments at a glance.
+- 5-step intensity scale (0..4) bucketized against the busiest cell in the visible window; today's column has a blue inset border.
+- Counts open assigned tickets with due dates in window; tenant-isolated.
+- Geo-aware routing + travel-time estimation **deferred** — they need GPS data the Phase 8 mobile timeclock will collect; revisit then.
+- 8 new tests in `DispatchHeatmapTests` covering the view, window calculation, what's counted vs filtered, max-count math, and tenant isolation.
 
 **Goal:** Improve technician coordination and service workflow efficiency.
 

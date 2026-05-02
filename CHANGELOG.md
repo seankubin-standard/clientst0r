@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.209] - 2026-05-02
+
+### Added — Phase 11.3: Dispatch heatmap
+- **New `/psa/dispatch/heatmap/` view** — per-tech, per-day open-ticket load aggregation rendered as a color-intensity heatmap over a ±7-day window (15 columns total: 7 days back, today, 7 days forward). Lets dispatchers see lopsided assignments at a glance.
+- **5-step intensity scale.** Each cell renders with one of 5 background-color classes (`intensity-0` through `intensity-4`). Bucketing uses `min(4, 1 + (count-1) * 4 / max(1, max_count-1))` so the busiest cell in the visible window is always intensity-4 and other cells scale proportionally. Today's column has a blue inset border for orientation.
+- **What's counted:** open tickets (terminal status excluded) that are assigned to a tech AND have a due date inside the visible window. Unassigned tickets, tickets without a due date, and tickets outside the ±7-day window are filtered out.
+- **Tenant isolation** — same `get_request_organization` scope as `dispatch_board`. Cross-org tickets never appear in another tenant's heatmap.
+- **Tests:** 8 new in `DispatchHeatmapTests` — view returns 200; window is 15 days; assigned in-window ticket counted; unassigned not counted; out-of-window not counted; no-due-date not counted; max_count reflects busiest cell across techs; cross-org tickets filtered. **27/27 dispatch tests passing in 14.5 s** (combined 11.1 + 11.2 + 11.3).
+
 ## [3.17.208] - 2026-05-02
 
 ### Added — Phase 11.2: PTO + calendar conflict awareness

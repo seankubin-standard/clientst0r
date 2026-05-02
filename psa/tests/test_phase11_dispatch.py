@@ -466,3 +466,117 @@ class DispatchAssignWarningResponseTests(TestCase):
             any('PTO conflict' in w for w in body['conflict_warnings']),
             f'expected PTO warning in {body["conflict_warnings"]!r}',
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 11.3 — Dispatch heatmap
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class DispatchHeatmapTests(TestCase):
+    """`/psa/dispatch/heatmap/` aggregates open assigned tickets by
+    (tech, due-date) over a ±7-day window. Color intensity 0..4."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _setup_seed()
+        _enable_psa_global()
+        cls.org = Organization.objects.create(name='HeatCo', slug='heat-co')
+        _enable_psa_for(cls.org)
+        cls.queue = Queue.objects.first()
+        cls.priority = TicketPriority.objects.order_by('sort_order').first()
+        cls.ttype = TicketType.objects.first()
+        cls.new_status = TicketStatus.objects.filter(slug='new').first()
+
+        cls.alice = User.objects.create_user('alice-heat', email='ah@x.com', password='pw', is_staff=True)
+        cls.bob = User.objects.create_user('bob-heat', email='bh@x.com', password='pw', is_staff=True)
+        Membership.objects.create(
+            user=cls.alice, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+        Membership.objects.create(
+            user=cls.bob, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.alice)
+        s = self.client.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def _ticket(self, *, assigned_to, due, **overrides):
+        defaults = dict(
+            organization=self.org, subject='probe',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.new_status,
+            assigned_to=assigned_to,
+            resolution_due_at=due,
+        )
+        defaults.update(overrides)
+        return Ticket.objects.create(**defaults)
+
+    def test_view_returns_200_for_authenticated_user(self):
+        resp = self.client.get('/psa/dispatch/heatmap/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_window_spans_15_days(self):
+        # ±7 days inclusive of today = 15 columns.
+        resp = self.client.get('/psa/dispatch/heatmap/')
+        self.assertEqual(len(list(resp.context['days'])), 15)
+
+    def test_assigned_ticket_with_due_date_appears_in_aggregation(self):
+        due = timezone.now() + timedelta(days=2)
+        self._ticket(assigned_to=self.alice, due=due)
+        resp = self.client.get('/psa/dispatch/heatmap/')
+        rows = list(resp.context['rows'])
+        # Alice's row should exist with at least one cell having count > 0.
+        alice_row = next((r for r in rows if r['tech'] == self.alice), None)
+        self.assertIsNotNone(alice_row, 'alice missing from heatmap rows')
+        self.assertGreaterEqual(sum(c['count'] for c in alice_row['cells']), 1)
+
+    def test_unassigned_ticket_not_in_heatmap(self):
+        # Heatmap only counts assigned tickets — an unassigned one with
+        # a due date in window should NOT show up.
+        self._ticket(assigned_to=None, due=timezone.now() + timedelta(days=2))
+        resp = self.client.get('/psa/dispatch/heatmap/')
+        # Row count: techs with at least one assigned in-window ticket.
+        # We have 0 assignees, so rows is empty.
+        self.assertEqual(len(list(resp.context['rows'])), 0)
+
+    def test_ticket_outside_window_not_counted(self):
+        # 30 days out — outside the ±7-day window.
+        self._ticket(assigned_to=self.alice, due=timezone.now() + timedelta(days=30))
+        resp = self.client.get('/psa/dispatch/heatmap/')
+        # Alice has zero in-window assignments → no row.
+        self.assertEqual(len(list(resp.context['rows'])), 0)
+
+    def test_ticket_without_due_date_not_counted(self):
+        self._ticket(assigned_to=self.alice, due=None, first_response_due_at=None)
+        resp = self.client.get('/psa/dispatch/heatmap/')
+        self.assertEqual(len(list(resp.context['rows'])), 0)
+
+    def test_max_count_reflects_busiest_cell(self):
+        # 3 tickets for alice on the same day, 1 for bob.
+        due = timezone.now() + timedelta(days=1)
+        for i in range(3):
+            self._ticket(assigned_to=self.alice, due=due, subject=f'a{i}')
+        self._ticket(assigned_to=self.bob, due=due, subject='b1')
+        resp = self.client.get('/psa/dispatch/heatmap/')
+        # max_count across all (tech, day) cells is 3.
+        self.assertEqual(resp.context['max_count'], 3)
+
+    def test_tenant_isolation_filters_other_org_tickets(self):
+        # Alice is in HeatCo; create a ticket in a different org assigned
+        # to her — it should NOT appear in HeatCo's heatmap.
+        other_org = Organization.objects.create(name='HeatOther', slug='heat-other')
+        Ticket.objects.create(
+            organization=other_org, subject='other-org',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.new_status,
+            assigned_to=self.alice,
+            resolution_due_at=timezone.now() + timedelta(days=1),
+        )
+        resp = self.client.get('/psa/dispatch/heatmap/')
+        # No tickets in HeatCo → no rows.
+        self.assertEqual(len(list(resp.context['rows'])), 0)

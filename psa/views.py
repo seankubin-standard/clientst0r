@@ -4164,6 +4164,82 @@ def dispatch_assign(request):
     })
 
 
+@login_required
+@require_psa_enabled
+def dispatch_heatmap(request):
+    """
+    Phase 11.3: per-tech / per-day load heatmap.
+
+    Aggregates open tickets by (assigned_to, due_date) over a 14-day
+    window — including 7 days back (already overdue or completed) and
+    7 days forward. Cells render with color intensity proportional to
+    ticket count so dispatchers can see distribution at a glance.
+
+    Tenant scope: same as ``dispatch_board`` — current org only, all
+    tickets when superuser/staff in global view.
+    """
+    from datetime import date, timedelta
+
+    org = get_request_organization(request)
+    qs = Ticket.objects.select_related('assigned_to', 'priority', 'status')
+    if org is not None:
+        qs = qs.filter(organization=org)
+
+    today = date.today()
+    days = [today + timedelta(days=i) for i in range(-7, 8)]  # ±7 days
+
+    # Aggregate: counts[user_id][date] = ticket_count
+    counts: dict[int, dict[date, int]] = {}
+    techs: dict[int, object] = {}
+    max_count = 0
+
+    for t in qs.order_by('-created_at')[:2000]:
+        if not t.assigned_to_id:
+            continue
+        due = t.resolution_due_at or t.first_response_due_at
+        if not due:
+            continue
+        d_local = timezone.localtime(due).date() if hasattr(due, 'date') else due
+        if d_local not in days:
+            continue
+        techs[t.assigned_to_id] = t.assigned_to
+        bucket = counts.setdefault(t.assigned_to_id, {})
+        bucket[d_local] = bucket.get(d_local, 0) + 1
+        if bucket[d_local] > max_count:
+            max_count = bucket[d_local]
+
+    # Build rows: list of dicts with tech + per-day cells, sorted by username.
+    rows = []
+    for tech in sorted(techs.values(), key=lambda u: (u.username or '').lower()):
+        bucket = counts.get(tech.id, {})
+        cells = []
+        for d in days:
+            count = bucket.get(d, 0)
+            # Intensity 0..4 — bucketize the count into one of 5 shade classes
+            # the template renders as background-color CSS.
+            if count == 0:
+                intensity = 0
+            elif max_count <= 1:
+                intensity = 4 if count else 0
+            else:
+                intensity = min(4, 1 + int((count - 1) * 4 / max(1, max_count - 1)))
+            cells.append({
+                'date': d,
+                'count': count,
+                'intensity': intensity,
+                'is_today': d == today,
+                'is_past': d < today,
+            })
+        rows.append({'tech': tech, 'cells': cells})
+
+    return render(request, 'psa/dispatch_heatmap.html', {
+        'days': days,
+        'rows': rows,
+        'today': today,
+        'max_count': max_count,
+    })
+
+
 # ---------------------------------------------------------------------------
 # Procurement (Phase 4.1) — Purchase Requisitions + Purchase Orders
 # ---------------------------------------------------------------------------
