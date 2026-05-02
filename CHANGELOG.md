@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.199] - 2026-05-02
+
+### Tests
+- **Baseline coverage for the `processes/` app** (Phase 7 polish Wave 2 — 9th of 16 originally-untested apps; previously a 3-line stub). Workflow engine: defines reusable Process templates with sequential stages, executed against tickets. Bug = silent workflow run failure. **19 tests across 4 classes:**
+  - `ProcessModelTests` (6) — slug auto-generation from title; explicit slug preserved; `__str__` marks `[GLOBAL]` and `[TEMPLATE]` prefixes; `unique_together (organization, slug)` rejects duplicates within an org but allows same slug across orgs; `for_organization()` filtering.
+  - `ProcessStageOrderingTests` (2) — default `order=0`; explicit ordering preserved by query.
+  - `ProcessExecutionTests` (8) — execution starts `not_started`; `completion_percentage` is 0 / 33 / 100 across stage states; **doesn't divide by zero on stage-less Process** (regression guard); `is_overdue` true when past due, false when completed even past due, false when no due date set.
+  - `ProcessStageCompletionConstraintTests` (3) — `(execution, stage)` unique-together rejects double-completion of one stage (load-bearing for completion-percentage math); `__str__` shows `✓` when completed, `○` when not.
+- 19/19 in 6 s. **No production bugs surfaced.**
+
 ## [3.17.198] - 2026-05-02
 
 ### Documentation
