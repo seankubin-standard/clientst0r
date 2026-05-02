@@ -1,6 +1,6 @@
 # Client St0r — Roadmap
 
-> Living plan. Phases 1–6 + 9 + 10 + 31 (Vault Access Rules) complete. Phase 7 in progress (continuous track; Wave 1 closed at v3.17.187, Wave 2 closed at v3.17.205 — every previously-untested app now has baseline coverage). Phase 11 in progress (11.1 shipped). Update as phases complete.
+> Living plan. Phases 1–7 + 9 + 10 + 31 (Vault Access Rules) complete. Phase 11 in progress (11.1 shipped). Update as phases complete.
 
 ## Phasing principle
 
@@ -84,7 +84,7 @@ Extends existing tickets + approvals; doesn't fork into a separate model layer.
 - **Service-catalog governance** — approval gate on catalog item changes *(6.3 — shipped v3.17.165)*
 - MSP-named sample role templates seeded by `RoleTemplate.get_or_create_system_templates()`: Client, Client Admin, Technician, Tech Manager, Office Manager, Full Admin (in addition to the existing Owner/Administrator/Editor/Help Desk/IT Manager/Documentation Writer/Read-Only) *(shipped v3.17.164)*
 
-## Phase 7 — Outsourcing, integrations, polish **(continuous track)** [in progress]
+## Phase 7 — Outsourcing, integrations, polish **(continuous track)** [complete]
 
 Not a single phase — runs alongside 1-6.
 
@@ -129,6 +129,8 @@ Not a single phase — runs alongside 1-6.
   ➡ **Wave 2 closed (v3.17.192 → v3.17.205)** — every one of the 16 originally-untested apps now has baseline coverage. **Final ratio: 3 of 11 baseline efforts surfaced real production bugs that had been latent for months** (api/, audit/, the v3.17.171 tenant-isolation rebuild before the wave formally started). All bugs caught were stale-attribute / wrong-kwarg / hasattr-vs-None patterns — the same family the next wave should look for first.
 
   Wave 2 totals: ~280 new tests across 11 modules in 14 commits. Combined with the v3.17.192 psa-tests shard split, the project's test runtime now fits comfortably under any reasonable CI ceiling: each shard ≤ 147s, smaller apps ≤ 7s.
+
+  ✅ **Phase 7 marked complete at v3.17.207.** All three pillars have shipped: outsourcing (v3.17.166), Integration SDK skeleton (v3.17.166) + first reference adapter (v3.17.168), and the polish-backlog test-coverage push (Waves 1 + 2). Ongoing polish continues as routine maintenance — bug fixes, deprecation sweeps, new vendor adapters in the SDK — but it's no longer tracked as an active phase. Future polish lands as standalone releases under whatever phase the change applies to (e.g. a vault-side improvement = Phase 31 polish).
 
 ## Phase 9 — Security alert ingestion: EDR / AV / Firewall on the dashboard **(M)** [shipped — v3.17.168]
 
@@ -776,7 +778,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 4 — Procurement | L | 4-5 weeks | none (ideally after 1) |
 | 5 — CRM | L | 4-5 weeks | none |
 | 6 — ITIL | M | 2-3 weeks | none |
-| 7 — Outsourcing + ecosystem + polish | Continuous | ongoing | runs alongside |
+| 7 — Outsourcing + ecosystem + polish | Continuous | **complete (v3.17.207); 2 polish waves closed at v3.17.187 + v3.17.205** | ran alongside Phases 1-6 |
 | 9 — Security alert ingestion (EDR / AV / Firewall) | M | 5 weeks — **framework + 1 reference adapter shipped v3.17.168** | none — can run alongside any |
 | 10 — Advanced Email-to-Ticket Engine | M | 2-3 weeks — **all sub-phases complete (10.1 v3.17.176; 10.2 v3.17.177; 10.3 v3.17.188; 10.4 v3.17.189)** | extends existing IMAP poller |
 | 11 — Advanced Dispatch & Tech Scheduling | M | 2-3 weeks | extends Phase 2 + dispatch board |

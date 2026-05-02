@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.207] - 2026-05-02
+
+### Changed — Phase 7 [complete]
+- **Phase 7 marked `[complete]`.** Originally framed as a "continuous track" that could never reach a terminal state, but with all three pillars shipped — outsourcing (v3.17.166), Integration SDK skeleton + reference adapter (v3.17.166 / v3.17.168), and the polish-backlog test-coverage push (Wave 1 closed v3.17.187, Wave 2 closed v3.17.205) — the phase has reached a sensible end. Ongoing polish work continues as routine maintenance and lands under whichever phase the change applies to (e.g. a vault improvement = Phase 31 polish).
+- **`/core/roadmap.json` JSON feed:** Phase 7 now reports `status: complete`. **Shipped count: 9 → 10.**
+- **Living-plan header at top of ROADMAP.md updated:** "Phases 1–7 + 9 + 10 + 31 complete. Phase 11 in progress (11.1 shipped)."
+- **Sizing-table row for Phase 7 updated:** "complete (v3.17.207); 2 polish waves closed at v3.17.187 + v3.17.205".
+- **README badge bumped** to v3.17.207.
+
+### Note
+- The "continuous track" label remains in the phase title for historical accuracy — Phase 7's character was that it ran alongside Phases 1-6 — but the status marker is the source of truth and now correctly reads `[complete]`.
+
 ## [3.17.206] - 2026-05-02
 
 ### Documentation — Phase 7 Wave 2 closure
