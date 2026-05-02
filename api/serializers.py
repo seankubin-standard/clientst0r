@@ -39,9 +39,14 @@ class AssetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Asset
+        # `location` and `is_active` were carried over from an older Asset
+        # spec and crashed every list/detail request with
+        # `ImproperlyConfigured: Field name 'location' is not valid for
+        # model 'Asset'`. Removed in v3.17.193 alongside the matching fix
+        # in AssetViewSet.filterset_fields.
         fields = [
             'id', 'name', 'asset_type', 'serial_number', 'model', 'manufacturer',
-            'hostname', 'ip_address', 'location', 'notes', 'tags', 'tag_ids', 'is_active',
+            'hostname', 'ip_address', 'notes', 'tags', 'tag_ids',
             'needs_reorder', 'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']

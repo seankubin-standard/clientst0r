@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.193] - 2026-05-02
+
+### Fixed
+- **`/api/assets/` was 500-ing on every list and detail request.** Two stale field references in the `api/` REST surface — `AssetViewSet.filterset_fields` listed `is_active` and `location`; `AssetSerializer.Meta.fields` listed `location` and `is_active`. The Asset model has neither (likely carried over from an older spec). Django-filter raised `TypeError: 'Meta.fields' must not contain non-model field names` on the first list request; DRF raised `ImproperlyConfigured: Field name 'location' is not valid for model 'Asset'` even when filters were skipped. Both fixed; the Asset list endpoint now responds 200. Same family of bug as the v3.17.171 audit-log crash — caught by the new `api/` test suite.
+- **Caught by the new test suite.** This is the second real bug surfaced this session by going from "0 tests" → "baseline coverage" on a previously-untested app (the first was the `_FakeIMAP` race in tenant-isolation rebuilds). Argument for keeping at it.
+
+### Tests
+- **Baseline coverage for the `api/` app** (audit punch-list / Phase 7 polish). Externally-exposed REST API previously had zero regression coverage. Before v3.17.171, `AuditLog.objects.create(... details=...)` had been crashing every successful `/api/passwords/<id>/` retrieve since the initial commit; this test file is designed to catch that class of bug. **11 tests across 6 classes:**
+  - `APIAuthGateTests` (2 cases) — anonymous requests get 401/403 on list endpoints.
+  - `OrganizationScopedListFilteringTests` (1 case) — `/api/assets/` filters to the user's current org.
+  - `CrossTenantDetailIsolationTests` (2 cases) — known PK in another org returns 404; own-org PK returns 200.
+  - `PasswordEndpointAuditTrailTests` (3 cases) — `retrieve` writes a `read` audit row; `reveal` returns plaintext + writes `reveal` row; explicit regression guard for the v3.17.171 `details=` bug.
+  - `PasswordOTPEndpointTests` (1 case) — `/otp/` action returns 400 for non-OTP entries.
+  - `OrganizationViewSetTests` (2 cases) — read-only viewset rejects POST with 405; list returns 200.
+- 11/11 in 15 s.
+
 ## [3.17.192] - 2026-05-02
 
 ### Tests

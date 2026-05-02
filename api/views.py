@@ -71,7 +71,11 @@ class AssetViewSet(OrganizationScopedViewSet):
     queryset = Asset.objects.all()
     serializer_class = AssetSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['asset_type', 'is_active', 'location', 'needs_reorder']
+    # Asset doesn't have `is_active` or `location` columns — those were
+    # carried over from an old model spec and crashed every list request
+    # with `TypeError: 'Meta.fields' must not contain non-model field names`
+    # until v3.17.193 caught it via the new api/ test suite.
+    filterset_fields = ['asset_type', 'needs_reorder']
     search_fields = ['name', 'serial_number', 'model', 'manufacturer']
     ordering_fields = ['name', 'created_at', 'updated_at']
     ordering = ['-created_at']
