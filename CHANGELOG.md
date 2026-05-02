@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.202] - 2026-05-02
+
+### Tests
+- **Baseline coverage for the `locations/` app** (Phase 7 polish Wave 2 — 12th of 16). Tracks physical locations + WAN connections + floor plans for multi-location clients. Bug here = wrong tenant access via shared-location ACL leak, broken HQ uniqueness, or silent address-rendering breakage. **20 tests across 3 classes:**
+  - `LocationModelTests` (9) — `__str__` discriminates owned/HQ/shared; `full_address` formatting (with/without country / suite); `has_coordinates` true only when both lat+lng; **HQ uniqueness invariant — saving a new `is_primary=True` demotes the existing primary** (load-bearing); shared locations cannot be primary (forced via save).
+  - `LocationAccessControlTests` (5) — `can_organization_access` ACL: owner can / other-org can't / shared-with-associated can / `get_all_organizations` returns the right set for shared vs owned.
+  - `WANModelTests` (6) — `__str__`, `is_down` true/false on status, `bandwidth_display` unknown/down-only/down+up formatting.
+- 20/20 in 0.08 s. **No production bugs surfaced.**
+
 ## [3.17.201] - 2026-05-02
 
 ### Tests
