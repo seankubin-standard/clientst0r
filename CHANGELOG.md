@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.195] - 2026-05-02
+
+### Fixed
+- **`AuditLoggingMiddleware._is_update()` was crashing on unresolved URLs.** The guard at the top did `if not hasattr(request, 'resolver_match'): return False` — but Django sets `resolver_match` on every request *as an attribute* (even when no URL pattern matches), assigning `None`. `hasattr` returns True for `None` values, so the function then did `None.kwargs` and raised `AttributeError`. Effect: any POST to an unresolved URL would crash the middleware and the request would 500. Fix: explicit `None` check via `getattr(request, 'resolver_match', None)`. Caught by the new `audit/` test suite.
+
+### Tests
+- **Baseline coverage for the `audit/` app** (audit punch-list / Phase 7 polish — 6th of 16 originally-untested apps). The audit log is the project's "who did what when" record-of-record; `AuditLoggingMiddleware` fires on every authenticated request. Silent failures here = invisible audit-trail loss. **30 tests across 7 classes:**
+  - `AuditLogClassmethodTests` (7) — `log()` writes a row, auto-fills `username` from `user.username`, accepts `user=None` (records empty username), defaults `extra_data` to `{}`, defaults `success=True`, records `organization`, records `object_type`/`object_id`/`object_repr`.
+  - `AuditLogModelTests` (4) — `__str__` includes username + action + object pointer; `get_object_url` returns `None` when object_id blank, `None` for unknown object_type, and a real reverse URL for known types like `password`.
+  - `MiddlewareActionDetectionTests` (11) — `_determine_action` matrix: GET-detail → `read`, GET-list → `None` (suppressed for noise), POST-create / POST-edit / POST-delete, `_method=DELETE` form override, PUT/PATCH → `update`, DELETE → `delete`, login POST 200/302 → `login`, login POST 4xx → `login_failed`, logout path → `logout`.
+  - `MiddlewareDetailViewDetectionTests` (4) — `_is_detail_view`: numeric pk → True, `/create/` → False, `/<pk>/edit/` → False, list path → False.
+  - `MiddlewareIntegrationTests` (2) — full request cycle: `/static/` excluded, anonymous request to non-login URL doesn't write a `read` row.
+  - `MiddlewareSensitiveFieldRedactionTests` (1) — sensitive POST fields (`password`, `token`, etc.) are `***REDACTED***` in `extra_data.form_data`.
+  - `MiddlewareFailureIsolationTests` (1) — when `AuditLog.log()` raises, the middleware swallows + the request still returns. **A failed audit must never 500 the user.**
+- 30/30 in 10 s.
+
+### Recurring observation
+- Third real production bug surfaced this session by going from 0 tests → baseline coverage on a previously-untested app. Pattern: v3.17.171 (tenant-isolation → API audit-log crash), v3.17.193 (api/ → `/api/assets/` 500), v3.17.195 (audit/ → POST-to-unresolved-URL crash). Each was latent for months; each was caught the day baseline tests went in.
+
 ## [3.17.194] - 2026-05-02
 
 ### Added — Phase 11.1: Dispatch prioritization + SLA-burn panel

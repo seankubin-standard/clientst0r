@@ -161,9 +161,16 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
     def _is_update(self, request):
         """Check if POST is actually an update."""
-        if not hasattr(request, 'resolver_match'):
+        # `request.resolver_match` is set by the URL dispatcher BEFORE the
+        # view runs, but is None for paths that didn't resolve to a view
+        # at all. The attribute always exists once the resolver has run,
+        # so `hasattr` (which returns True for None values) was the wrong
+        # gate — we hit `None.kwargs` and 500'd. Fix v3.17.195: explicit
+        # None check.
+        rm = getattr(request, 'resolver_match', None)
+        if rm is None:
             return False
-        return '/edit/' in request.path or 'pk' in request.resolver_match.kwargs
+        return '/edit/' in request.path or 'pk' in rm.kwargs
 
     def _get_organization(self, request):
         """Get the current organization from request session."""
