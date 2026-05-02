@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.208] - 2026-05-02
+
+### Added — Phase 11.2: PTO + calendar conflict awareness
+- **New `_dispatch_conflicts(tech, ticket)` helper** in `psa/views.py` returns advisory warning strings when assigning would create a conflict:
+  - **PTO conflict** — checks `resourcing.LeaveRequest.is_user_on_leave(tech, due_date)`. Only `status='approved'` leaves trigger; pending/cancelled don't.
+  - **Calendar overlap** — flags any other open ticket already assigned to the same tech with a due date inside a ±2-hour window of the new one. Closed/terminal tickets don't count.
+  - Wrapped in try/except for the resourcing import so a slim deployment without resourcing/ installed still works.
+- **`/psa/dispatch/assign/` JSON response now includes `conflict_warnings`** — an array of one-line warning strings, empty when clean. The response is **advisory, not blocking** — dispatchers made an explicit decision; the warning surfaces as a chip in the UI for review.
+- **AuditLog entry** for the assignment now includes the conflict list when present, so post-hoc audit trails capture "they assigned despite the warning".
+- **Tests:** 9 new across 2 classes — `DispatchConflictDetectionTests` (7 cases: unassigned no-warnings, no-due no-warnings, clean assignment no-warnings, PTO approved triggers, PTO pending doesn't, calendar overlap inside window, outside window, closed-ticket doesn't); `DispatchAssignWarningResponseTests` (2 cases: clean response has empty array, PTO conflict appears in JSON response). 19/19 dispatch tests passing in 10 s.
+
 ## [3.17.207] - 2026-05-02
 
 ### Changed — Phase 7 [complete]

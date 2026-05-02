@@ -264,3 +264,205 @@ class DispatchBoardSortingTests(TestCase):
                 self.assertLess(lane_list.index(t_high), lane_list.index(t_low))
                 return
         self.fail('expected t_high and t_low to share an unassigned-by-day bucket')
+
+
+# ---------------------------------------------------------------------------
+# Phase 11.2 — PTO + calendar conflict awareness
+# ---------------------------------------------------------------------------
+
+class DispatchConflictDetectionTests(TestCase):
+    """`_dispatch_conflicts(tech, ticket)` returns advisory warnings when
+    assigning would overlap with PTO or another ticket's due window."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _setup_seed()
+        cls.org = Organization.objects.create(name='Conflict-Co', slug='conflict-co')
+        cls.alice = User.objects.create_user('alice-conf', email='ac@x.com', password='pw')
+        cls.queue = Queue.objects.first()
+        cls.priority = TicketPriority.objects.order_by('sort_order').first()
+        cls.ttype = TicketType.objects.first()
+        cls.new_status = TicketStatus.objects.filter(slug='new').first()
+
+    def _ticket(self, **overrides):
+        defaults = dict(
+            organization=self.org, subject='probe',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.new_status,
+        )
+        defaults.update(overrides)
+        return Ticket.objects.create(**defaults)
+
+    def test_no_warnings_when_unassigned(self):
+        from psa.views import _dispatch_conflicts
+        t = self._ticket(resolution_due_at=timezone.now() + timedelta(hours=4))
+        self.assertEqual(_dispatch_conflicts(None, t), [])
+
+    def test_no_warnings_when_no_due_date(self):
+        from psa.views import _dispatch_conflicts
+        t = self._ticket(resolution_due_at=None, first_response_due_at=None)
+        # Without a due date there's no schedule to conflict with.
+        self.assertEqual(_dispatch_conflicts(self.alice, t), [])
+
+    def test_no_warnings_when_clean(self):
+        from psa.views import _dispatch_conflicts
+        t = self._ticket(resolution_due_at=timezone.now() + timedelta(hours=4))
+        # No PTO + no other tickets → empty warnings.
+        self.assertEqual(_dispatch_conflicts(self.alice, t), [])
+
+    def test_pto_warning_when_tech_on_approved_leave(self):
+        from psa.views import _dispatch_conflicts
+        from resourcing.models import LeaveRequest
+        # Approved leave covering the ticket's due date.
+        future = timezone.now() + timedelta(days=2)
+        LeaveRequest.objects.create(
+            user=self.alice, leave_type='vacation',
+            start_date=future.date(), end_date=future.date() + timedelta(days=2),
+            status='approved',
+        )
+        t = self._ticket(resolution_due_at=future + timedelta(hours=8))
+        warnings = _dispatch_conflicts(self.alice, t)
+        self.assertTrue(any('PTO conflict' in w for w in warnings),
+                        f'expected PTO warning in {warnings!r}')
+
+    def test_no_pto_warning_when_leave_unapproved(self):
+        from psa.views import _dispatch_conflicts
+        from resourcing.models import LeaveRequest
+        future = timezone.now() + timedelta(days=2)
+        LeaveRequest.objects.create(
+            user=self.alice, leave_type='vacation',
+            start_date=future.date(), end_date=future.date() + timedelta(days=2),
+            status='pending',  # NOT approved
+        )
+        t = self._ticket(resolution_due_at=future + timedelta(hours=8))
+        warnings = _dispatch_conflicts(self.alice, t)
+        self.assertFalse(any('PTO conflict' in w for w in warnings),
+                         f'pending leave should NOT trigger conflict, got {warnings!r}')
+
+    def test_calendar_overlap_within_two_hour_window(self):
+        from psa.views import _dispatch_conflicts
+        due = timezone.now() + timedelta(hours=8)
+        # Existing assigned ticket due 1 hour later.
+        Ticket.objects.create(
+            organization=self.org, subject='other',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.new_status,
+            assigned_to=self.alice,
+            resolution_due_at=due + timedelta(hours=1),
+        )
+        new = self._ticket(resolution_due_at=due)
+        warnings = _dispatch_conflicts(self.alice, new)
+        self.assertTrue(any('Calendar conflict' in w for w in warnings),
+                        f'expected calendar conflict in {warnings!r}')
+
+    def test_no_calendar_overlap_outside_window(self):
+        from psa.views import _dispatch_conflicts
+        due = timezone.now() + timedelta(hours=8)
+        # Existing ticket due 5 hours later — outside the ±2-hour window.
+        Ticket.objects.create(
+            organization=self.org, subject='far',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.new_status,
+            assigned_to=self.alice,
+            resolution_due_at=due + timedelta(hours=5),
+        )
+        new = self._ticket(resolution_due_at=due)
+        warnings = _dispatch_conflicts(self.alice, new)
+        self.assertFalse(any('Calendar conflict' in w for w in warnings),
+                         f'5h-out should NOT conflict, got {warnings!r}')
+
+    def test_closed_ticket_does_not_count_as_calendar_conflict(self):
+        from psa.views import _dispatch_conflicts
+        due = timezone.now() + timedelta(hours=8)
+        closed_status = TicketStatus.objects.filter(is_terminal=True).first()
+        if closed_status is None:
+            self.skipTest('no terminal TicketStatus seeded')
+        Ticket.objects.create(
+            organization=self.org, subject='done',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=closed_status,
+            assigned_to=self.alice,
+            resolution_due_at=due + timedelta(hours=1),
+        )
+        new = self._ticket(resolution_due_at=due)
+        self.assertEqual(_dispatch_conflicts(self.alice, new), [])
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class DispatchAssignWarningResponseTests(TestCase):
+    """`/psa/dispatch/assign/` returns a `conflict_warnings` array in the
+    JSON response when assigning a tech with PTO or a calendar overlap."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _setup_seed()
+        _enable_psa_global()
+        cls.org = Organization.objects.create(name='Resp-Co', slug='resp-co')
+        _enable_psa_for(cls.org)
+        cls.queue = Queue.objects.first()
+        cls.priority = TicketPriority.objects.order_by('sort_order').first()
+        cls.ttype = TicketType.objects.first()
+        cls.new_status = TicketStatus.objects.filter(slug='new').first()
+
+        cls.bob = User.objects.create_user('bob-resp', email='br@x.com', password='pw')
+        cls.staff = User.objects.create_user(
+            'dispatcher', email='d@x.com', password='pw', is_staff=True,
+        )
+        Membership.objects.create(
+            user=cls.staff, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+        Membership.objects.create(
+            user=cls.bob, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.staff)
+        s = self.client.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_clean_assignment_has_empty_warnings_array(self):
+        from psa.models import Ticket
+        t = Ticket.objects.create(
+            organization=self.org, subject='clean',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.new_status,
+            resolution_due_at=timezone.now() + timedelta(days=2),
+        )
+        resp = self.client.post('/psa/dispatch/assign/', {
+            'ticket_number': t.ticket_number,
+            'assignee': str(self.bob.id),
+        })
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body['ok'])
+        self.assertEqual(body['conflict_warnings'], [])
+
+    def test_pto_conflict_appears_in_warnings_array(self):
+        from psa.models import Ticket
+        from resourcing.models import LeaveRequest
+        future = timezone.now() + timedelta(days=2)
+        LeaveRequest.objects.create(
+            user=self.bob, leave_type='sick',
+            start_date=future.date(), end_date=future.date() + timedelta(days=1),
+            status='approved',
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='conflict',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.new_status,
+            resolution_due_at=future + timedelta(hours=4),
+        )
+        resp = self.client.post('/psa/dispatch/assign/', {
+            'ticket_number': t.ticket_number,
+            'assignee': str(self.bob.id),
+        })
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body['ok'])  # not blocked, just warned
+        self.assertTrue(
+            any('PTO conflict' in w for w in body['conflict_warnings']),
+            f'expected PTO warning in {body["conflict_warnings"]!r}',
+        )

@@ -233,8 +233,8 @@ Planned capabilities:
 - Drag/drop dispatch board *(shipped — v3.17.112)*
 - Technician scheduling *(partial — Phase 2 WorkingHours shipped)*
 - Shift management
-- PTO conflict awareness *(planned — Phase 11.2; extends Phase 2.2 LeaveRequest)*
-- Calendar conflict detection *(planned — Phase 11.2)*
+- PTO conflict awareness *(11.2 — shipped v3.17.208; extends Phase 2.2 LeaveRequest)*
+- Calendar conflict detection *(11.2 — shipped v3.17.208)*
 - Recurring onsite scheduling *(planned — Phase 11.3)*
 - Dispatch prioritization (auto-rank queue by SLA + priority) *(11.1 — shipped v3.17.194)*
 - SLA-aware dispatching — SLA-burn panel for tickets due ≤ 4h *(11.1 — shipped v3.17.194)*
@@ -248,6 +248,12 @@ Planned capabilities:
 - New `_dispatch_priority_key(ticket)` returns `(priority.sort_order, no_due_flag, due)` — every lane on the dispatch board (overdue, SLA-burn, unassigned-by-day, assigned-tech cells) now sorts most-urgent first.
 - New "SLA at risk" panel above the grid: open tickets due in the next 4 hours but not yet overdue, surfaced with a yellow fire icon. Already-overdue stays in the existing red panel — no duplication. Closed tickets excluded.
 - 9 new tests across 3 classes covering sort-key contract, panel filtering, and end-to-end lane ordering.
+
+### Sub-phase 11.2 — PTO + calendar conflict awareness *(shipped v3.17.208)*
+
+- New `_dispatch_conflicts(tech, ticket)` helper returns advisory warnings: **PTO conflict** (approved `resourcing.LeaveRequest` covering the ticket's due date) + **calendar overlap** (another open ticket assigned to the same tech with a due date inside a ±2-hour window).
+- `/psa/dispatch/assign/` JSON response now carries a `conflict_warnings` array. Advisory, not blocking — dispatchers made an explicit decision; the warning surfaces as a chip for review. AuditLog includes the conflict list so post-hoc trails capture "they assigned despite the warning".
+- 9 new tests across 2 classes covering pure-function conflict detection + end-to-end JSON response shape.
 
 **Goal:** Improve technician coordination and service workflow efficiency.
 

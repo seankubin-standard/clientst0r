@@ -3132,6 +3132,63 @@ def _dispatch_priority_key(ticket):
     return (sort_order, due is None, due)
 
 
+def _dispatch_conflicts(tech_user, ticket):
+    """
+    Phase 11.2: returns a list of one-line conflict warnings for
+    assigning ``ticket`` to ``tech_user``. Empty list = no conflicts.
+    The caller (dispatch_assign / dispatch_board) decides whether to
+    block, warn, or pass through.
+
+    Conflicts checked:
+      - **PTO**: approved ``resourcing.LeaveRequest`` covering the
+        ticket's due date.
+      - **Calendar overlap**: another open ticket already assigned to
+        the same tech with a due date inside a ±2-hour window.
+    """
+    warnings = []
+    if tech_user is None:
+        return warnings
+
+    due = ticket.resolution_due_at or ticket.first_response_due_at
+    if due is None:
+        return warnings  # no due date → no schedulable conflict
+
+    # PTO check via resourcing.LeaveRequest. Wrapped in try/except so the
+    # poller / dispatch view doesn't break if resourcing isn't installed
+    # in a slim deployment.
+    try:
+        from resourcing.models import LeaveRequest
+        target_date = due.date() if hasattr(due, 'date') else due
+        if LeaveRequest.is_user_on_leave(tech_user, target_date):
+            warnings.append(
+                f'PTO conflict: {tech_user.username} is on approved leave on '
+                f'{target_date.isoformat()}'
+            )
+    except Exception:  # noqa: BLE001 — resourcing may be absent
+        pass
+
+    # Calendar overlap. Window = ±2 hours. Excludes the ticket itself
+    # and any closed/cancelled tickets.
+    from datetime import timedelta
+    overlap_start = due - timedelta(hours=2)
+    overlap_end = due + timedelta(hours=2)
+    other_qs = (
+        Ticket.objects
+        .filter(assigned_to=tech_user)
+        .exclude(pk=ticket.pk)
+        .filter(status__is_terminal=False)
+        .select_related('status')
+    )
+    for other in other_qs:
+        other_due = other.resolution_due_at or other.first_response_due_at
+        if other_due and overlap_start <= other_due <= overlap_end:
+            warnings.append(
+                f'Calendar conflict: {tech_user.username} also on '
+                f'{other.ticket_number} due {other_due.strftime("%H:%M %Z")}'.rstrip()
+            )
+    return warnings
+
+
 @login_required
 @require_psa_enabled
 def dispatch_board(request):
@@ -4080,13 +4137,22 @@ def dispatch_assign(request):
             return JsonResponse({'error': 'assignee not eligible for this org'}, status=400)
         ticket.assigned_to = target
     ticket.save(update_fields=['assigned_to', 'updated_at'])
+    # Phase 11.2: PTO + calendar conflict warnings. Computed AFTER the
+    # save so the new tech is the one being checked. We don't block —
+    # the dispatcher made an explicit decision; the warnings surface as
+    # advisory chips in the response.
+    conflict_warnings = _dispatch_conflicts(ticket.assigned_to, ticket)
     AuditLog.log(
         user=request.user, action='update',
         organization=ticket.organization,
         object_type='psa.Ticket', object_id=ticket.pk,
         object_repr=ticket.ticket_number,
-        description=f'Dispatch DnD: {ticket.ticket_number} reassigned '
-                    f'from {old_assignee or "unassigned"} → {ticket.assigned_to or "unassigned"}',
+        description=(
+            f'Dispatch DnD: {ticket.ticket_number} reassigned '
+            f'from {old_assignee or "unassigned"} → {ticket.assigned_to or "unassigned"}'
+            + (f' [conflicts: {"; ".join(conflict_warnings)}]'
+               if conflict_warnings else '')
+        ),
         ip_address=_client_ip(request), path=request.path,
     )
     return JsonResponse({
@@ -4094,6 +4160,7 @@ def dispatch_assign(request):
         'ticket_number': ticket.ticket_number,
         'assigned_to': ticket.assigned_to.username if ticket.assigned_to else '',
         'assigned_to_id': ticket.assigned_to_id or 0,
+        'conflict_warnings': conflict_warnings,  # 11.2: empty list when no conflicts
     })
 
 
