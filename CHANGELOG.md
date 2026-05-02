@@ -5,6 +5,31 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.230] - 2026-05-02
+
+### Added — Editable Dashboard Quick Actions
+The dashboard's Quick Actions card was hardcoded with 8 tiles. v3.17.230 makes the set user-customizable: pick which tiles appear, drag to reorder, and save. Adding new entries for future devs is now a one-line registry change.
+
+- **New `core/quick_actions.py` registry** — single source of truth for available tiles. Each entry has `key` / `label` / `icon` / `url_name` / `tooltip` / `enabled` callable. The callable receives the request context so tiles gate on the same feature flags as the static template did before (`psa_enabled` / `vehicles_enabled`).
+- **`UserProfile.quick_actions_config` JSONField** — ordered list of action keys the user wants. Empty list (the default) means "use registry defaults." Unknown keys are silently dropped at render time so a removed registry entry doesn't break the page.
+- **`resolve_for_user(user, context)`** — single helper called from the context processor that resolves URL names, gates on flags, and returns the ordered render-ready list. The `_quick_actions.html` partial now iterates over `resolved_quick_actions` from the context.
+- **New endpoint `/accounts/profile/quick-actions/`** — two-column edit page. Left column shows currently selected tiles with a drag handle (SortableJS) + remove button per row. Right column shows available tiles with an Add button. JS moves rows between columns; on submit, hidden inputs are rebuilt to reflect the final state. Reset-to-defaults button included.
+- **"Customize" button on the Quick Actions card header** so users can find the editor without digging through Settings.
+- **Eleven actions registered** initially: New Ticket, Add Asset, New Password, Add Document, Scan Receipt, Run Workflow, New Quote, New Invoice, Evidence Pack (per-org), Wallboards, Agreement Reconciliation, Runbooks. Defaults match the previous hardcoded list.
+
+### Migrations
+- `accounts.0029_userprofile_quick_actions_config` — adds the JSONField with `default=list, blank=True`. No data backfill needed.
+
+### Tests
+- 7 tests in `QuickActionsEditorTests`:
+  - GET renders the edit page with both columns populated.
+  - POST persists selected keys in user-supplied order.
+  - POST filters unknown keys (defends against form tampering).
+  - Reset-to-defaults clears the JSONField.
+  - `resolve_for_user` returns defaults when config is empty.
+  - `resolve_for_user` respects saved order.
+  - `resolve_for_user` drops PSA-gated actions when `psa_enabled=False` in the context.
+
 ## [3.17.229] - 2026-05-02
 
 ### Changed — Report Templates page compacted

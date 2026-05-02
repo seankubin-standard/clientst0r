@@ -467,6 +467,16 @@ class UserProfile(BaseModel):
         help_text='Show helpful tooltips throughout the interface'
     )
 
+    # v3.17.230 — editable Quick Actions on the dashboard.
+    # JSON list of action keys (from QUICK_ACTIONS_REGISTRY) in user-preferred
+    # order. Empty list = use the registry defaults. Unknown keys are silently
+    # ignored at render time so a removed registry entry doesn't break the page.
+    quick_actions_config = models.JSONField(
+        default=list, blank=True,
+        help_text='Ordered list of quick-action keys the user wants on their '
+                  'dashboard. Empty = use defaults.',
+    )
+
     # Authentication Source (for SSO tracking)
     auth_source = models.CharField(
         max_length=20,

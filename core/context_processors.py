@@ -50,6 +50,14 @@ def organization_context(request):
         **feature_toggles,  # Add feature toggles to context
     }
 
+    # v3.17.230: resolve user's quick actions for the dashboard partial.
+    if request.user.is_authenticated:
+        try:
+            from .quick_actions import resolve_for_user
+            context['resolved_quick_actions'] = resolve_for_user(request.user, context)
+        except Exception:
+            context['resolved_quick_actions'] = []
+
     # Add user's organizations for org switcher
     if request.user.is_authenticated:
         # Superusers and staff users see all organizations

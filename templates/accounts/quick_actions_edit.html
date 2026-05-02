@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Customize Quick Actions{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'core:dashboard' %}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'accounts:profile' %}">Profile</a></li>
+        <li class="breadcrumb-item active">Quick Actions</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-bolt me-2"></i>Customize Quick Actions</h2>
+    <a href="{% url 'core:dashboard' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+    </a>
+</div>
+
+<p class="text-muted">
+    Pick which shortcut tiles appear on your dashboard's Quick Actions card and the order they're shown in.
+    Drag rows up/down on the left to reorder. Click <strong>+</strong> on the right to add a tile;
+    <strong>×</strong> on the left to remove one. Click <strong>Save</strong> when done.
+</p>
+
+<form method="post" id="qa-form">
+    {% csrf_token %}
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                    <strong><i class="fas fa-check-circle me-2 text-success"></i>On your dashboard</strong>
+                    <span class="text-muted small" id="qa-count">{{ selected|length }} tile{{ selected|length|pluralize }}</span>
+                </div>
+                <ul id="qa-selected" class="list-group list-group-flush small">
+                    {% for s in selected %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center"
+                        data-key="{{ s.key }}" style="cursor: grab;">
+                        <span>
+                            <i class="fas fa-grip-vertical text-muted me-2"></i>
+                            <i class="fas {{ s.icon }} me-2 text-primary"></i>
+                            {{ s.label }}
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-danger qa-remove"
+                                title="Remove this tile">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </li>
+                    {% empty %}
+                    <li class="list-group-item text-muted">
+                        <em>No tiles. Add some from the right column.</em>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header py-2">
+                    <strong><i class="fas fa-plus-circle me-2 text-info"></i>Available to add</strong>
+                </div>
+                <ul id="qa-available" class="list-group list-group-flush small">
+                    {% for a in available %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center"
+                        data-key="{{ a.key }}" data-icon="{{ a.icon }}" data-label="{{ a.label }}">
+                        <span>
+                            <i class="fas {{ a.icon }} me-2 text-muted"></i>
+                            {{ a.label }}
+                            {% if a.tooltip %}<span class="text-muted small d-block ms-4">{{ a.tooltip }}</span>{% endif %}
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-success qa-add"
+                                title="Add to your dashboard">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </li>
+                    {% empty %}
+                    <li class="list-group-item text-muted">
+                        <em>All available tiles are already on your dashboard.</em>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between mt-3">
+        <button type="submit" name="reset" value="1" class="btn btn-outline-warning"
+                onclick="return confirm('Reset to default Quick Actions?');">
+            <i class="fas fa-undo me-1"></i>Reset to defaults
+        </button>
+        <div class="d-flex gap-2">
+            <a href="{% url 'core:dashboard' %}" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-1"></i>Save Quick Actions
+            </button>
+        </div>
+    </div>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+(function() {
+    var selectedList = document.getElementById('qa-selected');
+    var availableList = document.getElementById('qa-available');
+    var form = document.getElementById('qa-form');
+    var countEl = document.getElementById('qa-count');
+
+    if (selectedList && typeof Sortable !== 'undefined') {
+        Sortable.create(selectedList, { animation: 150, handle: '.fa-grip-vertical' });
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function updateCount() {
+        if (!countEl) return;
+        var n = selectedList.querySelectorAll('li[data-key]').length;
+        countEl.textContent = n + ' tile' + (n === 1 ? '' : 's');
+    }
+
+    function makeSelectedItem(key, icon, label) {
+        var li = document.createElement('li');
+        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+        li.dataset.key = key;
+        li.style.cursor = 'grab';
+        li.innerHTML =
+            '<span>' +
+              '<i class="fas fa-grip-vertical text-muted me-2"></i>' +
+              '<i class="fas ' + escapeHtml(icon) + ' me-2 text-primary"></i>' +
+              escapeHtml(label) +
+            '</span>' +
+            '<button type="button" class="btn btn-sm btn-outline-danger qa-remove" title="Remove this tile">' +
+              '<i class="fas fa-times"></i>' +
+            '</button>';
+        return li;
+    }
+
+    selectedList.addEventListener('click', function(e) {
+        var btn = e.target.closest('.qa-remove');
+        if (!btn) return;
+        var li = btn.closest('li[data-key]');
+        if (!li) return;
+        var key = li.dataset.key;
+        var labelEl = li.querySelector('span > i:last-of-type');
+        var label = li.textContent.trim();
+        var icon = '';
+        var iconEl = li.querySelector('span > i.fa-grip-vertical + i');
+        if (iconEl) {
+            for (var c = 0; c < iconEl.classList.length; c++) {
+                if (iconEl.classList[c].indexOf('fa-') === 0 && iconEl.classList[c] !== 'fa-grip-vertical') {
+                    icon = iconEl.classList[c];
+                }
+            }
+        }
+        // Move row to "available" with an Add button.
+        var avail = document.createElement('li');
+        avail.className = 'list-group-item d-flex justify-content-between align-items-center';
+        avail.dataset.key = key;
+        avail.dataset.icon = icon;
+        avail.dataset.label = label;
+        avail.innerHTML =
+            '<span>' +
+              '<i class="fas ' + escapeHtml(icon) + ' me-2 text-muted"></i>' +
+              escapeHtml(label) +
+            '</span>' +
+            '<button type="button" class="btn btn-sm btn-outline-success qa-add" title="Add to your dashboard">' +
+              '<i class="fas fa-plus"></i>' +
+            '</button>';
+        availableList.appendChild(avail);
+        li.remove();
+        updateCount();
+    });
+
+    availableList.addEventListener('click', function(e) {
+        var btn = e.target.closest('.qa-add');
+        if (!btn) return;
+        var li = btn.closest('li[data-key]');
+        if (!li) return;
+        var newItem = makeSelectedItem(li.dataset.key, li.dataset.icon, li.dataset.label);
+        selectedList.appendChild(newItem);
+        li.remove();
+        updateCount();
+    });
+
+    form.addEventListener('submit', function(e) {
+        // Only fire when not the "Reset to defaults" button.
+        var sub = e.submitter;
+        if (sub && sub.name === 'reset') return;
+        // Strip placeholder rows and rebuild the hidden inputs.
+        var existing = form.querySelectorAll('input[type=hidden][name="selected"]');
+        existing.forEach(function(el) { el.remove(); });
+        var rows = selectedList.querySelectorAll('li[data-key]');
+        rows.forEach(function(li) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'selected';
+            input.value = li.dataset.key;
+            form.appendChild(input);
+        });
+    });
+})();
+</script>
+{% endblock %}

@@ -135,6 +135,106 @@ class ReportsPermissionTests(TestCase):
         self.assertEqual(r.status_code, 200)
 
 
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class QuickActionsEditorTests(TestCase):
+    """v3.17.230: editable dashboard Quick Actions."""
+
+    def setUp(self):
+        from accounts.models import UserProfile
+        self.user = User.objects.create_user('qa-user', 'qa@x.com', 'pw')
+        UserProfile.objects.get_or_create(user=self.user)
+
+    def _login(self, c):
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s.save()
+
+    def test_get_renders_selected_and_available(self):
+        c = Client()
+        self._login(c)
+        r = c.get('/accounts/profile/quick-actions/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Customize Quick Actions')
+        # Default-selected tiles render in the selected column.
+        self.assertContains(r, 'New Ticket')
+        self.assertContains(r, 'Add Asset')
+
+    def test_post_saves_selected_keys_in_order(self):
+        from accounts.models import UserProfile
+        c = Client()
+        self._login(c)
+        r = c.post('/accounts/profile/quick-actions/', {
+            'selected': ['add_asset', 'new_password', 'wallboard'],
+        })
+        self.assertEqual(r.status_code, 302)
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertEqual(profile.quick_actions_config,
+                         ['add_asset', 'new_password', 'wallboard'])
+
+    def test_post_filters_unknown_keys(self):
+        from accounts.models import UserProfile
+        c = Client()
+        self._login(c)
+        c.post('/accounts/profile/quick-actions/', {
+            'selected': ['add_asset', 'totally_made_up', 'wallboard'],
+        })
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertEqual(profile.quick_actions_config, ['add_asset', 'wallboard'])
+
+    def test_reset_clears_config(self):
+        from accounts.models import UserProfile
+        profile = UserProfile.objects.get(user=self.user)
+        profile.quick_actions_config = ['add_asset']
+        profile.save()
+        c = Client()
+        self._login(c)
+        c.post('/accounts/profile/quick-actions/', {'reset': '1'})
+        profile.refresh_from_db()
+        self.assertEqual(profile.quick_actions_config, [])
+
+    def test_resolve_for_user_uses_default_when_empty(self):
+        from core.quick_actions import resolve_for_user, DEFAULT_QUICK_ACTION_KEYS
+        ctx = {'psa_enabled': True, 'vehicles_enabled': True}
+        actions = resolve_for_user(self.user, ctx)
+        keys = [a['key'] for a in actions]
+        # Defaults come through (modulo URL-resolution; everything in
+        # DEFAULT_QUICK_ACTION_KEYS uses real URL names that resolve in the
+        # test environment).
+        self.assertGreater(len(keys), 0)
+        for k in keys:
+            self.assertIn(k, DEFAULT_QUICK_ACTION_KEYS)
+
+    def test_resolve_for_user_respects_saved_order(self):
+        from accounts.models import UserProfile
+        from core.quick_actions import resolve_for_user
+        from django.contrib.auth.models import User as _U
+        profile = UserProfile.objects.get(user=self.user)
+        profile.quick_actions_config = ['wallboard', 'add_asset']
+        profile.save()
+        # Re-fetch the user so the cached `.profile` related accessor picks
+        # up the updated config rather than the stale one cached at create time.
+        fresh = _U.objects.get(pk=self.user.pk)
+        ctx = {'psa_enabled': False, 'vehicles_enabled': False}
+        actions = resolve_for_user(fresh, ctx)
+        keys = [a['key'] for a in actions]
+        self.assertEqual(keys, ['wallboard', 'add_asset'])
+
+    def test_resolve_for_user_drops_psa_actions_when_psa_disabled(self):
+        from accounts.models import UserProfile
+        from core.quick_actions import resolve_for_user
+        from django.contrib.auth.models import User as _U
+        profile = UserProfile.objects.get(user=self.user)
+        profile.quick_actions_config = ['new_ticket', 'add_asset']
+        profile.save()
+        fresh = _U.objects.get(pk=self.user.pk)
+        ctx = {'psa_enabled': False, 'vehicles_enabled': False}
+        actions = resolve_for_user(fresh, ctx)
+        keys = [a['key'] for a in actions]
+        self.assertNotIn('new_ticket', keys)
+        self.assertIn('add_asset', keys)
+
+
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
                    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class MemberWelcomeEmailTests(TestCase):

@@ -187,6 +187,59 @@ def profile_edit(request):
 
 
 @login_required
+def quick_actions_edit(request):
+    """
+    v3.17.230: customize the dashboard Quick Actions tile set.
+
+    POST keys: `selected[]` (list of action keys, in user-preferred order
+    as the JS submits them — drag-to-reorder works in the form).
+    """
+    from core.quick_actions import QUICK_ACTIONS_REGISTRY, DEFAULT_QUICK_ACTION_KEYS, get_action
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
+    if request.method == 'POST':
+        if 'reset' in request.POST:
+            profile.quick_actions_config = []
+            profile.save(update_fields=['quick_actions_config'])
+            messages.success(request, 'Quick Actions reset to defaults.')
+            return redirect('accounts:quick_actions_edit')
+        chosen = request.POST.getlist('selected')
+        valid = [k for k in chosen if get_action(k)]
+        profile.quick_actions_config = valid
+        profile.save(update_fields=['quick_actions_config'])
+        messages.success(request, f'Saved {len(valid)} Quick Actions.')
+        return redirect('accounts:quick_actions_edit')
+
+    saved = profile.quick_actions_config or []
+    if not saved:
+        saved = list(DEFAULT_QUICK_ACTION_KEYS)
+    saved_keys = list(saved)
+    saved_set = set(saved_keys)
+
+    selected = []
+    for k in saved_keys:
+        action = get_action(k)
+        if action:
+            selected.append({'key': k, 'label': action['label'], 'icon': action['icon']})
+
+    available = []
+    for action in QUICK_ACTIONS_REGISTRY:
+        if action['key'] not in saved_set:
+            available.append({
+                'key': action['key'],
+                'label': action['label'],
+                'icon': action['icon'],
+                'tooltip': action.get('tooltip', ''),
+            })
+
+    return render(request, 'accounts/quick_actions_edit.html', {
+        'selected': selected,
+        'available': available,
+        'profile': profile,
+    })
+
+
+@login_required
 def toggle_theme(request):
     """
     Toggle between light and dark theme.
