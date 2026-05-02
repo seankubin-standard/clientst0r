@@ -1,6 +1,6 @@
 # Client St0r — Roadmap
 
-> Living plan. Phases 1–7 + 9 + 10 + 31 (Vault Access Rules) complete. Phase 11 in progress (11.1 shipped). Update as phases complete.
+> Living plan. Phases 1–7 + 9 + 10 + 11 + 31 (Vault Access Rules) complete. Update as phases complete.
 
 ## Phasing principle
 
@@ -225,7 +225,7 @@ Planned capabilities:
 
 **Goal:** Reduce dispatcher and technician overhead while improving ticket workflow accuracy.
 
-## Phase 11 — Advanced Dispatch & Technician Scheduling **(M)** [in progress]
+## Phase 11 — Advanced Dispatch & Technician Scheduling **(M)** [complete]
 
 **Roadmap item:** Dispatch Optimization & Technician Coordination. Extends Phase 2 (resourcing) + the dispatch board (v3.17.112) + skill ranking (v3.17.138).
 
@@ -262,6 +262,8 @@ Planned capabilities:
 - Counts open assigned tickets with due dates in window; tenant-isolated.
 - Geo-aware routing + travel-time estimation **deferred** — they need GPS data the Phase 8 mobile timeclock will collect; revisit then.
 - 8 new tests in `DispatchHeatmapTests` covering the view, window calculation, what's counted vs filtered, max-count math, and tenant isolation.
+
+✅ **Phase 11 marked complete at v3.17.210.** All three planned sub-phases shipped (11.1 dispatch prioritization + SLA-burn, 11.2 PTO + calendar conflict awareness, 11.3 heatmap). 27 dispatch tests across the three sub-phases. Two listed capabilities — geo-aware technician routing and travel time estimation — were deferred to Phase 8 because they depend on GPS data the mobile timeclock will collect; revisit them in that phase rather than blocking Phase 11 closure on infrastructure that doesn't exist yet.
 
 **Goal:** Improve technician coordination and service workflow efficiency.
 
@@ -795,7 +797,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 7 — Outsourcing + ecosystem + polish | Continuous | **complete (v3.17.207); 2 polish waves closed at v3.17.187 + v3.17.205** | ran alongside Phases 1-6 |
 | 9 — Security alert ingestion (EDR / AV / Firewall) | M | 5 weeks — **framework + 1 reference adapter shipped v3.17.168** | none — can run alongside any |
 | 10 — Advanced Email-to-Ticket Engine | M | 2-3 weeks — **all sub-phases complete (10.1 v3.17.176; 10.2 v3.17.177; 10.3 v3.17.188; 10.4 v3.17.189)** | extends existing IMAP poller |
-| 11 — Advanced Dispatch & Tech Scheduling | M | 2-3 weeks | extends Phase 2 + dispatch board |
+| 11 — Advanced Dispatch & Tech Scheduling | M | **complete (11.1 v3.17.194; 11.2 v3.17.208; 11.3 v3.17.209); geo-aware deferred to Phase 8** | extends Phase 2 + dispatch board |
 | 12 — Customer Communication Workflows | M | 2-3 weeks | extends customer portal |
 | 13 — Procurement & Lifecycle Mgmt | M | 2-3 weeks | extends Phase 4 |
 | 14 — Visual Workflow Automation Engine | L | 4-5 weeks | extends workflow rules engine |

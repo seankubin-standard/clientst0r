@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.210] - 2026-05-02
+
+### Changed — Phase 11 [complete]
+- **Phase 11 marked `[complete]`.** All three planned sub-phases shipped:
+  - 11.1 Dispatch prioritization + SLA-burn panel — v3.17.194
+  - 11.2 PTO + calendar conflict awareness — v3.17.208
+  - 11.3 Dispatch heatmap — v3.17.209
+- **Two listed capabilities deferred to Phase 8:** geo-aware technician routing and travel time estimation. Both depend on GPS data the Phase 8 mobile timeclock will collect — no point building them on infrastructure that doesn't exist. They'll be revisited as Phase 8 sub-items rather than blocking Phase 11 closure.
+- **One listed capability re-routed:** "Recurring onsite scheduling" is already covered by `scheduling.ScheduledTask.recurrence`; not a separate dispatch surface.
+- **`/core/roadmap.json` JSON feed:** Phase 11 now reports `status: complete`. **Shipped count: 10 → 11.**
+- **Living-plan header at top of ROADMAP.md updated:** "Phases 1–7 + 9 + 10 + 11 + 31 complete."
+- **Sizing-table row for Phase 11 updated** with shipped versions for all three sub-phases.
+- **README badge bumped** to v3.17.210.
+- **27 dispatch tests** across the three sub-phases passing in 14.5 s.
+
 ## [3.17.209] - 2026-05-02
 
 ### Added — Phase 11.3: Dispatch heatmap
