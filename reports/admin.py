@@ -4,7 +4,7 @@ Django Admin Configuration for Reports and Analytics
 from django.contrib import admin
 from .models import (
     Dashboard, DashboardWidget, ReportTemplate, GeneratedReport,
-    ScheduledReport, AnalyticsEvent
+    ScheduledReport, AnalyticsEvent, Wallboard, WallboardWidget,
 )
 
 
@@ -135,3 +135,31 @@ class AnalyticsEventAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+# v3.17.211 — Configurable wallboards
+
+class WallboardWidgetInline(admin.TabularInline):
+    model = WallboardWidget
+    extra = 0
+    fields = ('order', 'title', 'widget_type', 'data_source',
+              'refresh_seconds', 'position')
+
+
+@admin.register(Wallboard)
+class WallboardAdmin(admin.ModelAdmin):
+    list_display = ('name', 'organization', 'is_active', 'order',
+                    'refresh_seconds', 'rotate_seconds', 'created_at')
+    list_filter = ('is_active', 'organization')
+    list_editable = ('is_active', 'order')
+    search_fields = ('name', 'description')
+    inlines = [WallboardWidgetInline]
+
+
+@admin.register(WallboardWidget)
+class WallboardWidgetAdmin(admin.ModelAdmin):
+    list_display = ('wallboard', 'title', 'widget_type', 'data_source',
+                    'order', 'refresh_seconds')
+    list_filter = ('widget_type', 'wallboard')
+    search_fields = ('title', 'data_source')
+    list_editable = ('order',)

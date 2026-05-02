@@ -13,7 +13,7 @@ from decimal import Decimal, InvalidOperation
 from accounts.permission_utils import user_has_perm, require_perm
 from .models import (
     Dashboard, DashboardWidget, ReportTemplate, GeneratedReport,
-    ScheduledReport, AnalyticsEvent
+    ScheduledReport, AnalyticsEvent, Wallboard, WallboardWidget,
 )
 from .generators import REPORT_GENERATORS
 import csv as _csv
@@ -1889,4 +1889,167 @@ def security_alert_mtta_report(request):
         'rows': rows,
         'start_date': start_date,
         'end_date': end_date,
+    })
+
+
+# ---------------------------------------------------------------------------
+# v3.17.211 — Configurable wallboards
+# ---------------------------------------------------------------------------
+
+def _user_can_see_wallboards(user, organization):
+    """Wallboards are visible to staff/superuser globally and to any active
+    member of the wallboard's organization. Mirrors the dashboard ACL."""
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser or getattr(user, 'is_staff', False):
+        return True
+    return user.memberships.filter(
+        organization=organization, is_active=True,
+    ).exists()
+
+
+@login_required
+@require_perm('reports_view_dashboards')
+def wallboard_list(request):
+    """List wallboards across the user's accessible orgs."""
+    orgs = get_user_organizations(request.user)
+    qs = Wallboard.objects.filter(organization__in=orgs).select_related('organization')
+    return render(request, 'reports/wallboard_list.html', {
+        'wallboards': qs.order_by('organization__name', 'order', 'name'),
+    })
+
+
+@login_required
+@require_perm('reports_view_dashboards')
+def wallboard_view(request, pk):
+    """
+    Render a single wallboard full-screen.
+
+    The page meta-refreshes every `refresh_seconds` for whole-page updates.
+    Per-widget refresh_seconds overrides aren't enforced server-side (one
+    refresh applies to the whole rendered page); they're informational
+    until the JS-side per-widget refresher ships in a future sub-phase.
+    """
+    from .widget_sources import get_widget_data
+
+    board = get_object_or_404(Wallboard, pk=pk)
+    if not _user_can_see_wallboards(request.user, board.organization):
+        from django.http import Http404
+        raise Http404('Wallboard not found')
+
+    rendered_widgets = []
+    for w in board.widgets.order_by('order', 'created_at'):
+        rendered_widgets.append({
+            'widget': w,
+            'data': get_widget_data(w.data_source, w.query_params or {}),
+        })
+
+    return render(request, 'reports/wallboard_view.html', {
+        'wallboard': board,
+        'rendered_widgets': rendered_widgets,
+        'refresh_seconds': board.refresh_seconds,
+    })
+
+
+@login_required
+@require_perm('reports_view_dashboards')
+def wallboard_rotate(request, pk):
+    """
+    NOC-TV mode: render the wallboard, but on the next page-refresh
+    (after `rotate_seconds`) navigate to the NEXT wallboard in the org's
+    rotation. Boards with rotate_seconds=0 are skipped from rotation.
+
+    Implementation is a meta-refresh redirect chain — works on any TV
+    browser, no JS or cookies required.
+    """
+    board = get_object_or_404(Wallboard, pk=pk)
+    if not _user_can_see_wallboards(request.user, board.organization):
+        from django.http import Http404
+        raise Http404('Wallboard not found')
+
+    # Compute the rotation target. If rotation isn't enabled on this
+    # board, fall through and the page refreshes itself (no redirect).
+    if board.rotate_seconds > 0:
+        next_board = board.next_in_rotation()
+        rotate_target_pk = next_board.pk
+        rotate_seconds = board.rotate_seconds
+    else:
+        rotate_target_pk = None
+        rotate_seconds = 0
+
+    from .widget_sources import get_widget_data
+    rendered_widgets = []
+    for w in board.widgets.order_by('order', 'created_at'):
+        rendered_widgets.append({
+            'widget': w,
+            'data': get_widget_data(w.data_source, w.query_params or {}),
+        })
+
+    return render(request, 'reports/wallboard_view.html', {
+        'wallboard': board,
+        'rendered_widgets': rendered_widgets,
+        'refresh_seconds': board.refresh_seconds,
+        'rotate_target_pk': rotate_target_pk,
+        'rotate_seconds': rotate_seconds,
+    })
+
+
+@login_required
+@require_perm('reports_manage_dashboards')
+def wallboard_form(request, pk=None):
+    """Create or edit a wallboard. Widget editing is admin-only via the
+    Django admin for now; this form covers the wallboard fields only."""
+    instance = None
+    if pk is not None:
+        instance = get_object_or_404(Wallboard, pk=pk)
+        if not _user_can_see_wallboards(request.user, instance.organization):
+            from django.http import Http404
+            raise Http404('Wallboard not found')
+
+    orgs = get_user_organizations(request.user)
+
+    if request.method == 'POST':
+        org_id = request.POST.get('organization')
+        name = (request.POST.get('name') or '').strip()
+        description = (request.POST.get('description') or '').strip()
+        try:
+            refresh_seconds = max(0, int(request.POST.get('refresh_seconds') or 60))
+            rotate_seconds = max(0, int(request.POST.get('rotate_seconds') or 0))
+            order = max(0, int(request.POST.get('order') or 100))
+        except ValueError:
+            messages.error(request, 'Refresh / rotate / order must be integers.')
+            return redirect(request.path)
+        is_active = bool(request.POST.get('is_active'))
+
+        if not name:
+            messages.error(request, 'Name is required.')
+            return redirect(request.path)
+
+        if instance is None:
+            try:
+                org = orgs.get(pk=org_id)
+            except (Organization.DoesNotExist, ValueError):
+                messages.error(request, 'Pick an organization you belong to.')
+                return redirect(request.path)
+            instance = Wallboard.objects.create(
+                organization=org, name=name, description=description,
+                refresh_seconds=refresh_seconds, rotate_seconds=rotate_seconds,
+                order=order, is_active=is_active,
+                created_by=request.user,
+            )
+            messages.success(request, f'Wallboard "{instance.name}" created.')
+        else:
+            instance.name = name
+            instance.description = description
+            instance.refresh_seconds = refresh_seconds
+            instance.rotate_seconds = rotate_seconds
+            instance.order = order
+            instance.is_active = is_active
+            instance.save()
+            messages.success(request, f'Wallboard "{instance.name}" updated.')
+        return redirect('reports:wallboard_list')
+
+    return render(request, 'reports/wallboard_form.html', {
+        'wallboard': instance,
+        'organizations': orgs,
     })

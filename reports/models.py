@@ -254,3 +254,141 @@ class AnalyticsEvent(models.Model):
 
     def __str__(self):
         return f"{self.event_name} - {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+
+
+# ---------------------------------------------------------------------------
+# v3.17.211 — Configurable wallboards
+#
+# A wallboard is a TV-ready dashboard view: a grid of widgets sourced from
+# the v3.17.142 widget registry (`reports.widget_sources.REGISTRY`), with
+# its own refresh cadence. Each org can have multiple named wallboards
+# (Operations / Sales / NOC etc.) and the rotation view cycles through
+# them on an NOC TV without requiring user input.
+# ---------------------------------------------------------------------------
+
+class Wallboard(models.Model):
+    """
+    A named TV-ready dashboard owned by an organization.
+
+    `refresh_seconds` controls the meta-refresh on the rendered page;
+    `rotate_seconds` (when > 0) is used by the rotation view to cycle to
+    the next active wallboard for this org. `order` is the rotation
+    position (lower fires first; ties broken by name).
+    """
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='wallboards',
+    )
+    name = models.CharField(
+        max_length=120,
+        help_text='Free-text label shown in the wallboard list and as the page title.',
+    )
+    description = models.TextField(blank=True)
+
+    refresh_seconds = models.PositiveIntegerField(
+        default=60,
+        help_text='How often each widget refreshes on the rendered page. '
+                  'Set to 0 to disable auto-refresh.',
+    )
+    rotate_seconds = models.PositiveIntegerField(
+        default=0,
+        help_text='If > 0, the rotation view will move to the next wallboard '
+                  'after this many seconds. 0 means rotation skips this board.',
+    )
+
+    is_active = models.BooleanField(default=True,
+        help_text='Off ⇒ board still saves but is hidden from rotation + the list view.')
+    order = models.PositiveIntegerField(default=100,
+        help_text='Rotation position. Lower fires first; ties broken by name.')
+
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='wallboards_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'reports_wallboards'
+        ordering = ['order', 'name']
+        unique_together = [['organization', 'name']]
+        indexes = [
+            models.Index(fields=['organization', 'is_active', 'order']),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.organization.name})'
+
+    def next_in_rotation(self):
+        """
+        Return the next wallboard in this org's rotation, or self when
+        there's only one rotatable board. Used by the rotation view to
+        compute the redirect target.
+        """
+        rotatable = (Wallboard.objects
+                     .filter(organization=self.organization,
+                             is_active=True, rotate_seconds__gt=0)
+                     .order_by('order', 'name'))
+        boards = list(rotatable)
+        if not boards or len(boards) == 1:
+            return self
+        try:
+            idx = boards.index(self)
+        except ValueError:
+            return boards[0]
+        return boards[(idx + 1) % len(boards)]
+
+
+class WallboardWidget(models.Model):
+    """
+    One widget on a wallboard. Sourced from the same data-source registry
+    as `DashboardWidget` (`reports.widget_sources.REGISTRY`) so any new
+    widget added there automatically becomes pickable for wallboards.
+    """
+    WIDGET_TYPES = DashboardWidget.WIDGET_TYPES  # keep the enum aligned
+
+    wallboard = models.ForeignKey(
+        Wallboard, on_delete=models.CASCADE, related_name='widgets',
+    )
+    title = models.CharField(max_length=200)
+    widget_type = models.CharField(max_length=20, choices=WIDGET_TYPES)
+    data_source = models.CharField(
+        max_length=100,
+        help_text='Key from reports.widget_sources.REGISTRY '
+                  '(e.g. "open_tickets_count", "revenue_trend_30d").',
+    )
+    query_params = models.JSONField(default=dict, blank=True)
+    configuration = models.JSONField(default=dict, blank=True,
+        help_text='Widget-specific config (color, sub-title, etc.)')
+
+    # Grid position. {x, y, width, height} in 12-column grid units.
+    position = models.JSONField(
+        default=dict,
+        help_text='12-column grid position as {x, y, width, height}.',
+    )
+    order = models.PositiveIntegerField(
+        default=100,
+        help_text='Render order within the wallboard. Lower first.',
+    )
+
+    refresh_seconds = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Per-widget refresh override. NULL ⇒ inherit from the wallboard.',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'reports_wallboard_widgets'
+        ordering = ['wallboard', 'order']
+
+    def __str__(self):
+        return f'{self.wallboard.name} → {self.title}'
+
+    @property
+    def effective_refresh_seconds(self) -> int:
+        """Per-widget override wins; otherwise fall back to the wallboard."""
+        if self.refresh_seconds is not None:
+            return self.refresh_seconds
+        return self.wallboard.refresh_seconds

@@ -1133,3 +1133,234 @@ class GeneratedReportInlinePDFTests(TestCase):
         cd = r.get('Content-Disposition', '')
         self.assertTrue(cd.startswith('attachment'),
                         f'Expected attachment disposition, got {cd!r}')
+
+
+# ---------------------------------------------------------------------------
+# v3.17.211 — Configurable wallboards
+# ---------------------------------------------------------------------------
+
+class WallboardModelTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Organization
+        cls.org = Organization.objects.create(name='WBCo', slug='wb-co')
+
+    def test_str_includes_name_and_org(self):
+        from reports.models import Wallboard
+        w = Wallboard.objects.create(organization=self.org, name='NOC')
+        self.assertIn('NOC', str(w))
+        self.assertIn('WBCo', str(w))
+
+    def test_default_refresh_seconds_60(self):
+        from reports.models import Wallboard
+        w = Wallboard.objects.create(organization=self.org, name='Default')
+        self.assertEqual(w.refresh_seconds, 60)
+        self.assertEqual(w.rotate_seconds, 0)
+        self.assertTrue(w.is_active)
+
+    def test_unique_name_per_org(self):
+        from reports.models import Wallboard
+        from django.db import IntegrityError, transaction
+        Wallboard.objects.create(organization=self.org, name='Sales')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Wallboard.objects.create(organization=self.org, name='Sales')
+
+    def test_same_name_in_different_org_allowed(self):
+        from reports.models import Wallboard
+        from core.models import Organization
+        Wallboard.objects.create(organization=self.org, name='Sales')
+        org_b = Organization.objects.create(name='WB-B', slug='wb-b')
+        Wallboard.objects.create(organization=org_b, name='Sales')
+
+
+class WallboardRotationTests(TestCase):
+    """`Wallboard.next_in_rotation()` cycles through rotatable boards
+    in (order, name) order. Boards with rotate_seconds=0 or
+    is_active=False are excluded from the cycle."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Organization
+        cls.org = Organization.objects.create(name='RotCo', slug='rot-co')
+
+    def _board(self, name, order=100, rotate=10, active=True):
+        from reports.models import Wallboard
+        return Wallboard.objects.create(
+            organization=self.org, name=name, order=order,
+            rotate_seconds=rotate, is_active=active,
+        )
+
+    def test_single_rotatable_board_returns_self(self):
+        a = self._board('A')
+        self.assertEqual(a.next_in_rotation(), a)
+
+    def test_two_rotatable_boards_cycle(self):
+        a = self._board('A', order=10)
+        b = self._board('B', order=20)
+        self.assertEqual(a.next_in_rotation(), b)
+        self.assertEqual(b.next_in_rotation(), a)
+
+    def test_inactive_board_skipped_from_cycle(self):
+        a = self._board('A', order=10)
+        self._board('B', order=20, active=False)
+        self.assertEqual(a.next_in_rotation(), a)
+
+    def test_rotate_zero_excluded_from_cycle(self):
+        a = self._board('A', order=10, rotate=10)
+        self._board('B', order=20, rotate=0)  # opted out of rotation
+        c = self._board('C', order=30, rotate=15)
+        self.assertEqual(a.next_in_rotation(), c)
+        self.assertEqual(c.next_in_rotation(), a)
+
+
+class WallboardWidgetInheritTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Organization
+        cls.org = Organization.objects.create(name='InhCo', slug='inh-co')
+
+    def test_widget_refresh_inherits_from_wallboard(self):
+        from reports.models import Wallboard, WallboardWidget
+        wb = Wallboard.objects.create(
+            organization=self.org, name='X', refresh_seconds=120,
+        )
+        w = WallboardWidget.objects.create(
+            wallboard=wb, title='Active tickets',
+            widget_type='metric', data_source='open_tickets_count',
+            refresh_seconds=None,
+        )
+        self.assertEqual(w.effective_refresh_seconds, 120)
+
+    def test_widget_refresh_override_wins(self):
+        from reports.models import Wallboard, WallboardWidget
+        wb = Wallboard.objects.create(
+            organization=self.org, name='Y', refresh_seconds=120,
+        )
+        w = WallboardWidget.objects.create(
+            wallboard=wb, title='Faster widget',
+            widget_type='metric', data_source='open_tickets_count',
+            refresh_seconds=15,
+        )
+        self.assertEqual(w.effective_refresh_seconds, 15)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WallboardViewACLTests(TestCase):
+    """Tenant scope: org members + staff see their org's boards;
+    other-org boards return 404."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from reports.models import Wallboard
+        cls.org_a = Organization.objects.create(name='WB-A-acl', slug='wb-a-acl')
+        cls.org_b = Organization.objects.create(name='WB-B-acl', slug='wb-b-acl')
+        cls.user_a = User.objects.create_user(
+            'wb-user-a-acl', email='wba@x.com', password='pw',
+        )
+        Membership.objects.create(
+            user=cls.user_a, organization=cls.org_a, role=Role.OWNER, is_active=True,
+        )
+        cls.board_a = Wallboard.objects.create(organization=cls.org_a, name='A-board')
+        cls.board_b = Wallboard.objects.create(organization=cls.org_b, name='B-board')
+
+    def setUp(self):
+        from django.test import Client
+        self.c = Client()
+        self.c.force_login(self.user_a)
+        s = self.c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org_a.id
+        s.save()
+
+    def test_own_org_wallboard_renders(self):
+        resp = self.c.get(f'/reports/wallboards/{self.board_a.pk}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'A-board')
+
+    def test_other_org_wallboard_404(self):
+        resp = self.c.get(f'/reports/wallboards/{self.board_b.pk}/')
+        self.assertEqual(resp.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WallboardRotateViewTests(TestCase):
+    """`/reports/wallboards/<pk>/rotate/` emits a meta-refresh that
+    redirects to the next rotatable board's rotate view."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from reports.models import Wallboard
+        cls.org = Organization.objects.create(name='RotView', slug='rot-view')
+        cls.user = User.objects.create_user(
+            'rot-user-rv', email='rv@x.com', password='pw',
+        )
+        Membership.objects.create(
+            user=cls.user, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+        cls.board1 = Wallboard.objects.create(
+            organization=cls.org, name='First', order=10, rotate_seconds=30,
+        )
+        cls.board2 = Wallboard.objects.create(
+            organization=cls.org, name='Second', order=20, rotate_seconds=30,
+        )
+
+    def setUp(self):
+        from django.test import Client
+        self.c = Client()
+        self.c.force_login(self.user)
+        s = self.c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_rotate_view_emits_meta_refresh_to_next_board(self):
+        resp = self.c.get(f'/reports/wallboards/{self.board1.pk}/rotate/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn(f'/reports/wallboards/{self.board2.pk}/rotate/', body)
+        self.assertIn('http-equiv="refresh"', body)
+        self.assertIn('content="30;', body)
+
+    def test_rotation_cycles_back_after_last_board(self):
+        resp = self.c.get(f'/reports/wallboards/{self.board2.pk}/rotate/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn(f'/reports/wallboards/{self.board1.pk}/rotate/', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WallboardListViewTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from reports.models import Wallboard
+        cls.org = Organization.objects.create(name='ListCo', slug='wb-list-co')
+        cls.user = User.objects.create_user(
+            'wb-list-user', email='wbl@x.com', password='pw',
+        )
+        Membership.objects.create(
+            user=cls.user, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+        Wallboard.objects.create(organization=cls.org, name='NOC')
+        Wallboard.objects.create(organization=cls.org, name='Sales')
+
+    def test_list_renders_with_user_org_wallboards(self):
+        from django.test import Client
+        c = Client()
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+        resp = c.get('/reports/wallboards/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'NOC')
+        self.assertContains(resp, 'Sales')

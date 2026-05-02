@@ -81,5 +81,14 @@ urlpatterns = [
     # Phase 9.4 — Security alert MTTA
     path('security/mtta/', views.security_alert_mtta_report,
          name='security_alert_mtta'),
+    # v3.17.211 — Configurable wallboards (multi-named, draggable widgets,
+    # rotation mode for NOC TVs). Distinct from the v3.17.146 fixed-tile
+    # `/wallboard/` (singular) — these are at `/wallboards/` (plural).
+    path('wallboards/', views.wallboard_list, name='wallboard_list'),
+    path('wallboards/new/', views.wallboard_form, name='wallboard_create'),
+    path('wallboards/<int:pk>/', views.wallboard_view, name='wallboard_view'),
+    path('wallboards/<int:pk>/edit/', views.wallboard_form, name='wallboard_edit'),
+    path('wallboards/<int:pk>/rotate/', views.wallboard_rotate,
+         name='wallboard_rotate'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

@@ -44,7 +44,7 @@ Most-requested feature class. Big surface, but builds entirely on Phase 1+2 foun
 - **Custom dashboards** — drag-and-drop widgets sourced from the canonical query layer *(3.5 — shipped v3.17.142)*
 - **Scheduled reports** — cron-style, email PDF/CSV *(3.6 wave B — shipped v3.17.147)*
 - **Wallboard view** — TV-ready big-number display (active tickets, breaches, MTTR, queue depth) *(3.6 wave A — shipped v3.17.146; basic 6-tile fixed layout)*
-- **Configurable wallboards with widgets** *(planned)* — multiple named wallboards per org, drag-to-reorder widget grid, pick widgets from the existing dashboard widget registry (v3.17.142), per-wallboard refresh interval, "rotate through wallboards" mode for NOC TVs
+- **Configurable wallboards with widgets** *(shipped v3.17.211)* — multiple named `Wallboard` rows per org via `reports.Wallboard` + `reports.WallboardWidget`, widgets sourced from the v3.17.142 `widget_sources.REGISTRY`, per-wallboard `refresh_seconds`, per-widget refresh override, "rotate through wallboards" mode at `/reports/wallboards/<pk>/rotate/` using meta-refresh redirects (no JS required — works on any TV browser). Drag-to-reorder UI deferred — admins set the `order` field via the admin interface for now
 - **Executive scorecard** — single page rolling 30-day MSP KPIs *(3.6 wave A — shipped v3.17.146)*
 - **Client-health score** — composite of SLA hits, ticket velocity, NPS proxy, billing aging *(3.6 wave B — shipped v3.17.147)*
 

@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.211] - 2026-05-02
+
+### Added — Configurable wallboards (Phase 3 follow-up)
+- **Multiple named wallboards per organization.** New `reports.Wallboard` model lets each org define an arbitrary number of named TV-ready dashboards (Operations / Sales / NOC, etc.). Each wallboard has its own `refresh_seconds` (page-level meta-refresh cadence), `rotate_seconds` (used by the rotation view to cycle to the next board), `order` (rotation position), and `is_active` flag.
+- **Widgets sourced from the v3.17.142 registry.** New `reports.WallboardWidget` references `reports.widget_sources.REGISTRY` via its `data_source` field — every widget the regular dashboard system supports is automatically pickable for a wallboard. Per-widget `refresh_seconds` override available; falls back to the wallboard's interval when null. `effective_refresh_seconds` property handles the precedence.
+- **Rotation mode for NOC TVs.** New `/reports/wallboards/<pk>/rotate/` view emits a meta-refresh `<meta http-equiv="refresh" content="{rotate_seconds};url=/reports/wallboards/{next}/rotate/">` so a TV browser cycles through every active rotatable board with no JS or cookies. `Wallboard.next_in_rotation()` computes the next-in-cycle board, ordered by `(order, name)`, skipping inactive boards and any board with `rotate_seconds=0`.
+- **Routes:**
+  - `GET /reports/wallboards/` — list view (filtered to user's orgs).
+  - `GET /reports/wallboards/<pk>/` — render a single wallboard.
+  - `GET /reports/wallboards/<pk>/rotate/` — same rendering + rotation redirect.
+  - `GET / POST /reports/wallboards/new/` and `/<pk>/edit/` — CRUD form for wallboard fields. Widget editing currently goes through Django admin (a `WallboardWidgetInline` is registered on `WallboardAdmin`).
+- **Tenant ACL.** Wallboards are tenant-scoped: org members can see their org's boards; cross-org PKs return 404. Same pattern as the v3.17.171 tenant-isolation rebuild.
+- **Templates:** `wallboard_list.html` (table with active / refresh / rotate / widget-count), `wallboard_form.html` (create/edit form, organization picker on create), `wallboard_view.html` (12-column grid renderer with metric / table / fallback widget types). Charts (line/bar/pie) render their data payload as plaintext for now — Chart.js wiring is a future sub-phase.
+- **Admin:** `WallboardAdmin` + `WallboardWidgetAdmin` registered with `list_editable` on `is_active` / `order` for fast multi-board management.
+- **Tests:** 15 new across 6 classes — `WallboardModelTests` (4: `__str__`, defaults, unique-per-org, same-name-cross-org), `WallboardRotationTests` (4: `next_in_rotation` single / cycle / inactive-skipped / rotate-zero-skipped), `WallboardWidgetInheritTests` (2: refresh inherit + override), `WallboardViewACLTests` (2: own-org renders, cross-org 404), `WallboardRotateViewTests` (2: meta-refresh emits next-board URL, cycles back from last to first), `WallboardListViewTests` (1: list renders with org's boards). 15/15 passing in 6 s.
+- **Migration:** `reports/migrations/0003_wallboards.py` — schema-only, two new tables + indexes.
+
 ## [3.17.210] - 2026-05-02
 
 ### Changed — Phase 11 [complete]
