@@ -3115,6 +3115,23 @@ def workflow_rule_delete(request, pk):
 # ---------------------------------------------------------------------------
 
 
+def _dispatch_priority_key(ticket):
+    """
+    Phase 11.1: dispatch sort key — most urgent first.
+
+    Combines (a) the priority's ``sort_order`` (lower = higher priority;
+    P1 typically 0) and (b) the soonest applicable due timestamp. Tickets
+    with no due date sink to the bottom within their priority band via
+    a sentinel "has-no-due" flag in the sort tuple (avoids needing a
+    far-future datetime sentinel and the tz-handling that goes with it).
+    """
+    sort_order = ticket.priority.sort_order if ticket.priority_id else 9999
+    due = ticket.resolution_due_at or ticket.first_response_due_at
+    # Tuple: (priority, no_due_flag, due). False sorts before True so
+    # tickets WITH a due date come first within the priority band.
+    return (sort_order, due is None, due)
+
+
 @login_required
 @require_psa_enabled
 def dispatch_board(request):
@@ -3124,6 +3141,12 @@ def dispatch_board(request):
     nothing is hidden — closed/resolved still appear so you can see what
     a tech wrapped up. Unassigned tickets get their own row at the top.
     Overdue open tickets surface in a separate panel above the grid.
+
+    Phase 11.1 additions:
+      - "SLA at risk" panel: open tickets due within the next 4 hours but
+        not yet overdue. Surfaced above the grid alongside `overdue`.
+      - All cells (assigned, unassigned-by-day, overdue, sla_burn) are
+        sorted by priority + SLA proximity instead of creation order.
     """
     from datetime import date, timedelta
 
@@ -3138,6 +3161,11 @@ def dispatch_board(request):
         d = today + timedelta(days=i)
         days.append(d)
 
+    # Phase 11.1: 4-hour SLA-burn window. Open tickets due inside this
+    # window but not yet overdue surface in a dedicated panel.
+    now = timezone.now()
+    sla_burn_cutoff = now + timedelta(hours=4)
+
     # Cells use day-key for the 7 columns + the literal string 'other' for
     # tickets without a due date OR with a due date outside the window.
     OTHER = 'other'
@@ -3146,6 +3174,7 @@ def dispatch_board(request):
     unassigned_by_day = {d: [] for d in days}
     unassigned_by_day[OTHER] = []
     overdue = []
+    sla_burn = []
 
     for t in qs.order_by('-created_at')[:1000]:
         due = t.resolution_due_at or t.first_response_due_at
@@ -3156,6 +3185,11 @@ def dispatch_board(request):
             if d_local < today and is_open:
                 overdue.append(t)
                 continue
+            # Phase 11.1: SLA-at-risk surfacing — tickets whose due time
+            # is within the next 4 hours but not already overdue. They
+            # still appear in the grid below; this is an added view.
+            if is_open and now <= due <= sla_burn_cutoff:
+                sla_burn.append(t)
             if today <= d_local <= today + timedelta(days=6):
                 bucket = d_local
         if t.assigned_to_id:
@@ -3163,6 +3197,15 @@ def dispatch_board(request):
             cells.setdefault((t.assigned_to_id, bucket), []).append(t)
         else:
             unassigned_by_day[bucket].append(t)
+
+    # Phase 11.1: sort every list of tickets by priority + SLA proximity
+    # so the most urgent surfaces at the top of each lane.
+    overdue.sort(key=_dispatch_priority_key)
+    sla_burn.sort(key=_dispatch_priority_key)
+    for bucket_list in unassigned_by_day.values():
+        bucket_list.sort(key=_dispatch_priority_key)
+    for cell_list in cells.values():
+        cell_list.sort(key=_dispatch_priority_key)
 
     # Admins see ALL eligible techs (org members + staff/superusers) as rows
     # so they can drag a card to a tech who currently has zero tickets.
@@ -3213,6 +3256,7 @@ def dispatch_board(request):
         'unassigned_by_day': [unassigned_by_day[d] for d in days],
         'unassigned_other': unassigned_by_day[OTHER],
         'overdue': overdue,
+        'sla_burn': sla_burn,  # Phase 11.1
         'can_assign': can_assign,
         'skill_rankings': skill_rankings,
     })

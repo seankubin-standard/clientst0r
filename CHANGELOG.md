@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.194] - 2026-05-02
+
+### Added — Phase 11.1: Dispatch prioritization + SLA-burn panel
+- **The dispatch board now sorts every lane by priority + SLA proximity instead of creation order.** New `psa.views._dispatch_priority_key(ticket)` helper returns a sort tuple of `(priority.sort_order, no_due_flag, due)` so tickets with the highest priority surface first within each lane (overdue, SLA-burn, unassigned-by-day, assigned-tech cells), and within a priority band tickets due sooner come first; tickets with no due date sink to the bottom of their band.
+- **New "SLA at risk" panel above the grid.** Open tickets whose `resolution_due_at` (or `first_response_due_at` when no resolution due) lands in the next 4 hours but isn't yet overdue surface in a yellow alert with `<i class="fas fa-fire">` so dispatchers can pre-empt breaches without staring at the grid. Already-overdue tickets remain in the existing red "Overdue" panel — no duplication. Closed tickets are excluded.
+- **`sla_burn` added to the dispatch view's template context.** Sorted by the same priority key. Displays priority chip, subject, time-until-due via Django's `timeuntil` filter, and assignee status (or "→ unassigned" highlighted in red).
+- **Tests:** new `psa/tests/test_phase11_dispatch.py` shard with 9 cases across 3 classes — `DispatchPriorityKeyTests` (sort-key contract: higher priority before lower; sooner due first within band; no-due sinks to bottom; first_response_due_at falls back when no resolution_due_at), `DispatchSlaBurnPanelTests` (in-window appears; overdue does not; outside-4h-window does not; closed does not), `DispatchBoardSortingTests` (lane ordering end-to-end). 9/9 in 5 s. Cross-shard regression on `test_phase10_email` + `test_phase3_5_features`: 87/87 in 69 s.
+
+### Caught in passing
+- **A subtle decorator-stacking trap.** The first version of `_dispatch_priority_key` got placed *between* `@require_psa_enabled` and `def dispatch_board`, so the decorator silently wrapped the helper instead of the view. The error surfaced as `AttributeError: 'Ticket' object has no attribute 'user'` from inside `sorted(...)` — a confusing trace because the decorator's `test_func(request.user)` was being evaluated against ticket objects passed in as the sort key. Helper moved above the decorator stack; the trace clarified itself.
+
+### Roadmap
+- Phase 11 status remains `[in progress]` (more sub-phases in plan: PTO conflict awareness, calendar conflict detection, recurring onsite scheduling, geo-aware routing, dispatch heatmaps). 11.1 is the smallest meaningful first slice.
+
 ## [3.17.193] - 2026-05-02
 
 ### Fixed

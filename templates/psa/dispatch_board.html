@@ -30,6 +30,24 @@
 </div>
 {% endif %}
 
+{# Phase 11.1 — SLA at risk: open tickets due within the next 4 hours #}
+{% if sla_burn %}
+<div class="alert alert-warning py-2 px-3 mb-2">
+    <strong class="small"><i class="fas fa-fire me-1"></i>SLA at risk — due within 4 hours ({{ sla_burn|length }})</strong>
+    <ul class="mb-0 mt-1 small" style="font-size:.8rem;">
+        {% for t in sla_burn %}
+        <li>
+            <a href="{% url 'psa:ticket_detail' t.ticket_number %}"><code>{{ t.ticket_number }}</code></a>
+            <span class="badge text-bg-warning text-dark">{{ t.priority.code }}</span>
+            {{ t.subject|truncatechars:60 }}
+            <span class="text-muted">— due {{ t.resolution_due_at|default:t.first_response_due_at|timeuntil }}</span>
+            {% if t.assigned_to %}<span class="text-muted">→ {{ t.assigned_to.username }}</span>{% else %}<span class="text-danger">→ unassigned</span>{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 <div class="table-responsive">
     <table class="table table-sm table-bordered align-top mb-0 dispatch-grid">
         <thead>

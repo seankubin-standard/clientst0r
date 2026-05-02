@@ -200,7 +200,7 @@ Planned capabilities:
 
 **Goal:** Reduce dispatcher and technician overhead while improving ticket workflow accuracy.
 
-## Phase 11 — Advanced Dispatch & Technician Scheduling **(M)**
+## Phase 11 — Advanced Dispatch & Technician Scheduling **(M)** [in progress]
 
 **Roadmap item:** Dispatch Optimization & Technician Coordination. Extends Phase 2 (resourcing) + the dispatch board (v3.17.112) + skill ranking (v3.17.138).
 
@@ -208,15 +208,21 @@ Planned capabilities:
 - Drag/drop dispatch board *(shipped — v3.17.112)*
 - Technician scheduling *(partial — Phase 2 WorkingHours shipped)*
 - Shift management
-- PTO conflict awareness *(extends Phase 2.2 LeaveRequest)*
-- Calendar conflict detection
-- Recurring onsite scheduling
-- Dispatch prioritization (auto-rank queue by SLA + priority)
-- SLA-aware dispatching
+- PTO conflict awareness *(planned — Phase 11.2; extends Phase 2.2 LeaveRequest)*
+- Calendar conflict detection *(planned — Phase 11.2)*
+- Recurring onsite scheduling *(planned — Phase 11.3)*
+- Dispatch prioritization (auto-rank queue by SLA + priority) *(11.1 — shipped v3.17.194)*
+- SLA-aware dispatching — SLA-burn panel for tickets due ≤ 4h *(11.1 — shipped v3.17.194)*
 - Technician utilization metrics *(shipped — Phase 2.3 capacity report)*
-- Geo-aware technician routing
-- Travel time estimation
-- Dispatch heatmaps
+- Geo-aware technician routing *(planned — Phase 11.3)*
+- Travel time estimation *(planned — Phase 11.3)*
+- Dispatch heatmaps *(planned — Phase 11.3)*
+
+### Sub-phase 11.1 — Dispatch prioritization + SLA-burn panel *(shipped v3.17.194)*
+
+- New `_dispatch_priority_key(ticket)` returns `(priority.sort_order, no_due_flag, due)` — every lane on the dispatch board (overdue, SLA-burn, unassigned-by-day, assigned-tech cells) now sorts most-urgent first.
+- New "SLA at risk" panel above the grid: open tickets due in the next 4 hours but not yet overdue, surfaced with a yellow fire icon. Already-overdue stays in the existing red panel — no duplication. Closed tickets excluded.
+- 9 new tests across 3 classes covering sort-key contract, panel filtering, and end-to-end lane ordering.
 
 **Goal:** Improve technician coordination and service workflow efficiency.
 
