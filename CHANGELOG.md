@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.198] - 2026-05-02
+
+### Documentation
+- **Phase 7 polish-backlog updated with a "Wave 2" section** documenting the going-from-zero baseline-test work that's been continuing post-Wave-1-closure. Previously v3.17.192 → v3.17.197 had been recorded in the CHANGELOG but not the roadmap. The new section names the audit punch-list framing ("16 apps with no test coverage; sustained pass through them"), summarizes the bug-catch ratio (3 of 6 baselines surfaced real production bugs that had been latent for months), and lists each release's contribution: psa-tests split, api/, audit/, assets/, monitoring/. Phase 7 header marker stays `[in progress]` (continuous track by design).
+
 ## [3.17.197] - 2026-05-02
 
 ### Tests

@@ -107,6 +107,18 @@ Not a single phase — runs alongside 1-6.
 
   ➡ **Wave 1 closed (v3.17.171 → v3.17.187)** — every item from the original Phase 7 polish survey has been delivered or explicitly deferred (reCAPTCHA needs Google credentials; scheduler email-send + welcome-email are feature gaps not polish). Phase 7 stays `[in progress]` by design (continuous track) — the next wave will be triggered by user-reported issues + the next bug-bash audit.
 
+  ### Wave 2 — going-from-zero baselines (v3.17.192 → ongoing)
+
+  The audit punch-list flagged 16 apps with no test coverage. Wave 2 is a sustained pass through them. Each app gets baseline tests (model behavior, view tenant-isolation, key happy-path flows) — not feature-complete, but enough to surface latent crashes and lock down the contract going forward.
+
+  **The pattern is paying off.** Three of the first six baselines surfaced real production bugs that had been latent for months — usually a wrong kwarg name, a stale field reference, or a `hasattr` check that doesn't catch `None`. Bugs caught:
+
+  - `psa/tests.py` (5,465 lines / 220+ cases) split into 5 topical shards under `psa/tests/` so CI can run them under the 540s timeout. 271 tests across 5 shards, max shard 147s *(shipped v3.17.192)*
+  - **`api/` baseline (11 tests across 6 classes)** — caught two real bugs: `AssetViewSet.filterset_fields` and `AssetSerializer.Meta.fields` both referenced `is_active` and `location` columns that don't exist on the Asset model. Every `/api/assets/` list and detail request 500'd. Fixed in same release *(shipped v3.17.193)*
+  - **`audit/` baseline (30 tests across 7 classes)** — caught `AuditLoggingMiddleware._is_update()` crashing on POST to unresolved URLs (`hasattr(req, 'resolver_match')` returns True for None values; `None.kwargs` then raised `AttributeError`). Fixed in same release *(shipped v3.17.195)*
+  - `assets/` baseline (16 tests across 6 classes) — model behavior, OrganizationManager filtering, view tenant-isolation, EquipmentModel back-reference. No production bugs surfaced *(shipped v3.17.196)*
+  - `monitoring/` baseline (22 tests across 5 classes) — WebsiteMonitor + Expiration property logic, IPAM `(subnet, ip_address)` unique-together dedupe contract, `for_organization()` filtering. No production bugs surfaced *(shipped v3.17.197)*
+
 ## Phase 9 — Security alert ingestion: EDR / AV / Firewall on the dashboard **(M)** [shipped — v3.17.168]
 
 MSPs run a stack of security tools that all alert independently — SentinelOne, CrowdStrike, Defender, Sophos, Bitdefender, Webroot, Fortinet, Palo Alto, Sonicwall, etc. The PSA dashboard should aggregate alerts from all of them, surface critical issues per client, and let techs triage from one screen.
