@@ -13,6 +13,8 @@ urlpatterns = [
     path('new/', views.ticket_create, name='ticket_create'),
     path('t/<str:ticket_number>/', views.ticket_detail, name='ticket_detail'),
     path('t/<str:ticket_number>/reply/', views.post_reply, name='post_reply'),
+    # v3.17.235 — Phase 12: portal user "I care about this too" vote.
+    path('t/<str:ticket_number>/vote/', views.ticket_vote, name='ticket_vote'),
     # Customer-facing quote signing — public, opaque token, no login required.
     path('quote/<str:token>/sign/', views.quote_sign, name='quote_sign'),
     # Knowledge base for portal users

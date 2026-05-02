@@ -1526,6 +1526,32 @@ class QuoteLineItem(models.Model):
 # Phase 12 v1 (v3.17.231) — CSAT survey
 # ---------------------------------------------------------------------------
 
+class TicketVote(models.Model):
+    """
+    Phase 12 (v3.17.235): "I care about this too" up-vote from a portal
+    user. Aggregate count surfaces to staff on the ticket detail so high-
+    impact issues bubble up. Re-firing the endpoint toggles the vote off.
+    """
+    ticket = models.ForeignKey(
+        'psa.Ticket', on_delete=models.CASCADE, related_name='votes',
+    )
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='psa_ticket_votes',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_ticket_votes'
+        unique_together = [['ticket', 'user']]
+        indexes = [
+            models.Index(fields=['ticket']),
+        ]
+
+    def __str__(self):
+        return f'{self.user.username} voted on {self.ticket.ticket_number}'
+
+
 class TicketCSATSurvey(models.Model):
     """
     Customer-satisfaction survey emailed to the ticket requester after a

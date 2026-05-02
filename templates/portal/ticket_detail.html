@@ -10,8 +10,19 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <h2 class="card-title">{{ ticket.subject }}</h2>
-        <p class="text-muted mb-2">
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+            <h2 class="card-title mb-0 flex-grow-1">{{ ticket.subject }}</h2>
+            <form method="post" action="{% url 'portal:ticket_vote' ticket.ticket_number %}" class="m-0">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm {% if user_voted %}btn-warning{% else %}btn-outline-warning{% endif %}"
+                        title="{% if user_voted %}Click to remove your vote{% else %}I'm affected by this too — bump it up{% endif %}">
+                    <i class="fas fa-thumbs-up"></i>
+                    {% if user_voted %}Voted{% else %}I'm affected{% endif %}
+                    {% if vote_count %}<span class="badge bg-light text-dark ms-1">{{ vote_count }}</span>{% endif %}
+                </button>
+            </form>
+        </div>
+        <p class="text-muted mb-2 mt-2">
             <span class="badge bg-secondary">{{ ticket.ticket_number }}</span>
             <span class="badge bg-info">{{ ticket.priority.name }}</span>
             <span class="badge bg-primary">{{ ticket.status.name }}</span>

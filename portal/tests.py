@@ -148,6 +148,90 @@ class PortalAnnouncementTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class PortalTicketVoteTests(TestCase):
+    """v3.17.235: portal user 'I'm affected too' vote on a ticket."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from psa.models import (
+            ClientPSASettings, Queue, Ticket, TicketPriority,
+            TicketStatus, TicketType,
+        )
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='VoteCo', slug='vote-co')
+        ClientPSASettings.objects.create(organization=cls.org, portal_enabled=True)
+        cls.user = User.objects.create_user('vote-user', 'vu@x.com', 'pw')
+        Membership.objects.create(user=cls.user, organization=cls.org,
+                                   role=Role.READONLY, is_active=True)
+        cls.user2 = User.objects.create_user('vote-user2', 'vu2@x.com', 'pw')
+        Membership.objects.create(user=cls.user2, organization=cls.org,
+                                   role=Role.READONLY, is_active=True)
+        cls.ticket = Ticket.objects.create(
+            organization=cls.org, subject='Email is down',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            client_can_view=True,
+        )
+
+    def _login(self, c, user):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s.save()
+
+    def test_vote_creates_ticketvote_row(self):
+        from psa.models import TicketVote
+        c = Client()
+        self._login(c, self.user)
+        r = c.post(f'/portal/t/{self.ticket.ticket_number}/vote/')
+        self.assertIn(r.status_code, [200, 302])
+        self.assertEqual(TicketVote.objects.filter(ticket=self.ticket).count(), 1)
+
+    def test_vote_toggles_off_on_second_post(self):
+        from psa.models import TicketVote
+        c = Client()
+        self._login(c, self.user)
+        c.post(f'/portal/t/{self.ticket.ticket_number}/vote/')
+        c.post(f'/portal/t/{self.ticket.ticket_number}/vote/')
+        self.assertEqual(TicketVote.objects.filter(ticket=self.ticket).count(), 0)
+
+    def test_vote_count_aggregates_across_users(self):
+        from psa.models import TicketVote
+        c1 = Client()
+        c2 = Client()
+        self._login(c1, self.user)
+        self._login(c2, self.user2)
+        c1.post(f'/portal/t/{self.ticket.ticket_number}/vote/')
+        c2.post(f'/portal/t/{self.ticket.ticket_number}/vote/')
+        self.assertEqual(TicketVote.objects.filter(ticket=self.ticket).count(), 2)
+
+    def test_ticket_detail_renders_vote_button(self):
+        c = Client()
+        self._login(c, self.user)
+        r = c.get(f'/portal/t/{self.ticket.ticket_number}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "I'm affected")
+
+    def test_xhr_vote_returns_json(self):
+        c = Client()
+        self._login(c, self.user)
+        r = c.post(f'/portal/t/{self.ticket.ticket_number}/vote/',
+                   HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertTrue(body['voted'])
+        self.assertEqual(body['count'], 1)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class PortalKBEnhancementTests(TestCase):
     """v3.17.234: Customer-facing KB — featured + view counts."""
 

@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.235] - 2026-05-02
+
+### Added — Phase 12 Customer ticket voting / prioritization
+Portal users can flag tickets as "I'm affected by this too" — useful for shared-issue tickets where multiple users want to surface impact to the support team.
+
+- **New `psa.TicketVote` model** (migration `psa.0031`) — `(ticket, user)` unique-together so each user counts once per ticket.
+- **Portal endpoint `POST /portal/t/<ticket_number>/vote/`** — toggles the requesting user's vote on/off. Returns JSON (`voted`, `count`) when called via XHR; otherwise redirects back to the ticket detail.
+- **Ticket detail UI** — thumbs-up button with badge showing total vote count. Button color flips between `btn-outline-warning` (haven't voted) and `btn-warning` (already voted) so the state is obvious.
+
+### Tests
+- 5 new tests in `PortalTicketVoteTests`: vote creates row, second post toggles off, count aggregates across users, detail renders the button, XHR returns JSON.
+
+### Roadmap
+- Phase 12 sub-bullet "Customer ticket voting / prioritization" annotated `*(shipped v3.17.235)*`.
+
 ## [3.17.234] - 2026-05-02
 
 ### Added — Phase 12 Customer-facing KB enhancements

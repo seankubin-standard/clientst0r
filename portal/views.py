@@ -127,21 +127,48 @@ def announcement_dismiss(request, pk):
 
 @portal_required
 def ticket_detail(request, ticket_number):
+    from psa.models import TicketVote
     m = request.portal_membership
     ticket = get_object_or_404(
         Ticket.objects.filter(organization=m.organization, client_can_view=True),
         ticket_number=ticket_number,
     )
-    # Public comments only — no internals, no staff system notes if they
-    # mention vault/internal (they don't, but is_internal filters anyway).
     comments = ticket.comments.filter(is_internal=False).order_by('created_at')
     attachments = ticket.attachments.filter(is_internal=False)
+    # v3.17.235: vote count + whether the requester has already voted.
+    vote_count = TicketVote.objects.filter(ticket=ticket).count()
+    user_voted = TicketVote.objects.filter(ticket=ticket, user=request.user).exists()
     return render(request, 'portal/ticket_detail.html', {
         'ticket': ticket,
         'comments': comments,
         'attachments': attachments,
         'organization': m.organization,
+        'vote_count': vote_count,
+        'user_voted': user_voted,
     })
+
+
+@portal_required
+@require_http_methods(['POST'])
+def ticket_vote(request, ticket_number):
+    """v3.17.235: toggle a portal user's "I care about this too" vote."""
+    from psa.models import TicketVote
+    m = request.portal_membership
+    ticket = get_object_or_404(
+        Ticket.objects.filter(organization=m.organization, client_can_view=True),
+        ticket_number=ticket_number,
+    )
+    existing = TicketVote.objects.filter(ticket=ticket, user=request.user).first()
+    if existing:
+        existing.delete()
+        voted = False
+    else:
+        TicketVote.objects.create(ticket=ticket, user=request.user)
+        voted = True
+    count = TicketVote.objects.filter(ticket=ticket).count()
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'voted': voted, 'count': count})
+    return redirect('portal:ticket_detail', ticket_number=ticket_number)
 
 
 @portal_required
