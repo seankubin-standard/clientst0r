@@ -93,5 +93,8 @@ urlpatterns = [
     # v3.17.215 — drag-to-reorder. POST { order: [pk1, pk2, ...] } as JSON.
     path('wallboards/<int:pk>/widgets/reorder/',
          views.wallboard_widget_reorder, name='wallboard_widget_reorder'),
+    # v3.17.217 — per-widget category re-fetch. GET ?category=<value>.
+    path('wallboards/widgets/<int:pk>/data/',
+         views.wallboard_widget_data, name='wallboard_widget_data'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

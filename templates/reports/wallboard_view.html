@@ -91,11 +91,26 @@
     {% for entry in rendered_widgets %}
     {% with w=entry.widget data=entry.data %}
     <div class="card wallboard-cell {{ w.widget_type }}"
+         id="wb-cell-{{ entry.widget.pk }}"
+         data-widget-id="{{ entry.widget.pk }}"
+         data-widget-type="{{ w.widget_type }}"
+         data-data-url="{% url 'reports:wallboard_widget_data' entry.widget.pk %}"
          {% if w.position.width %}style="grid-column: span {{ w.position.width }}; {% if w.position.height %}grid-row: span {{ w.position.height }};{% endif %}"{% endif %}>
-        <div class="card-header py-1 small text-muted text-truncate">
-            {{ w.title }}
+        <div class="card-header py-1 small text-muted d-flex justify-content-between align-items-center gap-2">
+            <span class="text-truncate">{{ w.title }}</span>
+            {% if entry.categories %}
+            {# v3.17.217: per-widget category dropdown. Posts to the widget data
+               endpoint and replaces this tile's body in place. #}
+            <select class="form-select form-select-sm wb-category"
+                    style="width: auto; min-width: 8rem;"
+                    data-widget-id="{{ entry.widget.pk }}">
+                {% for c in entry.categories %}
+                <option value="{{ c.value }}" {% if c.value == entry.active_category %}selected{% endif %}>{{ c.label }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
         </div>
-        <div class="card-body p-2">
+        <div class="card-body p-2 wb-tile-body">
             {% if data.error %}
             <div class="wallboard-error">⚠ {{ data.error }}</div>
             {% elif w.widget_type == 'metric' %}
@@ -138,25 +153,26 @@
 {% endblock %}
 
 {% block extra_js %}
-{# v3.17.212: Chart.js renderer for line/bar/pie wallboard widgets.
-   Same payload shape + initializer as templates/reports/dashboard_detail.html. #}
+{# v3.17.212: Chart.js + v3.17.217 category fetcher.
+   Chart.js loaded only when at least one chart widget is on the page.
+   Category dropdown handler is loaded unconditionally (cheap).
+#}
 {% if has_chart %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endif %}
 <script>
 (function() {
+    var chartInstances = {};
+
     function readJson(id) {
         var el = document.getElementById(id);
         if (!el) return null;
         try { return JSON.parse(el.textContent); } catch (e) { return null; }
     }
-    document.querySelectorAll('canvas[id^="wb-chart-"]').forEach(function(canvas) {
-        var widgetId = canvas.id.replace('wb-chart-', '');
-        var data = readJson('wb-data-' + widgetId);
-        if (!data || data.error) return;
-        var type = canvas.dataset.widgetType;
-        var cfg;
+
+    function buildChartConfig(type, data) {
         if (type === 'chart_pie') {
-            cfg = {
+            return {
                 type: 'pie',
                 data: {
                     labels: data.labels || [],
@@ -173,38 +189,121 @@
                     plugins: { legend: { position: 'bottom' } },
                 },
             };
-        } else {
-            var chartType = (type === 'chart_bar') ? 'bar' : 'line';
-            cfg = {
-                type: chartType,
-                data: {
-                    labels: data.labels || [],
-                    datasets: (data.series || []).map(function(s, i) {
-                        var palette = ['#0d6efd', '#198754', '#dc3545', '#ffc107'];
-                        return {
-                            label: s.name,
-                            data: s.data,
-                            backgroundColor: palette[i % palette.length],
-                            borderColor: palette[i % palette.length],
-                            borderWidth: 2,
-                            tension: 0.25,
-                            fill: false,
-                        };
-                    }),
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: (data.series || []).length > 1 } },
-                    scales: {
-                        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
-                        y: { beginAtZero: true },
-                    },
-                },
-            };
         }
-        new Chart(canvas.getContext('2d'), cfg);
+        var chartType = (type === 'chart_bar') ? 'bar' : 'line';
+        return {
+            type: chartType,
+            data: {
+                labels: data.labels || [],
+                datasets: (data.series || []).map(function(s, i) {
+                    var palette = ['#0d6efd', '#198754', '#dc3545', '#ffc107'];
+                    return {
+                        label: s.name,
+                        data: s.data,
+                        backgroundColor: palette[i % palette.length],
+                        borderColor: palette[i % palette.length],
+                        borderWidth: 2,
+                        tension: 0.25,
+                        fill: false,
+                    };
+                }),
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: (data.series || []).length > 1 } },
+                scales: {
+                    x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+                    y: { beginAtZero: true },
+                },
+            },
+        };
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function renderTile(widgetId, widgetType, data) {
+        var cell = document.getElementById('wb-cell-' + widgetId);
+        if (!cell) return;
+        var body = cell.querySelector('.wb-tile-body');
+        if (!body) return;
+        if (data && data.error) {
+            body.innerHTML = '<div class="wallboard-error">⚠ ' + escapeHtml(data.error) + '</div>';
+            return;
+        }
+        if (widgetType === 'metric') {
+            var html = '<div class="metric-value">' + escapeHtml(data.value || '—') + '</div>';
+            if (data.label) html += '<div class="metric-label">' + escapeHtml(data.label) + '</div>';
+            if (data.subtitle) html += '<div class="text-muted small mt-1">' + escapeHtml(data.subtitle) + '</div>';
+            body.innerHTML = html;
+            return;
+        }
+        if (widgetType === 'table') {
+            var thead = '';
+            if (data.headers && data.headers.length) {
+                thead = '<thead><tr>' + data.headers.map(function(h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') + '</tr></thead>';
+            } else if (data.columns && data.columns.length) {
+                thead = '<thead><tr>' + data.columns.map(function(h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') + '</tr></thead>';
+            }
+            var rows = (data.rows || []).map(function(r) {
+                return '<tr>' + r.map(function(cell) { return '<td>' + escapeHtml(cell) + '</td>'; }).join('') + '</tr>';
+            }).join('');
+            if (!rows) rows = '<tr><td class="text-muted text-center">no rows</td></tr>';
+            body.innerHTML =
+                '<div class="table-responsive"><table class="table table-sm small mb-0">' +
+                thead + '<tbody>' + rows + '</tbody></table></div>';
+            return;
+        }
+        if (widgetType === 'chart_line' || widgetType === 'chart_bar' || widgetType === 'chart_pie') {
+            body.innerHTML =
+                '<div style="position:relative;height:100%;min-height:6rem;">' +
+                '<canvas id="wb-chart-' + widgetId + '" data-widget-type="' + escapeHtml(widgetType) + '"></canvas></div>';
+            var canvas = document.getElementById('wb-chart-' + widgetId);
+            if (canvas && typeof Chart !== 'undefined') {
+                if (chartInstances[widgetId]) {
+                    try { chartInstances[widgetId].destroy(); } catch (e) {}
+                }
+                chartInstances[widgetId] = new Chart(canvas.getContext('2d'),
+                                                     buildChartConfig(widgetType, data));
+            }
+            return;
+        }
+        body.innerHTML = '<pre class="small text-muted mb-0">' + escapeHtml(JSON.stringify(data)) + '</pre>';
+    }
+
+    // Initial chart render — same selectors as the v3.17.212 wiring.
+    if (typeof Chart !== 'undefined') {
+        document.querySelectorAll('canvas[id^="wb-chart-"]').forEach(function(canvas) {
+            var widgetId = canvas.id.replace('wb-chart-', '');
+            var data = readJson('wb-data-' + widgetId);
+            if (!data || data.error) return;
+            chartInstances[widgetId] = new Chart(
+                canvas.getContext('2d'),
+                buildChartConfig(canvas.dataset.widgetType, data));
+        });
+    }
+
+    // v3.17.217: category dropdown — refetch tile data + re-render in place.
+    document.querySelectorAll('select.wb-category').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+            var widgetId = sel.dataset.widgetId;
+            var cell = document.getElementById('wb-cell-' + widgetId);
+            if (!cell) return;
+            var url = cell.dataset.dataUrl + '?category=' + encodeURIComponent(sel.value);
+            fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function(r) { return r.ok ? r.json() : Promise.reject(r); })
+                .then(function(payload) {
+                    renderTile(widgetId, payload.widget_type, payload.data);
+                })
+                .catch(function() {
+                    var body = cell.querySelector('.wb-tile-body');
+                    if (body) body.innerHTML = '<div class="wallboard-error">⚠ refresh failed</div>';
+                });
+        });
     });
 })();
 </script>
-{% endif %}
 {% endblock %}

@@ -1954,16 +1954,25 @@ def wallboard_view(request, pk):
         from django.http import Http404
         raise Http404('Wallboard not found')
 
+    from .widget_sources import get_categories, default_category
     rendered_widgets = []
     has_chart = False
     for w in board.widgets.order_by('order', 'created_at'):
-        data = get_widget_data(w.data_source, w.query_params or {})
+        params = dict(w.query_params or {})
+        cats = get_categories(w.data_source)
+        active_cat = None
+        if cats:
+            active_cat = params.get('category') or default_category(w.data_source)
+            params['category'] = active_cat
+        data = get_widget_data(w.data_source, params)
         if w.widget_type in ('chart_line', 'chart_bar', 'chart_pie'):
             has_chart = True
         rendered_widgets.append({
             'widget': w,
             'data': data,
             'data_json': json.dumps(data, default=str),
+            'categories': cats,
+            'active_category': active_cat,
         })
 
     return render(request, 'reports/wallboard_view.html', {
@@ -2001,16 +2010,25 @@ def wallboard_rotate(request, pk):
         rotate_seconds = 0
 
     from .widget_sources import get_widget_data
+    from .widget_sources import get_categories, default_category
     rendered_widgets = []
     has_chart = False
     for w in board.widgets.order_by('order', 'created_at'):
-        data = get_widget_data(w.data_source, w.query_params or {})
+        params = dict(w.query_params or {})
+        cats = get_categories(w.data_source)
+        active_cat = None
+        if cats:
+            active_cat = params.get('category') or default_category(w.data_source)
+            params['category'] = active_cat
+        data = get_widget_data(w.data_source, params)
         if w.widget_type in ('chart_line', 'chart_bar', 'chart_pie'):
             has_chart = True
         rendered_widgets.append({
             'widget': w,
             'data': data,
             'data_json': json.dumps(data, default=str),
+            'categories': cats,
+            'active_category': active_cat,
         })
 
     return render(request, 'reports/wallboard_view.html', {
@@ -2142,3 +2160,40 @@ def wallboard_widget_reorder(request, pk):
         WallboardWidget.objects.filter(pk=wid, wallboard=board).update(order=rank)
         rank += 10
     return JsonResponse({'ok': True, 'count': len(ids)})
+
+
+@login_required
+@require_perm('reports_view_dashboards')
+def wallboard_widget_data(request, pk):
+    """
+    v3.17.217: re-fetch one wallboard widget with a different category.
+
+    Used by the per-widget category dropdown — JS posts the new category
+    and we return JSON of the same shape as `widget_sources` produce.
+    The wallboard template's renderer uses this to swap the tile
+    contents in place (no full-page reload).
+
+    Path: GET /reports/wallboards/widgets/<pk>/data/?category=<value>
+    Tenant ACL'd via the parent wallboard.
+    """
+    from .widget_sources import (
+        get_widget_data, get_categories, is_valid_category, default_category,
+    )
+    widget = get_object_or_404(WallboardWidget.objects.select_related('wallboard'), pk=pk)
+    if not _user_can_see_wallboards(request.user, widget.wallboard.organization):
+        from django.http import Http404
+        raise Http404('Wallboard not found')
+
+    params = dict(widget.query_params or {})
+    cats = get_categories(widget.data_source)
+    if cats:
+        category = request.GET.get('category')
+        if category and not is_valid_category(widget.data_source, category):
+            return JsonResponse({'error': 'unknown category'}, status=400)
+        params['category'] = category or default_category(widget.data_source)
+
+    data = get_widget_data(widget.data_source, params)
+    return JsonResponse({
+        'widget_type': widget.widget_type,
+        'data': data,
+    })

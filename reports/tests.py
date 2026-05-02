@@ -1475,6 +1475,104 @@ class WallboardGlobalScopeTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WallboardWidgetCategoryTests(TestCase):
+    """v3.17.217: per-widget category dropdown + JSON refresh endpoint."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from reports.models import Wallboard, WallboardWidget
+        cls.org = Organization.objects.create(name='CatCo', slug='wb-cat-co')
+        cls.staff = User.objects.create_user(
+            'wb-cat-staff', email='wbcs@x.com', password='pw',
+            is_staff=True, is_superuser=True,
+        )
+        cls.outsider_org = Organization.objects.create(name='OutCo', slug='wb-cat-out')
+        cls.outsider = User.objects.create_user(
+            'wb-cat-out', email='wbco@x.com', password='pw',
+        )
+        Membership.objects.create(
+            user=cls.outsider, organization=cls.outsider_org, role=Role.OWNER, is_active=True,
+        )
+        cls.board = Wallboard.objects.create(organization=cls.org, name='CatBoard')
+        cls.metric_widget = WallboardWidget.objects.create(
+            wallboard=cls.board, title='Open tickets',
+            widget_type='metric', data_source='open_tickets_count', order=10,
+        )
+
+    def _login(self, c, user):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_endpoint_200_with_valid_category(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get(f'/reports/wallboards/widgets/{self.metric_widget.pk}/data/?category=unassigned')
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body['widget_type'], 'metric')
+        self.assertIn('value', body['data'])
+
+    def test_endpoint_400_for_unknown_category(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get(f'/reports/wallboards/widgets/{self.metric_widget.pk}/data/?category=bogus')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('unknown', r.json()['error'])
+
+    def test_endpoint_404_for_inaccessible_wallboard(self):
+        from django.test import Client
+        c = Client()
+        c.force_login(self.outsider)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.outsider_org.id
+        s.save()
+        r = c.get(f'/reports/wallboards/widgets/{self.metric_widget.pk}/data/?category=all')
+        self.assertEqual(r.status_code, 404)
+
+    def test_open_tickets_count_categories_branch_differently(self):
+        from psa.models import Ticket, Queue, TicketPriority, TicketType, TicketStatus
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from reports.widget_sources import open_tickets_count
+        # Seed: a couple of unassigned tickets vs. a couple of P1 tickets.
+        call_command('psa_seed_defaults', verbosity=0)
+        q = Queue.objects.first()
+        prio_p5 = TicketPriority.objects.filter(code='P5').first()
+        prio_p1 = TicketPriority.objects.filter(code='P1').first()
+        t_type = TicketType.objects.first()
+        st_new = TicketStatus.objects.filter(slug='new').first()
+        tech = User.objects.create_user('cat-tech', 'tech@x.com', 'pw')
+        Ticket.objects.create(
+            organization=self.org, subject='un-1',
+            queue=q, priority=prio_p5, ticket_type=t_type, status=st_new,
+        )
+        Ticket.objects.create(
+            organization=self.org, subject='un-2',
+            queue=q, priority=prio_p5, ticket_type=t_type, status=st_new,
+        )
+        Ticket.objects.create(
+            organization=self.org, subject='p1-asg', assigned_to=tech,
+            queue=q, priority=prio_p1, ticket_type=t_type, status=st_new,
+        )
+        all_n = int(open_tickets_count({'category': 'all'})['value'])
+        un_n = int(open_tickets_count({'category': 'unassigned'})['value'])
+        hi_n = int(open_tickets_count({'category': 'priority_high'})['value'])
+        # 2 unassigned (un-1, un-2). 1 P1 (p1-asg). All open = 3.
+        self.assertEqual(un_n, 2)
+        self.assertEqual(hi_n, 1)
+        self.assertEqual(all_n, 3)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class WallboardWidgetReorderTests(TestCase):
     """v3.17.215: drag-to-reorder widget endpoint."""
 

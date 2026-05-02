@@ -39,10 +39,23 @@ def revenue_this_period(params):
 
 def open_tickets_count(params):
     from psa.models import Ticket
-    n = Ticket.objects.filter(status__is_terminal=False).count()
+    from django.utils import timezone
+    qs = Ticket.objects.filter(status__is_terminal=False)
+    cat = (params or {}).get('category') or 'all'
+    label = 'Open tickets'
+    if cat == 'unassigned':
+        qs = qs.filter(assigned_to__isnull=True)
+        label = 'Open tickets — unassigned'
+    elif cat == 'overdue':
+        qs = qs.filter(resolution_due_at__lt=timezone.now())
+        label = 'Open tickets — SLA overdue'
+    elif cat == 'priority_high':
+        qs = qs.filter(priority__code__in=['P1', 'P2'])
+        label = 'Open tickets — P1/P2'
+    n = qs.count()
     return {
         'value': str(n),
-        'subtitle': 'Open tickets',
+        'subtitle': label,
         'icon': 'fa-ticket',
         'color': 'info' if n < 50 else 'warning' if n < 100 else 'danger',
     }
@@ -134,12 +147,24 @@ def top_clients_by_revenue(params):
 
 
 def tickets_by_priority(params):
+    """Open-ticket breakdown — grouping is category-driven (priority,
+    queue, or assigned tech). Name kept for backwards-compat with
+    saved widgets; column header changes per category."""
     from psa.models import Ticket
+    from django.db.models import Count
+    cat = (params or {}).get('category') or 'priority'
+    base = Ticket.objects.filter(status__is_terminal=False)
+    if cat == 'queue':
+        agg = base.values('queue__name').annotate(n=Count('id')).order_by('-n')[:8]
+        rows = [[r['queue__name'] or '—', str(r['n'])] for r in agg]
+        return {'columns': ['Queue', 'Open'], 'rows': rows or [['—', '0']]}
+    if cat == 'assigned_tech':
+        agg = base.values('assigned_to__username').annotate(n=Count('id')).order_by('-n')[:8]
+        rows = [[r['assigned_to__username'] or 'Unassigned', str(r['n'])] for r in agg]
+        return {'columns': ['Tech', 'Open'], 'rows': rows or [['—', '0']]}
     rows = []
     for code in ['P1', 'P2', 'P3', 'P4', 'P5']:
-        n = Ticket.objects.filter(
-            status__is_terminal=False, priority__code=code
-        ).count()
+        n = base.filter(priority__code=code).count()
         rows.append([code, str(n)])
     return {'columns': ['Priority', 'Open'], 'rows': rows}
 
@@ -309,13 +334,31 @@ def security_alerts_24h(params):
 
 
 def security_alerts_open_critical(params):
-    """Single metric: count of open critical+high alerts."""
+    """Single metric: count of open security alerts. Category-aware."""
     try:
         from security_alerts.models import SecurityAlert
-        n = SecurityAlert.objects.filter(severity__in=['critical', 'high'], status='new').count()
+        from datetime import timedelta
+        from django.utils import timezone
+        cat = (params or {}).get('category') or 'critical_high'
+        qs = SecurityAlert.objects.all()
+        label = 'Open critical / high security alerts'
+        if cat == 'critical_high':
+            qs = qs.filter(severity__in=['critical', 'high'], status='new')
+        elif cat == 'critical_only':
+            qs = qs.filter(severity='critical', status='new')
+            label = 'Open critical alerts'
+        elif cat == 'all_open':
+            qs = qs.filter(status='new')
+            label = 'All open alerts'
+        elif cat == 'last_24h':
+            qs = qs.filter(seen_at__gte=timezone.now() - timedelta(hours=24))
+            label = 'Alerts seen (last 24h)'
+        else:
+            qs = qs.filter(severity__in=['critical', 'high'], status='new')
+        n = qs.count()
         return {
             'value': str(n),
-            'subtitle': 'Open critical / high security alerts',
+            'subtitle': label,
             'icon': 'fa-shield-halved',
             'color': 'danger' if n > 0 else 'success',
         }
@@ -375,6 +418,48 @@ DATA_SOURCE_CHOICES = [
     ('security_alerts_24h', 'Security alerts last 24h by severity (table)', 'table'),
     ('security_alerts_open_critical', 'Open critical/high alerts (metric)', 'metric'),
 ]
+
+
+# v3.17.217: per-widget selectable categories. Each entry maps a
+# data_source key to a list of {value, label, default?} items the wallboard
+# template renders as a dropdown next to the widget title; the chosen value
+# is passed to the source as `params['category']` and the source branches.
+CATEGORIES = {
+    'open_tickets_count': [
+        {'value': 'all', 'label': 'All open', 'default': True},
+        {'value': 'unassigned', 'label': 'Unassigned'},
+        {'value': 'overdue', 'label': 'SLA overdue'},
+        {'value': 'priority_high', 'label': 'P1 / P2 only'},
+    ],
+    'security_alerts_open_critical': [
+        {'value': 'critical_high', 'label': 'Critical + High', 'default': True},
+        {'value': 'critical_only', 'label': 'Critical only'},
+        {'value': 'all_open', 'label': 'All open'},
+        {'value': 'last_24h', 'label': 'Last 24h'},
+    ],
+    'tickets_by_priority': [
+        {'value': 'priority', 'label': 'By priority', 'default': True},
+        {'value': 'queue', 'label': 'By queue'},
+        {'value': 'assigned_tech', 'label': 'By tech'},
+    ],
+}
+
+
+def get_categories(data_source):
+    return CATEGORIES.get(data_source)
+
+
+def is_valid_category(data_source, value):
+    cats = CATEGORIES.get(data_source) or []
+    return any(c['value'] == value for c in cats)
+
+
+def default_category(data_source):
+    cats = CATEGORIES.get(data_source) or []
+    for c in cats:
+        if c.get('default'):
+            return c['value']
+    return cats[0]['value'] if cats else None
 
 
 def get_widget_data(data_source: str, params: dict) -> dict:

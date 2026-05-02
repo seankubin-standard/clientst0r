@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.217] - 2026-05-02
+
+### Added — Selectable categories on wallboard widgets
+- **One widget, several views.** A widget on a wallboard now optionally exposes a category dropdown next to its title. Pick a different category and the tile re-fetches and renders in place — no full-page reload, no widget re-creation in admin. The widget's `data_source` declares which categories it supports; the registry holds the metadata.
+- **Three sources are category-aware in this release** (the most useful for an "alerts/tickets/etc complete overview" board):
+  - `open_tickets_count` (metric) — `All open` (default) / `Unassigned` / `SLA overdue` / `P1 / P2 only`. Each branches the underlying `Ticket` queryset.
+  - `security_alerts_open_critical` (metric) — `Critical + High` (default) / `Critical only` / `All open` / `Last 24h`.
+  - `tickets_by_priority` (table) — `By priority` (default — original behavior) / `By queue` / `By tech`. Switches the GROUP BY without touching saved widget config.
+- **New JSON endpoint:** `GET /reports/wallboards/widgets/<pk>/data/?category=<value>`. Returns `{widget_type, data}` of the same shape the registry produces. Validates the category against the data source's registered set; rejects unknown values with HTTP 400. Tenant-ACL'd via the parent wallboard (cross-org → 404).
+- **`reports.widget_sources` adds a `CATEGORIES` dict** keyed by data_source, plus three helpers — `get_categories(ds) → list|None`, `is_valid_category(ds, value) → bool`, `default_category(ds) → str|None`. New sources opt in by adding an entry; the wallboard view picks it up automatically.
+- **Template:** `wallboard_view.html` puts a Bootstrap `form-select-sm` dropdown in each widget's card header when categories are registered. Vanilla-JS (no React, no extra CDN beyond the existing Chart.js) listens for change events, fetches the new payload, and rewrites the tile's `.card-body` innerHTML. Chart widgets re-init through a tracked `chartInstances[widgetId]` map (calls `.destroy()` before `new Chart(...)` to avoid the Chart.js v4 leak when reusing a canvas).
+- **Refactor:** the chart-config builder is extracted into a shared `buildChartConfig(type, data)` function so the initial server-rendered chart and the JS-side re-render path use the same config.
+- **`wallboard_view` and `wallboard_rotate` views** thread `categories` and `active_category` per widget into the template context. The active category is read from the widget's `query_params.category` and falls back to the registry default — so an admin who saves `query_params={"category": "overdue"}` on a widget gets that as the dropdown's initial selection.
+
+### Tests
+- 4 new tests in `WallboardWidgetCategoryTests`:
+  - `test_endpoint_200_with_valid_category` — JSON endpoint returns 200 + `widget_type=metric` + `data.value` for `?category=unassigned`.
+  - `test_endpoint_400_for_unknown_category` — `?category=bogus` → 400 with `{'error': 'unknown category'}`.
+  - `test_endpoint_404_for_inaccessible_wallboard` — outsider user (member of a different org) gets 404 on the widget data URL.
+  - `test_open_tickets_count_categories_branch_differently` — unit test: seed PSA defaults, create 2 unassigned + 1 P1 ticket, assert `open_tickets_count({'category':'unassigned'})['value'] == "2"`, `…priority_high → "1"`, `…all → "3"`.
+- All 30 wallboard tests passing (model + rotation + widget-inherit + view ACL + rotate-view + list-view + reorder + global scope + categories).
+
 ## [3.17.216] - 2026-05-02
 
 ### Added — Global wallboards (cross-tenant overview boards)
