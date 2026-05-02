@@ -161,30 +161,21 @@
                         <select name="data_source" class="form-select form-select-sm" id="wb-add-source" required>
                             <option value="">— pick a data source —</option>
                             {% for key, label, default_type in data_source_choices %}
-                            <option value="{{ key }}" data-default-type="{{ default_type }}" data-default-title="{{ label }}">
+                            <option value="{{ key }}" data-default-title="{{ label }}">
                                 {{ label }}
                             </option>
                             {% endfor %}
                         </select>
+                        <div class="form-text">Widget type is auto-selected from the data source (shown in parentheses above).</div>
                     </div>
-                    <div class="col-7">
+                    <div class="col-9">
                         <label class="form-label small mb-1">Title</label>
                         <input type="text" name="title" id="wb-add-title" class="form-control form-control-sm"
                                maxlength="200" required placeholder="Auto-fills from source">
                     </div>
-                    <div class="col-5">
-                        <label class="form-label small mb-1">Type</label>
-                        <select name="widget_type" id="wb-add-type" class="form-select form-select-sm" required>
-                            <option value="metric">Metric</option>
-                            <option value="table">Table</option>
-                            <option value="chart_line">Line chart</option>
-                            <option value="chart_bar">Bar chart</option>
-                            <option value="chart_pie">Pie chart</option>
-                        </select>
-                    </div>
-                    <div class="col-12 text-end">
-                        <button type="submit" class="btn btn-sm btn-success">
-                            <i class="fas fa-plus me-1"></i>Add widget
+                    <div class="col-3 text-end">
+                        <button type="submit" class="btn btn-sm btn-success w-100">
+                            <i class="fas fa-plus me-1"></i>Add
                         </button>
                     </div>
                 </form>
@@ -243,18 +234,15 @@
 
 {% block extra_js %}
 {% if wallboard %}
-{# Auto-fill title + widget type from picked data source. #}
 <script>
 (function() {
     var src = document.getElementById('wb-add-source');
     var title = document.getElementById('wb-add-title');
-    var type = document.getElementById('wb-add-type');
     if (!src) return;
     src.addEventListener('change', function() {
         var opt = src.options[src.selectedIndex];
         if (!opt || !opt.value) return;
         if (title && !title.value) title.value = opt.dataset.defaultTitle || '';
-        if (type) type.value = opt.dataset.defaultType || 'metric';
     });
 })();
 </script>

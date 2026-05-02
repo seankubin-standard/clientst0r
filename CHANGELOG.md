@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.221] - 2026-05-02
+
+### Fixed — Wallboard rendering bugs + navbar layout
+Three small but visible bugs surfaced from a real wallboard usage session.
+
+- **Multi-line `{# ... #}` Django comments rendered as literal text.** The wallboard view template had several `{# ... #}` comments that spanned multiple lines. Django's `{# #}` syntax requires both markers on the same line — multi-line ones never got parsed, so the comment text leaked into the page (with HTML tags inside the comments getting eaten by the browser as malformed markup). Removed the comments rather than converting to `{% comment %}{% endcomment %}` (per project convention: don't write comments unless they explain a non-obvious WHY; these were just version annotations duplicated in git log).
+- **Mismatched `widget_type` vs `data_source` produced confusing "no rows" tiles.** The Add Widget form let you pick a metric data source and a `table` widget type, which then rendered the table empty-state ("no rows") instead of the metric value. The form no longer asks for `widget_type` at all — it's auto-derived server-side from the data source's recommended type in `DATA_SOURCE_CHOICES`. The dropdown's helper text now reads "Widget type is auto-selected from the data source (shown in parentheses above)." Manual override remains available via Django admin for edge cases.
+- **Top navbar overflowed when DevTools narrowed the viewport.** `.navbar-nav { flex-wrap: nowrap }` in `static/css/custom.css` prevented the menu items from wrapping when the viewport was below the navbar's content width. With 9 dropdowns + a search box + favorites/KB/notifications, narrow viewports overflowed horizontally. Switched to `flex-wrap: wrap` with a small `row-gap` so items flow to a second line gracefully instead of overflowing the container. The outer `.navbar-container` already had `flex-wrap: wrap` — this completes the chain.
+
+### Tests
+- Updated 2 tests in `WallboardFormCleanupTests` to match the new "no widget_type field" contract — `test_widget_add_view_creates_widget_with_derived_type` (verifies `tickets_by_priority` source → derived `table` type), `test_widget_add_rejects_missing_title` (replaces the now-impossible `test_widget_add_rejects_unknown_widget_type`).
+- All 41 wallboard tests still pass.
+
 ## [3.17.220] - 2026-05-02
 
 ### Changed — Wallboard form cleanup + in-form widget management + starter templates

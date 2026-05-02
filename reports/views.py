@@ -2137,15 +2137,15 @@ def wallboard_form(request, pk=None):
 @require_http_methods(['POST'])
 def wallboard_widget_add(request, pk):
     """
-    v3.17.220: add a widget to an existing wallboard from the wallboard
-    form (instead of trip-to-Django-admin).
+    Add a widget to an existing wallboard.
 
-    POST fields: title, data_source, widget_type. Server enforces:
-    - data_source must be in the registry.
-    - widget_type must be in the model's choices.
-    - Tenant ACL via parent wallboard.
+    Widget type is derived from the data source's recommended type in
+    `DATA_SOURCE_CHOICES` (v3.17.221) — the form no longer asks the
+    user, since picking a metric source and a `table` widget_type
+    produces a confusing "no rows" render. Source-implied type is
+    always correct; manual override goes through Django admin.
     """
-    from .widget_sources import REGISTRY
+    from .widget_sources import REGISTRY, DATA_SOURCE_CHOICES
     board = get_object_or_404(Wallboard, pk=pk)
     if not _user_can_see_wallboards(request.user, board.organization):
         from django.http import Http404
@@ -2153,17 +2153,24 @@ def wallboard_widget_add(request, pk):
 
     title = (request.POST.get('title') or '').strip()
     data_source = (request.POST.get('data_source') or '').strip()
-    widget_type = (request.POST.get('widget_type') or '').strip()
 
-    if not title or not data_source or not widget_type:
-        messages.error(request, 'Title, data source, and widget type are all required.')
+    if not title or not data_source:
+        messages.error(request, 'Title and data source are required.')
         return redirect('reports:wallboard_edit', pk=board.pk)
     if data_source not in REGISTRY:
         messages.error(request, f'Unknown data source "{data_source}".')
         return redirect('reports:wallboard_edit', pk=board.pk)
+
+    widget_type = next(
+        (t for k, _label, t in DATA_SOURCE_CHOICES if k == data_source),
+        None,
+    )
     valid_types = {t[0] for t in WallboardWidget.WIDGET_TYPES}
     if widget_type not in valid_types:
-        messages.error(request, f'Unknown widget type "{widget_type}".')
+        messages.error(
+            request,
+            f'Data source "{data_source}" has no recommended widget type registered.',
+        )
         return redirect('reports:wallboard_edit', pk=board.pk)
 
     last = board.widgets.order_by('-order').first()

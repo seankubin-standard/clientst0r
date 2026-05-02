@@ -1551,21 +1551,23 @@ class WallboardFormCleanupTests(TestCase):
         b = Wallboard.objects.get(name='EmptyBoard')
         self.assertEqual(b.widgets.count(), 0)
 
-    def test_widget_add_view_creates_widget(self):
+    def test_widget_add_view_creates_widget_with_derived_type(self):
+        # v3.17.221: widget_type is auto-derived from the data source's
+        # recommended type in DATA_SOURCE_CHOICES. The form does not pass
+        # widget_type any more.
         from django.test import Client
-        from reports.models import WallboardWidget
         c = Client()
         self._login(c)
         before = self.board.widgets.count()
         r = c.post(f'/reports/wallboards/{self.board.pk}/widgets/add/', data={
             'title': 'New One',
-            'data_source': 'overdue_tickets_count',
-            'widget_type': 'metric',
+            'data_source': 'tickets_by_priority',  # recommended type: table
         })
         self.assertEqual(r.status_code, 302)
         self.assertEqual(self.board.widgets.count(), before + 1)
         new = self.board.widgets.get(title='New One')
-        self.assertEqual(new.data_source, 'overdue_tickets_count')
+        self.assertEqual(new.data_source, 'tickets_by_priority')
+        self.assertEqual(new.widget_type, 'table')
 
     def test_widget_add_rejects_unknown_data_source(self):
         from django.test import Client
@@ -1575,20 +1577,18 @@ class WallboardFormCleanupTests(TestCase):
         r = c.post(f'/reports/wallboards/{self.board.pk}/widgets/add/', data={
             'title': 'Bogus',
             'data_source': 'definitely_does_not_exist',
-            'widget_type': 'metric',
         })
         self.assertEqual(r.status_code, 302)
         self.assertEqual(self.board.widgets.count(), before)
 
-    def test_widget_add_rejects_unknown_widget_type(self):
+    def test_widget_add_rejects_missing_title(self):
         from django.test import Client
         c = Client()
         self._login(c)
         before = self.board.widgets.count()
         r = c.post(f'/reports/wallboards/{self.board.pk}/widgets/add/', data={
-            'title': 'Bogus type',
+            'title': '',
             'data_source': 'open_tickets_count',
-            'widget_type': 'sparkline_3d',
         })
         self.assertEqual(r.status_code, 302)
         self.assertEqual(self.board.widgets.count(), before)
