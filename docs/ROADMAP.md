@@ -531,20 +531,20 @@ Dependencies: Phase 9 (security framework — auth + audit), Phase 17 (asset int
 
 **Goal:** Provide a self-hosted RMM option that integrates natively with the existing PSA + asset stack instead of requiring a third-party RMM.
 
-## Phase 25 — Mature Timesheet Approval Workflows **(M)**
+## Phase 25 — Mature Timesheet Approval Workflows **(M)** [in progress]
 
 **Roadmap item:** Formal time-entry approval pipeline. Today `psa.TicketTimeEntry` is logged ad-hoc by techs; there's no formal weekly approval before billing.
 
 Planned capabilities:
-- Weekly timesheet model — groups a tech's TicketTimeEntry rows for a payroll period
-- Submit → review → approve / reject pipeline (reuses Phase 6.1 CAB approval pattern)
+- Weekly timesheet model — groups a tech's TicketTimeEntry rows for a payroll period *(shipped v3.17.242 — `psa.TimesheetSubmission` with unique `(user, period_start, period_end)`; `TicketTimeEntry.submission` FK attaches entries to a batch)*
+- Submit → review → approve / reject pipeline *(shipped v3.17.242 — `/psa/timesheet/` tech submit + `/psa/timesheet-approvals/` staff decide)*
 - Multi-tier approval (tech → team lead → finance)
 - Per-entry rejection with note ("re-classify this billable entry as project work")
 - Lock approved timesheets — entries can't be retroactively edited after approval
 - Auto-reminder cron at end of payroll period for un-submitted timesheets
 - Bulk-approve UI for managers
 - Export approved timesheets to payroll (CSV / QuickBooks Time / Gusto)
-- Audit trail per entry: who approved, when, with what note
+- Audit trail per entry: who approved, when, with what note *(partial — `decided_by` / `decided_at` / `decision_notes` per submission shipped v3.17.242)*
 
 Dependencies: extends Phase 2 (BillableTarget + utilization) + the existing approval queue pattern.
 

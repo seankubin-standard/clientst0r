@@ -1029,3 +1029,155 @@ class CSATSurveyTests(TestCase):
         c = Client()
         r = c.get('/psa/csat/this-token-does-not-exist/')
         self.assertEqual(r.status_code, 404)
+
+
+# ---------------------------------------------------------------------------
+# Phase 25 v1 — Mature Timesheet Approval Workflows (v3.17.242)
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class TimesheetApprovalTests(TestCase):
+    """Phase 25 v1: weekly timesheet submission + manager approval."""
+
+    def setUp(self):
+        from accounts.models import Membership, Role
+        from datetime import datetime, timedelta as _td
+        _setup_seed()
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        self.org = Organization.objects.create(name='TimeCo', slug='time-co')
+        self.tech = User.objects.create_user('time-tech', password='pw', email='t@x.com')
+        Membership.objects.update_or_create(
+            user=self.tech, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        self.staff = User.objects.create_user('time-staff', password='pw', email='s@x.com',
+                                                is_staff=True, is_superuser=True)
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus, Ticket, TicketTimeEntry
+        ticket = Ticket.objects.create(
+            organization=self.org, subject='X',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+        )
+        # Build 3 entries on Tuesday/Wednesday/Thursday of a known ISO week.
+        # Pick a fixed Monday so test results are reproducible.
+        self.monday = datetime(2026, 4, 27, 9, 0)
+        for i, hours in enumerate([(2, 30), (3, 0), (4, 15)]):
+            started = self.monday + _td(days=i + 1)  # Tue, Wed, Thu
+            ended = started + _td(hours=hours[0], minutes=hours[1])
+            TicketTimeEntry.objects.create(
+                ticket=ticket, user=self.tech,
+                started_at=timezone.make_aware(started),
+                ended_at=timezone.make_aware(ended),
+                duration_minutes=hours[0] * 60 + hours[1],
+            )
+
+    def _login(self, c, user):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def _iso(self):
+        return self.monday.date().isocalendar()[:2]
+
+    def test_my_timesheet_renders_week_with_entries(self):
+        c = Client()
+        self._login(c, self.tech)
+        year, week = self._iso()
+        r = c.get(f'/psa/timesheet/{year}/{week}/')
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context
+        self.assertEqual(len(ctx['entries']), 3)
+        # 2:30 + 3:00 + 4:15 = 9h45m = 585 min
+        self.assertEqual(ctx['total_minutes'], 585)
+
+    def test_submit_creates_pending_submission_and_attaches_entries(self):
+        from psa.models import TimesheetSubmission, TicketTimeEntry
+        c = Client()
+        self._login(c, self.tech)
+        year, week = self._iso()
+        r = c.post(f'/psa/timesheet/{year}/{week}/', data={'notes': 'OK'})
+        self.assertEqual(r.status_code, 302)
+        sub = TimesheetSubmission.objects.get(user=self.tech)
+        self.assertEqual(sub.status, 'pending')
+        self.assertEqual(sub.submitter_notes, 'OK')
+        attached = TicketTimeEntry.objects.filter(submission=sub).count()
+        self.assertEqual(attached, 3)
+
+    def test_approve_keeps_entries_attached(self):
+        from psa.models import TimesheetSubmission, TicketTimeEntry
+        c_tech = Client()
+        self._login(c_tech, self.tech)
+        year, week = self._iso()
+        c_tech.post(f'/psa/timesheet/{year}/{week}/', data={})
+        sub = TimesheetSubmission.objects.get(user=self.tech)
+
+        c_staff = Client()
+        self._login(c_staff, self.staff)
+        c_staff.post(f'/psa/timesheet-approvals/{sub.pk}/decide/',
+                     data={'decision': 'approve', 'notes': 'good'})
+        sub.refresh_from_db()
+        self.assertEqual(sub.status, 'approved')
+        self.assertEqual(sub.decided_by_id, self.staff.id)
+        # Entries stay attached (audit trail).
+        self.assertEqual(
+            TicketTimeEntry.objects.filter(submission=sub).count(), 3,
+        )
+
+    def test_reject_detaches_entries_for_resubmit(self):
+        from psa.models import TimesheetSubmission, TicketTimeEntry
+        c_tech = Client()
+        self._login(c_tech, self.tech)
+        year, week = self._iso()
+        c_tech.post(f'/psa/timesheet/{year}/{week}/', data={})
+        sub = TimesheetSubmission.objects.get(user=self.tech)
+
+        c_staff = Client()
+        self._login(c_staff, self.staff)
+        c_staff.post(f'/psa/timesheet-approvals/{sub.pk}/decide/',
+                     data={'decision': 'reject', 'notes': 'fix entry 2'})
+        sub.refresh_from_db()
+        self.assertEqual(sub.status, 'rejected')
+        # Entries detached so the tech can fix + re-submit.
+        self.assertEqual(
+            TicketTimeEntry.objects.filter(submission=sub).count(), 0,
+        )
+
+    def test_resubmit_after_reject_revives_pending(self):
+        from psa.models import TimesheetSubmission, TicketTimeEntry
+        c_tech = Client()
+        self._login(c_tech, self.tech)
+        year, week = self._iso()
+        c_tech.post(f'/psa/timesheet/{year}/{week}/', data={})
+        sub = TimesheetSubmission.objects.get(user=self.tech)
+        c_staff = Client()
+        self._login(c_staff, self.staff)
+        c_staff.post(f'/psa/timesheet-approvals/{sub.pk}/decide/',
+                     data={'decision': 'reject'})
+        # Tech re-submits.
+        c_tech.post(f'/psa/timesheet/{year}/{week}/', data={'notes': 'fixed it'})
+        sub.refresh_from_db()
+        self.assertEqual(sub.status, 'pending')
+        self.assertEqual(sub.submitter_notes, 'fixed it')
+        self.assertEqual(
+            TicketTimeEntry.objects.filter(submission=sub).count(), 3,
+        )
+
+    def test_non_staff_cant_decide(self):
+        from psa.models import TimesheetSubmission
+        c_tech = Client()
+        self._login(c_tech, self.tech)
+        year, week = self._iso()
+        c_tech.post(f'/psa/timesheet/{year}/{week}/', data={})
+        sub = TimesheetSubmission.objects.get(user=self.tech)
+        # Tech tries to approve their own.
+        r = c_tech.post(f'/psa/timesheet-approvals/{sub.pk}/decide/',
+                        data={'decision': 'approve'})
+        self.assertEqual(r.status_code, 302)  # redirect to dashboard
+        sub.refresh_from_db()
+        self.assertEqual(sub.status, 'pending')

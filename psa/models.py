@@ -564,8 +564,8 @@ class TicketTimeEntry(models.Model):
     """
     Time logged against a ticket. Supports running-timer entries
     (started_at set, ended_at null) and finalised manual entries.
-    Approval flow lands in a later phase; for now `is_billable` and
-    `notes` are the load-bearing fields.
+    Approval flow added in Phase 25 (v3.17.242) via the
+    `TimesheetSubmission` join below.
     """
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='time_entries')
     user = models.ForeignKey(
@@ -579,6 +579,15 @@ class TicketTimeEntry(models.Model):
         help_text='Computed on save when ended_at is set')
     is_billable = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
+
+    # Phase 25 (v3.17.242): batch approval. When a TimesheetSubmission is
+    # created, all of the tech's time entries in that period get the
+    # `submission` FK set so the staff approver can see the bundle.
+    submission = models.ForeignKey(
+        'psa.TimesheetSubmission', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='entries',
+        help_text='Weekly batch this entry belongs to. Null = unsubmitted.',
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1572,6 +1581,76 @@ class TicketVote(models.Model):
 
     def __str__(self):
         return f'{self.user.username} voted on {self.ticket.ticket_number}'
+
+
+class TimesheetSubmission(models.Model):
+    """
+    Phase 25 (v3.17.242): a tech's batch of time entries for a pay
+    period (typically weekly), gated through manager approval before
+    rolling into invoicing.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('pending', 'Pending approval'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='psa_timesheet_submissions',
+    )
+    period_start = models.DateField()
+    period_end = models.DateField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    decided_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_timesheet_decisions',
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_notes = models.TextField(blank=True)
+    submitter_notes = models.TextField(
+        blank=True,
+        help_text='Optional comment from the tech when submitting.',
+    )
+
+    class Meta:
+        db_table = 'psa_timesheet_submissions'
+        ordering = ['-period_start', '-submitted_at']
+        unique_together = [['user', 'period_start', 'period_end']]
+        indexes = [
+            models.Index(fields=['user', '-period_start']),
+            models.Index(fields=['status', '-submitted_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.user.username} {self.period_start}–{self.period_end} [{self.status}]'
+
+    @property
+    def total_minutes(self):
+        return sum((e.duration_minutes or 0) for e in self.entries.all())
+
+    @property
+    def total_billable_minutes(self):
+        return sum((e.duration_minutes or 0)
+                   for e in self.entries.all() if e.is_billable)
+
+    def approve(self, *, user, notes=''):
+        self.status = 'approved'
+        self.decided_by = user
+        self.decided_at = timezone.now()
+        self.decision_notes = (notes or '')[:5000]
+        self.save(update_fields=['status', 'decided_by', 'decided_at', 'decision_notes'])
+
+    def reject(self, *, user, notes=''):
+        self.status = 'rejected'
+        self.decided_by = user
+        self.decided_at = timezone.now()
+        self.decision_notes = (notes or '')[:5000]
+        self.save(update_fields=['status', 'decided_by', 'decided_at', 'decision_notes'])
+        # Detach entries so the tech can re-submit after fixes.
+        self.entries.update(submission=None)
 
 
 class TicketCSATSurvey(models.Model):

@@ -7057,3 +7057,143 @@ def csat_respond(request, token):
         return render(request, 'psa/csat_thanks.html', {'survey': survey})
 
     return render(request, 'psa/csat_respond.html', {'survey': survey})
+
+
+# ---------------------------------------------------------------------------
+# Phase 25 v1 (v3.17.242) — Timesheet Approval Workflow
+# ---------------------------------------------------------------------------
+
+def _week_bounds(d):
+    """Return (Monday, Sunday) of the week containing `d`."""
+    from datetime import timedelta as _td
+    monday = d - _td(days=d.weekday())
+    sunday = monday + _td(days=6)
+    return monday, sunday
+
+
+@login_required
+@require_psa_enabled
+def my_timesheet(request, year=None, week=None):
+    """
+    Phase 25 (v3.17.242): show the requesting user's time entries for
+    a given week and let them submit the bundle for approval.
+
+    URL: /psa/timesheet/                    → current week
+         /psa/timesheet/<year>/<week>/      → ISO year+week
+    """
+    from datetime import date as _date, timedelta as _td
+    from .models import TimesheetSubmission, TicketTimeEntry
+    if year is None or week is None:
+        today = timezone.now().date()
+        period_start, period_end = _week_bounds(today)
+    else:
+        try:
+            period_start = _date.fromisocalendar(int(year), int(week), 1)
+            period_end = period_start + _td(days=6)
+        except (TypeError, ValueError):
+            messages.error(request, 'Invalid week identifier.')
+            return redirect('psa:my_timesheet')
+
+    entries = (TicketTimeEntry.objects
+               .filter(user=request.user,
+                       started_at__date__gte=period_start,
+                       started_at__date__lte=period_end)
+               .select_related('ticket', 'ticket__priority', 'submission')
+               .order_by('started_at'))
+
+    submission = (TimesheetSubmission.objects
+                  .filter(user=request.user,
+                          period_start=period_start, period_end=period_end)
+                  .first())
+
+    total_min = sum((e.duration_minutes or 0) for e in entries)
+    billable_min = sum((e.duration_minutes or 0) for e in entries if e.is_billable)
+
+    if request.method == 'POST':
+        if submission and submission.status in ('approved', 'pending'):
+            messages.warning(request, f'Already submitted ({submission.status}).')
+            return redirect('psa:my_timesheet_iso', year=period_start.isocalendar()[0],
+                            week=period_start.isocalendar()[1])
+        if not entries:
+            messages.error(request, 'Nothing to submit — log some time first.')
+            return redirect('psa:my_timesheet_iso', year=period_start.isocalendar()[0],
+                            week=period_start.isocalendar()[1])
+        notes = (request.POST.get('notes') or '').strip()[:5000]
+        if submission and submission.status == 'rejected':
+            submission.status = 'pending'
+            submission.submitter_notes = notes
+            submission.decided_by = None
+            submission.decided_at = None
+            submission.decision_notes = ''
+            submission.save()
+        else:
+            submission = TimesheetSubmission.objects.create(
+                user=request.user,
+                period_start=period_start, period_end=period_end,
+                status='pending', submitter_notes=notes,
+            )
+        entries.update(submission=submission)
+        messages.success(request,
+            f'Submitted {len(entries)} entries for the week of {period_start}.')
+        return redirect('psa:my_timesheet_iso',
+                        year=period_start.isocalendar()[0],
+                        week=period_start.isocalendar()[1])
+
+    iso_year, iso_week, _iso_day = period_start.isocalendar()
+    return render(request, 'psa/my_timesheet.html', {
+        'period_start': period_start,
+        'period_end': period_end,
+        'iso_year': iso_year,
+        'iso_week': iso_week,
+        'entries': entries,
+        'total_minutes': total_min,
+        'billable_minutes': billable_min,
+        'submission': submission,
+    })
+
+
+@login_required
+@require_psa_enabled
+def timesheet_approval_queue(request):
+    """Staff queue of pending TimesheetSubmissions to approve/reject."""
+    from .models import TimesheetSubmission
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    if not (request.user.is_superuser or is_staff):
+        messages.error(request, 'Only staff/superuser can review timesheets.')
+        return redirect('core:dashboard')
+    pending = (TimesheetSubmission.objects.filter(status='pending')
+               .select_related('user').order_by('-submitted_at'))
+    decided = (TimesheetSubmission.objects
+               .exclude(status__in=['pending', 'draft'])
+               .select_related('user', 'decided_by').order_by('-decided_at')[:50])
+    return render(request, 'psa/timesheet_approval_queue.html', {
+        'pending': pending,
+        'decided': decided,
+    })
+
+
+@login_required
+@require_psa_enabled
+@require_http_methods(['POST'])
+def timesheet_decide(request, pk):
+    """Staff approve / reject a TimesheetSubmission."""
+    from .models import TimesheetSubmission
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    if not (request.user.is_superuser or is_staff):
+        messages.error(request, 'Only staff can decide timesheets.')
+        return redirect('core:dashboard')
+    submission = get_object_or_404(TimesheetSubmission, pk=pk, status='pending')
+    decision = request.POST.get('decision') or ''
+    notes = (request.POST.get('notes') or '').strip()[:5000]
+    if decision == 'approve':
+        submission.approve(user=request.user, notes=notes)
+        messages.success(request,
+            f'Approved {submission.user.username}\'s week of {submission.period_start}.')
+    elif decision == 'reject':
+        submission.reject(user=request.user, notes=notes)
+        messages.success(request,
+            f'Rejected {submission.user.username}\'s week of {submission.period_start}; '
+            f'their entries are detached so they can fix and re-submit.')
+    else:
+        messages.error(request, 'Pick approve or reject.')
+    return redirect('psa:timesheet_approval_queue')

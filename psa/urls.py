@@ -108,6 +108,11 @@ urlpatterns = [
     path('aging/', views.aging_report, name='aging_report'),
     # Phase 12 v1 — public CSAT response (token-authenticated, no login).
     path('csat/<str:token>/', views.csat_respond, name='csat_respond'),
+    # Phase 25 v1 (v3.17.242) — Timesheet approval workflow.
+    path('timesheet/', views.my_timesheet, name='my_timesheet'),
+    path('timesheet/<int:year>/<int:week>/', views.my_timesheet, name='my_timesheet_iso'),
+    path('timesheet-approvals/', views.timesheet_approval_queue, name='timesheet_approval_queue'),
+    path('timesheet-approvals/<int:pk>/decide/', views.timesheet_decide, name='timesheet_decide'),
 
     # Procurement (Phase 4.1) — Purchase Requisitions
     path('requisitions/', views.requisition_list, name='requisition_list'),

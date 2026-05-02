@@ -5,6 +5,30 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.242] - 2026-05-02
+
+### Added — Phase 25 Mature Timesheet Approval Workflows
+A formal weekly batch-approval flow on top of the existing `TicketTimeEntry` log. Techs submit their week; managers approve or reject; rejected weeks detach from the submission so the tech can fix entries and re-submit.
+
+- **New `psa.TimesheetSubmission` model** (migration `psa.0035`): user, period_start, period_end, status (draft/pending/approved/rejected), submitted_at, decided_by, decided_at, submitter_notes, decision_notes. Unique on `(user, period_start, period_end)` so a week can't be submitted twice.
+- **`TicketTimeEntry.submission` FK** (nullable) — every entry in a submitted week gets the FK set so the approver can browse the bundle.
+- **`approve()` / `reject()` model methods.** Approve keeps entries attached for audit. Reject detaches entries (`submission=None`) so the tech can fix and re-submit; rejected submission rows stay around with their notes for the audit trail.
+- **`/psa/timesheet/`** (current week) and `/psa/timesheet/<year>/<week>/` (specific ISO week) — tech-facing page showing the week's entries, totals (total minutes, billable minutes, entry count), submission status, optional notes textarea, and a Submit button. Re-submit after rejection revives the existing pending row rather than creating a duplicate.
+- **`/psa/timesheet-approvals/`** — staff queue of pending submissions with expandable per-entry detail, optional decision-notes textarea, and Approve/Reject buttons. Recent decisions table below.
+- **`/psa/timesheet-approvals/<pk>/decide/`** — POST endpoint that gates on `is_staff` / superuser, calls `approve()` or `reject()`, and redirects back.
+
+### Tests
+- 6 tests in `TimesheetApprovalTests`:
+  - `my_timesheet` renders the week's entries and total minutes (3 entries totaling 585 min).
+  - Submit creates a pending submission and attaches all 3 entries.
+  - Approve flips status + records decided_by; entries stay attached for audit.
+  - Reject flips status + detaches entries so the tech can fix.
+  - Re-submit after rejection revives the same row to pending and re-attaches entries.
+  - Non-staff users (the tech themselves) can't decide their own submission — redirect with no state change.
+
+### Roadmap
+- Phase 25 sub-bullets shipped to a working v1; the phase is marked `[in progress]` until v2 layers a CSV export + per-tech weekly summary report on top.
+
 ## [3.17.241] - 2026-05-02
 
 ### Added — Phase 37 Vault Approval & Break-Glass Workflow
