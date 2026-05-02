@@ -11,20 +11,47 @@
     </div>
 </form>
 
+{% if featured %}
+<div class="card mb-3 border-warning">
+    <div class="card-header bg-warning-subtle">
+        <strong><i class="fas fa-star text-warning me-2"></i>Featured</strong>
+    </div>
+    <ul class="list-group list-group-flush">
+        {% for a in featured %}
+        <li class="list-group-item">
+            <a href="{% url 'portal:kb_detail' a.slug %}" class="text-decoration-none">
+                <strong>{{ a.title }}</strong>
+            </a>
+            {% if a.is_global %}<span class="badge text-bg-secondary ms-1">general</span>{% endif %}
+            {% if a.portal_view_count %}
+            <span class="text-muted small ms-2"><i class="fas fa-eye"></i> {{ a.portal_view_count }}</span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 <div class="card">
     <div class="card-body p-0">
         <table class="table table-hover mb-0">
-            <thead class="table-light"><tr><th>Title</th><th>Updated</th></tr></thead>
+            <thead class="table-light">
+                <tr><th>Title</th><th class="text-end" style="width: 80px;">Views</th><th style="width: 120px;">Updated</th></tr>
+            </thead>
             <tbody>
                 {% for a in articles %}
                 <tr>
-                    <td><a href="{% url 'portal:kb_detail' a.slug %}"><strong>{{ a.title }}</strong></a>
+                    <td>
+                        <a href="{% url 'portal:kb_detail' a.slug %}"><strong>{{ a.title }}</strong></a>
                         {% if a.is_global %}<span class="badge text-bg-secondary">general</span>{% endif %}
+                    </td>
+                    <td class="text-end text-muted small">
+                        {% if a.portal_view_count %}<i class="fas fa-eye"></i> {{ a.portal_view_count }}{% else %}—{% endif %}
                     </td>
                     <td><span data-utc="{{ a.updated_at|date:'c' }}">{{ a.updated_at|date:'Y-m-d' }}</span></td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="2" class="text-center text-muted py-4">{% if query %}No matches.{% else %}No articles available yet.{% endif %}</td></tr>
+                <tr><td colspan="3" class="text-center text-muted py-4">{% if query %}No matches.{% else %}{% if not featured %}No articles available yet.{% endif %}{% endif %}</td></tr>
                 {% endfor %}
             </tbody>
         </table>

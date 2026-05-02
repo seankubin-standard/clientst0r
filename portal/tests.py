@@ -148,6 +148,88 @@ class PortalAnnouncementTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class PortalKBEnhancementTests(TestCase):
+    """v3.17.234: Customer-facing KB — featured + view counts."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from docs.models import Document
+        from psa.models import ClientPSASettings
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='KBCo', slug='kb-co')
+        ClientPSASettings.objects.create(organization=cls.org, portal_enabled=True)
+        cls.user = User.objects.create_user('kb-user', 'kb@x.com', 'pw')
+        Membership.objects.create(user=cls.user, organization=cls.org,
+                                   role=Role.READONLY, is_active=True)
+        cls.featured = Document.objects.create(
+            organization=cls.org, title='How to file a ticket',
+            slug='how-to-file', body='Steps...',
+            is_published=True, is_client_visible=True,
+            is_featured_in_portal=True,
+        )
+        cls.regular = Document.objects.create(
+            organization=cls.org, title='Vacation FAQ',
+            slug='vacation-faq', body='When out...',
+            is_published=True, is_client_visible=True,
+        )
+        cls.popular = Document.objects.create(
+            organization=cls.org, title='Reset your password',
+            slug='reset-pw', body='Click...',
+            is_published=True, is_client_visible=True,
+            portal_view_count=42,
+        )
+        cls.staff_only = Document.objects.create(
+            organization=cls.org, title='Staff only — runbook',
+            slug='staff-runbook', body='internal',
+            is_published=True, is_client_visible=False,
+        )
+
+    def _login(self, c):
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s.save()
+
+    def test_kb_list_shows_featured_section(self):
+        c = Client()
+        self._login(c)
+        r = c.get('/portal/kb/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Featured')
+        self.assertContains(r, 'How to file a ticket')
+
+    def test_kb_list_orders_by_views_below_featured(self):
+        c = Client()
+        self._login(c)
+        r = c.get('/portal/kb/')
+        ctx = r.context
+        # Featured row not in 'articles'
+        article_titles = [a.title for a in ctx['articles']]
+        self.assertNotIn('How to file a ticket', article_titles)
+        # Popular (42 views) ahead of regular (0 views)
+        self.assertEqual(article_titles[0], 'Reset your password')
+
+    def test_kb_list_excludes_staff_only_articles(self):
+        c = Client()
+        self._login(c)
+        r = c.get('/portal/kb/')
+        self.assertNotContains(r, 'Staff only')
+
+    def test_kb_detail_increments_view_count(self):
+        from docs.models import Document
+        c = Client()
+        self._login(c)
+        before = Document.objects.get(pk=self.regular.pk).portal_view_count
+        c.get(f'/portal/kb/{self.regular.slug}/')
+        after = Document.objects.get(pk=self.regular.pk).portal_view_count
+        self.assertEqual(after, before + 1)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class PortalPreferencesTests(TestCase):
     """v3.17.233: portal notification preferences."""
 

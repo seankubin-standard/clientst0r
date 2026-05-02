@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.234] - 2026-05-02
+
+### Added — Phase 12 Customer-facing KB enhancements
+- **`Document.is_featured_in_portal`** (default False) — pin articles to a "Featured" section at the top of the portal KB list. Useful for "How to file a ticket", common FAQs.
+- **`Document.portal_view_count`** (PositiveIntegerField, default 0) — auto-incremented every time a portal user opens an article (`F('portal_view_count') + 1` to dodge read-modify-write races). Surfaced on the list page next to each row.
+- **Portal KB list now orders non-featured rows by `-portal_view_count, -updated_at`** so popular articles bubble to the top — guides new portal users to the help that worked for everyone else.
+- **Featured section** rendered above the main table in a yellow-bordered card with star iconography.
+
+### Migration
+- `docs.0014_document_is_featured_in_portal_and_more` — adds two fields, no data backfill.
+
+### Tests
+- 4 new tests in `PortalKBEnhancementTests` covering Featured rendering, view-count ordering, staff-only article exclusion, and view-count increment on kb_detail.
+
+### Roadmap
+- Phase 12 sub-bullet "Customer-facing knowledge base" annotated `*(featured + view counts shipped v3.17.234)*`.
+
 ## [3.17.233] - 2026-05-02
 
 ### Added — Phase 12 Branded portals + customer notification preferences

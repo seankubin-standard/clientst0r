@@ -70,6 +70,17 @@ class Document(BaseModel):
                   'global articles surface to every portal user, '
                   'org-scoped articles only to that client.'
     )
+    is_featured_in_portal = models.BooleanField(
+        default=False,
+        help_text='v3.17.234: pin this article to the top of the customer '
+                  'portal KB list. Useful for "How to file a support ticket", '
+                  'common FAQs, etc.',
+    )
+    portal_view_count = models.PositiveIntegerField(
+        default=0,
+        help_text='v3.17.234: incremented every time a portal user opens this '
+                  'article. Used to surface popular content + track engagement.',
+    )
 
     # File upload fields
     file = models.FileField(

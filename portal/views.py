@@ -334,10 +334,10 @@ def quote_sign(request, token):
 
 @portal_required
 def kb_list(request):
-    """List KB articles available to the requesting client.
-
-    Visible: documents where is_client_visible=True AND is_published=True
-    AND (is_global=True OR organization == client's org).
+    """
+    List KB articles available to the requesting client. Featured
+    articles surface at the top; the rest sort by `portal_view_count`
+    (v3.17.234) so popular content is easy to find.
     """
     from django.db.models import Q
     from docs.models import Document
@@ -350,8 +350,13 @@ def kb_list(request):
     )
     if q:
         qs = qs.filter(Q(title__icontains=q) | Q(body__icontains=q))
+    featured = list(qs.filter(is_featured_in_portal=True)
+                       .order_by('-updated_at')[:10])
+    others = list(qs.filter(is_featured_in_portal=False)
+                     .order_by('-portal_view_count', '-updated_at')[:200])
     return render(request, 'portal/kb_list.html', {
-        'articles': qs.order_by('-updated_at')[:200],
+        'featured': featured,
+        'articles': others,
         'query': q,
         'organization': m.organization,
     })
@@ -360,7 +365,7 @@ def kb_list(request):
 @portal_required
 def kb_detail(request, slug):
     """Show a single KB article. Same visibility rule as kb_list."""
-    from django.db.models import Q
+    from django.db.models import Q, F
     from docs.models import Document
     m = request.portal_membership
     qs = Document.objects.filter(
@@ -369,6 +374,12 @@ def kb_detail(request, slug):
         Q(is_global=True) | Q(organization=m.organization)
     )
     article = get_object_or_404(qs, slug=slug)
+    # v3.17.234: increment view counter on each portal open. F() avoids
+    # a read-modify-write race when two users open the same article
+    # simultaneously.
+    Document.objects.filter(pk=article.pk).update(
+        portal_view_count=F('portal_view_count') + 1,
+    )
     return render(request, 'portal/kb_detail.html', {
         'article': article,
         'organization': m.organization,

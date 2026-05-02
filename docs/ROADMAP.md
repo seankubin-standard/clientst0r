@@ -280,7 +280,7 @@ Planned capabilities:
 - Threaded customer communication
 - SMS ticket communication (using existing SMS provider plumbing)
 - Customer escalation workflows
-- Customer-facing knowledge base *(partial — `Document.is_client_visible` shipped)*
+- Customer-facing knowledge base *(`Document.is_client_visible` shipped earlier; portal KB search shipped; featured + view counts shipped v3.17.234)*
 - Customer ticket voting / prioritization
 - Secure customer messaging
 - Customer notification preferences *(shipped v3.17.233 — three opt-in/out switches at `/portal/preferences/` for ticket replies, status changes, CSAT survey invitations; CSAT helper now honors the flag)*
