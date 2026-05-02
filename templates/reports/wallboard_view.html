@@ -117,11 +117,15 @@
                         </tbody>
                     </table>
                 </div>
+            {% elif w.widget_type == 'chart_line' or w.widget_type == 'chart_bar' or w.widget_type == 'chart_pie' %}
+                {# v3.17.212: Chart.js wiring. Same payload shape as the
+                   dashboard widget renderer in dashboard_detail.html. #}
+                <div style="position: relative; height: 100%; min-height: 6rem;">
+                    <canvas id="wb-chart-{{ entry.widget.pk }}"
+                            data-widget-type="{{ w.widget_type }}"></canvas>
+                </div>
+                <script type="application/json" id="wb-data-{{ entry.widget.pk }}">{{ entry.data_json|safe }}</script>
             {% else %}
-                {# Charts (line/bar/pie) need Chart.js — we render the data
-                   payload as JSON for now and leave chart rendering to a
-                   future sub-phase. The visible payload is enough for
-                   text-mode debug + JS readers. #}
                 <pre class="small text-muted mb-0">{{ data|stringformat:"s"|truncatechars:200 }}</pre>
             {% endif %}
         </div>
@@ -131,4 +135,76 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block extra_js %}
+{# v3.17.212: Chart.js renderer for line/bar/pie wallboard widgets.
+   Same payload shape + initializer as templates/reports/dashboard_detail.html. #}
+{% if has_chart %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    function readJson(id) {
+        var el = document.getElementById(id);
+        if (!el) return null;
+        try { return JSON.parse(el.textContent); } catch (e) { return null; }
+    }
+    document.querySelectorAll('canvas[id^="wb-chart-"]').forEach(function(canvas) {
+        var widgetId = canvas.id.replace('wb-chart-', '');
+        var data = readJson('wb-data-' + widgetId);
+        if (!data || data.error) return;
+        var type = canvas.dataset.widgetType;
+        var cfg;
+        if (type === 'chart_pie') {
+            cfg = {
+                type: 'pie',
+                data: {
+                    labels: data.labels || [],
+                    datasets: [{
+                        data: data.data || [],
+                        backgroundColor: [
+                            '#0d6efd', '#198754', '#ffc107', '#dc3545',
+                            '#6f42c1', '#20c997', '#fd7e14', '#0dcaf0',
+                        ],
+                    }],
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } },
+                },
+            };
+        } else {
+            var chartType = (type === 'chart_bar') ? 'bar' : 'line';
+            cfg = {
+                type: chartType,
+                data: {
+                    labels: data.labels || [],
+                    datasets: (data.series || []).map(function(s, i) {
+                        var palette = ['#0d6efd', '#198754', '#dc3545', '#ffc107'];
+                        return {
+                            label: s.name,
+                            data: s.data,
+                            backgroundColor: palette[i % palette.length],
+                            borderColor: palette[i % palette.length],
+                            borderWidth: 2,
+                            tension: 0.25,
+                            fill: false,
+                        };
+                    }),
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: (data.series || []).length > 1 } },
+                    scales: {
+                        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+                        y: { beginAtZero: true },
+                    },
+                },
+            };
+        }
+        new Chart(canvas.getContext('2d'), cfg);
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}

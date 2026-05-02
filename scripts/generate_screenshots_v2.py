@@ -243,6 +243,12 @@ class ScreenshotGenerator:
 
             # Roadmap surfaces (in-app + JSON). Annotated through v3.17.185.
             ('roadmap', '/core/roadmap/'),
+
+            # Phase 11.3 — Dispatch heatmap (v3.17.209) and the Phase 3
+            # follow-up Configurable wallboards (v3.17.211 / v3.17.212).
+            ('dispatch-heatmap', '/psa/dispatch/heatmap/'),
+            ('wallboards-list', '/reports/wallboards/'),
+            ('wallboards-new', '/reports/wallboards/new/'),
         ]
         if ticket_number:
             pages.append(('psa-ticket-detail', f'/psa/t/{ticket_number}/'))

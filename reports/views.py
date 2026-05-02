@@ -1938,16 +1938,22 @@ def wallboard_view(request, pk):
         raise Http404('Wallboard not found')
 
     rendered_widgets = []
+    has_chart = False
     for w in board.widgets.order_by('order', 'created_at'):
+        data = get_widget_data(w.data_source, w.query_params or {})
+        if w.widget_type in ('chart_line', 'chart_bar', 'chart_pie'):
+            has_chart = True
         rendered_widgets.append({
             'widget': w,
-            'data': get_widget_data(w.data_source, w.query_params or {}),
+            'data': data,
+            'data_json': json.dumps(data, default=str),
         })
 
     return render(request, 'reports/wallboard_view.html', {
         'wallboard': board,
         'rendered_widgets': rendered_widgets,
         'refresh_seconds': board.refresh_seconds,
+        'has_chart': has_chart,
     })
 
 
@@ -1979,10 +1985,15 @@ def wallboard_rotate(request, pk):
 
     from .widget_sources import get_widget_data
     rendered_widgets = []
+    has_chart = False
     for w in board.widgets.order_by('order', 'created_at'):
+        data = get_widget_data(w.data_source, w.query_params or {})
+        if w.widget_type in ('chart_line', 'chart_bar', 'chart_pie'):
+            has_chart = True
         rendered_widgets.append({
             'widget': w,
-            'data': get_widget_data(w.data_source, w.query_params or {}),
+            'data': data,
+            'data_json': json.dumps(data, default=str),
         })
 
     return render(request, 'reports/wallboard_view.html', {
@@ -1991,6 +2002,7 @@ def wallboard_rotate(request, pk):
         'refresh_seconds': board.refresh_seconds,
         'rotate_target_pk': rotate_target_pk,
         'rotate_seconds': rotate_seconds,
+        'has_chart': has_chart,
     })
 
 

@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.212] - 2026-05-02
+
+### Added — Tier A wallboard polish (3 items in one release)
+- **Chart.js wiring for wallboard line/bar/pie widgets.** v3.17.211 deferred chart rendering — chart-type widgets fell back to a `<pre>` text dump of the data payload. Now renders proper canvases with the same payload shape + initializer code as `templates/reports/dashboard_detail.html`. The view passes `data_json = json.dumps(data, default=str)` per chart widget and embeds it in a `<script type="application/json">` tag; the `extra_js` block fires Chart.js v4.4.1 from CDN (only when `has_chart=True`, so plain wallboards stay light). Reuses the same color palette + axis defaults so wallboards match dashboards visually.
+- **"Wallboards" link added to the Reports nav dropdown** in `templates/base.html` between "Dashboards" and "Generate Reports". Was missing — users had to know `/reports/wallboards/` directly.
+- **Screenshot script extended** with three new entries — `dispatch-heatmap` (Phase 11.3), `wallboards-list`, `wallboards-new`. Captures the new surfaces on the next run.
+
+### Tests
+- Existing 15 wallboard tests still passing — `WallboardModelTests`, `WallboardRotationTests`, `WallboardWidgetInheritTests`, `WallboardViewACLTests`, `WallboardRotateViewTests`, `WallboardListViewTests`. `has_chart` context variable is exercised implicitly via the existing `test_own_org_wallboard_renders` (a plain board sets has_chart=False; templates render correctly in both modes).
+
 ## [3.17.211] - 2026-05-02
 
 ### Added — Configurable wallboards (Phase 3 follow-up)
