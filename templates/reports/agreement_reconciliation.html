@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Agreement Reconciliation — Reports{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">Agreement Reconciliation</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">
+        <i class="fas fa-balance-scale me-2"></i>Agreement Reconciliation
+    </h2>
+    <a href="?format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Export CSV
+    </a>
+</div>
+
+<p class="text-muted">
+    Compares each active MSP contract's included hours against actual labor consumption.
+    Use this to spot under-served clients (upsell signal) and over-served clients
+    (re-quote signal) before they show up in the next invoice.
+</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Total active</div>
+                <div class="fs-4 fw-bold">{{ total_contracts }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">On track</div>
+                <div class="fs-4 fw-bold">{{ summary.on_track }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Under-served (upsell)</div>
+                <div class="fs-4 fw-bold">{{ summary.under_served }}</div>
+                <div class="text-muted small">&lt; 30% consumed</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-danger">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Over-served (re-quote)</div>
+                <div class="fs-4 fw-bold">{{ summary.over_served }}</div>
+                <div class="text-muted small">&ge; 110% consumed</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 small">
+            <thead class="table-light">
+                <tr>
+                    <th>Client</th>
+                    <th>Contract</th>
+                    <th>Type</th>
+                    <th class="text-end">Allowance (h)</th>
+                    <th class="text-end">Consumed (h)</th>
+                    <th class="text-end">% used</th>
+                    <th>Status</th>
+                    <th class="text-end">Overage (h)</th>
+                    <th class="text-end">Est. overage</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in rows %}
+                <tr>
+                    <td>{{ r.contract.client_org.name }}</td>
+                    <td><strong>{{ r.contract.name }}</strong></td>
+                    <td><span class="text-muted">{{ r.contract.get_contract_type_display }}</span></td>
+                    <td class="text-end">{{ r.allowance_hours|floatformat:1 }}</td>
+                    <td class="text-end">{{ r.consumed_hours|floatformat:1 }}</td>
+                    <td class="text-end">
+                        {% if r.pct is not None %}{{ r.pct|floatformat:1 }}%{% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if r.flag == 'over_served' %}
+                            <span class="badge bg-danger">Over-served</span>
+                        {% elif r.flag == 'under_served' %}
+                            <span class="badge bg-warning text-dark">Under-served</span>
+                        {% elif r.flag == 'on_track' %}
+                            <span class="badge bg-success">On track</span>
+                        {% else %}
+                            <span class="badge bg-info">Unlimited</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">{{ r.overage_hours|floatformat:1 }}</td>
+                    <td class="text-end">
+                        {% if r.overage_cost > 0 %}<strong>${{ r.overage_cost|floatformat:2 }}</strong>{% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="9" class="text-muted text-center py-4">No active contracts.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<p class="text-muted small mt-3">
+    <strong>Methodology:</strong> consumed hours come from
+    <code>Contract.hours_used_minutes</code>, which is auto-incremented by
+    <code>TicketTimeEntry.save()</code> when a time entry's ticket belongs to a
+    client with an active contract. Overage cost = (consumed − allowance) × the
+    contract's <code>overage_rate</code> (or <code>hourly_rate</code> when overage_rate is 0).
+    Status thresholds: <strong>under-served</strong> if &lt; 30% used,
+    <strong>over-served</strong> if &ge; 110% used, otherwise <strong>on track</strong>.
+    Unlimited contracts (allowance = 0) skip the threshold check.
+</p>
+
+{% endblock %}

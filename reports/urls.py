@@ -101,5 +101,8 @@ urlpatterns = [
          views.wallboard_widget_add, name='wallboard_widget_add'),
     path('wallboards/widgets/<int:pk>/delete/',
          views.wallboard_widget_delete, name='wallboard_widget_delete'),
+    # v3.17.225 — Phase 36 Agreement Reconciliation
+    path('agreement-reconciliation/',
+         views.agreement_reconciliation, name='agreement_reconciliation'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

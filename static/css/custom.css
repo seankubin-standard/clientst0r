@@ -208,8 +208,10 @@ h6 { font-size: 1rem; }
     overflow-y: auto;  /* Add scrolling if content is too tall */
 }
 
-/* Allow dropdown menus to overflow navbar bounds */
-@media (min-width: 1850px) {
+/* Allow dropdown menus to overflow navbar bounds when expanded
+   (navbar-expand-xxl breakpoint = 1400px). v3.17.225: was 1850px which
+   left a dead band where the navbar was expanded but dropdowns clipped. */
+@media (min-width: 1400px) {
     .navbar-collapse {
         overflow: visible;
     }
@@ -1769,10 +1771,8 @@ main h2 + .badge { font-size: 0.7rem; }
     .org-pill-name { font-size: .68rem !important; }
 }
 
-/* Make the navbar container itself permit wrap as a final fallback */
-.navbar-container {
-    flex-wrap: wrap;
-}
-.navbar-container > .navbar-collapse {
-    flex-wrap: wrap;
-}
+/* v3.17.225: legacy "flex-wrap: wrap" fallbacks removed.
+   Bootstrap's navbar-expand-xxl now collapses to a hamburger below
+   1400px, so wrapping fallbacks are no longer needed and were causing
+   awkward second-row wraps when dropdowns + tooltips reflowed during
+   resize / DevTools toggle. */

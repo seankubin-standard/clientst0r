@@ -574,3 +574,34 @@
         background-color: rgba(255, 255, 255, 0.1);
     }
 }
+
+/* v3.17.225: bridge band created by base.html switching to
+   `navbar-expand-xxl` (collapse below 1400px). Without this, the
+   navbar-collapse drawer at 992-1399px uses Bootstrap defaults instead
+   of the mobile-friendly styling — which looks malformed when
+   resizing or opening DevTools. */
+@media (min-width: 992px) and (max-width: 1399.98px) {
+    .navbar-collapse {
+        background: rgba(0, 0, 0, 0.95);
+        margin: 1rem -1rem -0.75rem;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-top: 1rem;
+    }
+    .navbar-nav {
+        gap: 0.5rem;
+    }
+    .navbar-nav .nav-item {
+        width: 100%;
+    }
+    .navbar-nav .nav-link {
+        padding: 0.625rem 1rem !important;
+    }
+    .navbar .d-flex {
+        width: 100%;
+        margin: 0.5rem 0 0;
+    }
+    .navbar .form-control-sm {
+        width: 100% !important;
+    }
+}

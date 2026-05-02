@@ -1367,6 +1367,140 @@ class WallboardListViewTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class AgreementReconciliationTests(TestCase):
+    """Phase 36 v1 (v3.17.225): per-contract included-vs-consumed report."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from django.utils import timezone
+        from datetime import timedelta as _td
+        from decimal import Decimal as _D
+        from psa.models import Contract
+        cls.msp = Organization.objects.create(name='AR-MSP', slug='ar-msp')
+        cls.client_a = Organization.objects.create(name='AR-Client-A', slug='ar-ca')
+        cls.client_b = Organization.objects.create(name='AR-Client-B', slug='ar-cb')
+        cls.staff = User.objects.create_user('ar-staff', 'ars@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member_a = User.objects.create_user('ar-mem-a', 'ara@x.com', 'pw')
+        Membership.objects.create(user=cls.member_a, organization=cls.client_a,
+                                  role=Role.OWNER, is_active=True)
+        today = timezone.now().date()
+        cls.under_served = Contract.objects.create(
+            organization=cls.msp, client_org=cls.client_a,
+            name='Block 100h — under', contract_type='block_hours',
+            status='active', start_date=today - _td(days=30),
+            total_hours=_D('100'), hours_used_minutes=10 * 60,
+            hourly_rate=_D('150'),
+        )  # 10/100 = 10% used → under_served
+        cls.on_track = Contract.objects.create(
+            organization=cls.msp, client_org=cls.client_a,
+            name='Block 100h — on track', contract_type='block_hours',
+            status='active', start_date=today - _td(days=30),
+            total_hours=_D('100'), hours_used_minutes=60 * 60,
+            hourly_rate=_D('150'),
+        )  # 60/100 = 60% → on_track
+        cls.over_served = Contract.objects.create(
+            organization=cls.msp, client_org=cls.client_b,
+            name='Block 100h — over', contract_type='block_hours',
+            status='active', start_date=today - _td(days=30),
+            total_hours=_D('100'), hours_used_minutes=130 * 60,
+            hourly_rate=_D('150'), overage_rate=_D('200'),
+        )  # 130/100 = 130% → over_served
+        cls.unlimited = Contract.objects.create(
+            organization=cls.msp, client_org=cls.client_b,
+            name='MSA — unlimited', contract_type='managed_services',
+            status='active', start_date=today - _td(days=30),
+            total_hours=_D('0'), hours_used_minutes=42 * 60,
+            hourly_rate=_D('150'),
+        )  # allowance=0 → unlimited
+        Contract.objects.create(
+            organization=cls.msp, client_org=cls.client_a,
+            name='Expired contract', contract_type='block_hours',
+            status='expired', start_date=today - _td(days=400),
+            end_date=today - _td(days=30),
+            total_hours=_D('100'), hours_used_minutes=200 * 60,
+        )  # excluded — status != active
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_staff_sees_all_active_contracts(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/agreement-reconciliation/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Block 100h — under')
+        self.assertContains(r, 'Block 100h — on track')
+        self.assertContains(r, 'Block 100h — over')
+        self.assertContains(r, 'MSA — unlimited')
+        self.assertNotContains(r, 'Expired contract')
+
+    def test_status_classification(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/agreement-reconciliation/')
+        self.assertContains(r, 'Under-served')
+        self.assertContains(r, 'On track')
+        self.assertContains(r, 'Over-served')
+        self.assertContains(r, 'Unlimited')
+
+    def test_summary_counts(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/agreement-reconciliation/')
+        ctx = r.context
+        self.assertEqual(ctx['summary']['under_served'], 1)
+        self.assertEqual(ctx['summary']['on_track'], 1)
+        self.assertEqual(ctx['summary']['over_served'], 1)
+        self.assertEqual(ctx['summary']['unlimited'], 1)
+        self.assertEqual(ctx['total_contracts'], 4)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/agreement-reconciliation/?format=csv')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        self.assertIn('attachment', r['Content-Disposition'])
+        body = r.content.decode('utf-8')
+        self.assertIn('AR-Client-A', body)
+        self.assertIn('AR-Client-B', body)
+
+    def test_member_sees_only_their_orgs_contracts(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member_a, self.client_a)
+        r = c.get('/reports/agreement-reconciliation/')
+        self.assertEqual(r.status_code, 200)
+        # Client A contracts visible:
+        self.assertContains(r, 'Block 100h — under')
+        # Client B contracts NOT visible:
+        self.assertNotContains(r, 'Block 100h — over')
+        self.assertNotContains(r, 'MSA — unlimited')
+
+    def test_overage_cost_calculation(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/agreement-reconciliation/')
+        # Over-served contract: 130h consumed, 100h allowance = 30h overage,
+        # at $200/h overage_rate = $6000.
+        self.assertContains(r, '$6000.00')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class WallboardGlobalScopeTests(TestCase):
     """v3.17.216: organization-null = global wallboard, staff-only."""
 

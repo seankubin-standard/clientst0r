@@ -5,6 +5,36 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.225] - 2026-05-02
+
+### Fixed — Navbar dead band 992-1399px
+v3.17.224 changed the navbar breakpoint from `expand-lg` (992px) to `expand-xxl` (1400px) so it collapses to a hamburger sooner on narrow viewports. But `static/css/mobile.css` still styles the hamburger drawer only at `max-width: 991px` — which left a dead band 992-1399px where the navbar collapsed correctly but the drawer used Bootstrap defaults, looking malformed when DevTools docked or the window resized into that band.
+
+- Added a `@media (min-width: 992px) and (max-width: 1399.98px)` block to `mobile.css` that re-applies the dark drawer background, vertical layout, and form sizing in that band.
+- Removed the legacy `.navbar-container { flex-wrap: wrap }` fallback at the bottom of `custom.css` — that was a workaround for the old `expand-lg` overflow which is no longer reachable; in `expand-xxl` mode it just caused awkward second-row wraps when dropdowns reflowed.
+- Bumped the dropdown `overflow: visible` rule from `min-width: 1850px` to `min-width: 1400px` so dropdown menus aren't clipped on every laptop screen between 1400-1849px.
+
+### Added — Phase 36 v1 Agreement Reconciliation
+First slice of Phase 36 — surfaces over-served and under-served clients before they become invoice surprises. Sourced entirely from data already in the system: `Contract.total_hours` (allowance), `Contract.hours_used_minutes` (consumption tracker auto-incremented by `TicketTimeEntry.save()`), and `Contract.overage_rate` for the overage-cost estimate.
+
+- New endpoint `GET /reports/agreement-reconciliation/` — table of every active MSP contract with: client, contract name + type, allowance hours, consumed hours, % consumed, status flag, overage hours, estimated overage cost. `?format=csv` returns the same data as a CSV download.
+- **Status thresholds:** `under_served` if < 30% used (upsell signal), `on_track` 30-110%, `over_served` if ≥ 110% used (re-quote signal). Unlimited contracts (allowance = 0) flagged `unlimited` and skip threshold check.
+- **Summary cards** above the table show counts per category — total active / on-track / under-served / over-served — so managers can see the big picture before drilling into individual rows.
+- **Tenant ACL** — staff/superuser see all active contracts; org members see only contracts where `client_org` is one of their org memberships.
+- **"Agreement Reconciliation" link** added to the Reports home page next to Revenue Leakage (gated behind `perm.view_financial`).
+
+### Tests
+- 6 new tests in `AgreementReconciliationTests`:
+  - `test_staff_sees_all_active_contracts` — under/on-track/over/unlimited contracts visible; expired contracts excluded.
+  - `test_status_classification` — every status badge text rendered.
+  - `test_summary_counts` — context dict has correct per-category counts.
+  - `test_csv_export` — `?format=csv` returns `Content-Type: text/csv` with attachment disposition + client names in body.
+  - `test_member_sees_only_their_orgs_contracts` — non-staff member sees client_a contracts but NOT client_b contracts.
+  - `test_overage_cost_calculation` — 130h consumed against 100h allowance at $200/h overage rate = $6000 surfaced.
+
+### Roadmap
+- Phase 36 sub-bullets annotated `*(partial — under/over-served alerts shipped v3.17.225)*`. Pre-invoice approval workflow + included-vs-billable labor reconciliation + revenue-leakage expansion remain planned for v2.
+
 ## [3.17.224] - 2026-05-02
 
 ### Fixed — Navbar layout (better fix for the v3.17.221 regression)

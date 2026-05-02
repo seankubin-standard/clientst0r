@@ -2289,3 +2289,99 @@ def wallboard_widget_data(request, pk):
         'widget_type': widget.widget_type,
         'data': data,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 36 v1 — Agreement Reconciliation (v3.17.225)
+# ---------------------------------------------------------------------------
+
+@login_required
+def agreement_reconciliation(request):
+    """
+    List every active MSP contract with its included-vs-consumed hours
+    and an over/under-served alert. Sourced entirely from data already
+    in the system — `Contract.total_hours` (allowance), `hours_used_minutes`
+    (consumption tracker incremented by `TicketTimeEntry.save()`), and
+    `overage_rate` for the cost-of-overage estimate.
+
+    URL: /reports/agreement-reconciliation/
+    Tenant ACL: superuser / staff sees all; org members see only their
+    org's contracts.
+    Output: HTML table with `?format=csv` export.
+    """
+    from psa.models import Contract
+    from decimal import Decimal as D
+
+    qs = Contract.objects.filter(status='active').select_related(
+        'client_org', 'organization',
+    )
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        pass  # see everything
+    else:
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                       .values_list('organization_id', flat=True))
+        qs = qs.filter(client_org_id__in=ids)
+    qs = qs.order_by('client_org__name', 'name')
+
+    rows = []
+    summary = {'under_served': 0, 'on_track': 0, 'over_served': 0, 'unlimited': 0}
+    for c in qs:
+        consumed_h = D(c.hours_used_minutes or 0) / D(60)
+        allowance = D(c.total_hours or 0)
+        if allowance <= 0:
+            pct = None
+            flag = 'unlimited'
+        else:
+            pct = round(float(consumed_h / allowance * 100), 1)
+            if pct >= 110:
+                flag = 'over_served'
+            elif pct < 30:
+                flag = 'under_served'
+            else:
+                flag = 'on_track'
+        summary[flag] += 1
+
+        overage_h = max(consumed_h - allowance, D(0)) if allowance > 0 else D(0)
+        rate = c.overage_rate if c.overage_rate else c.hourly_rate
+        overage_cost = overage_h * (rate or D(0))
+
+        rows.append({
+            'contract': c,
+            'consumed_hours': float(consumed_h.quantize(D('0.01'))),
+            'allowance_hours': float(allowance),
+            'pct': pct,
+            'flag': flag,
+            'overage_hours': float(overage_h.quantize(D('0.01'))),
+            'overage_cost': float(overage_cost.quantize(D('0.01'))),
+        })
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv2
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = (
+            'attachment; filename="agreement-reconciliation.csv"'
+        )
+        w = _csv2.writer(resp)
+        w.writerow(['Client', 'Contract', 'Type', 'Period start', 'Period end',
+                    'Allowance (h)', 'Consumed (h)', '% used', 'Status',
+                    'Overage (h)', 'Overage cost'])
+        for r in rows:
+            c = r['contract']
+            w.writerow([
+                c.client_org.name, c.name, c.get_contract_type_display(),
+                c.start_date.isoformat() if c.start_date else '',
+                c.end_date.isoformat() if c.end_date else '',
+                r['allowance_hours'], r['consumed_hours'],
+                r['pct'] if r['pct'] is not None else '',
+                r['flag'], r['overage_hours'], r['overage_cost'],
+            ])
+        return resp
+
+    return render(request, 'reports/agreement_reconciliation.html', {
+        'rows': rows,
+        'summary': summary,
+        'total_contracts': len(rows),
+    })
