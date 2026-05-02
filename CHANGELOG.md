@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.226] - 2026-05-02
+
+### Added — Phase 39 v2 Compliance Evidence Pack — remaining 4 sections
+v3.17.222 shipped 5 of 9 evidence sections. v3.17.226 closes the gap with the remaining 4: SSL/Domain Expiration, Uptime Evidence, Vulnerability Summary, and Backup Evidence (placeholder). The pack is now complete for what's planned in Phase 39.
+
+- **Section 6 — SSL / Domain Expiration.** Per `WebsiteMonitor` for the org: name, URL, SSL enabled flag, SSL expiry date, SSL issuer, domain expiry date. Summary line counts total monitors, those with SSL tracking enabled, and how many have expirations on file.
+- **Section 7 — Uptime Evidence.** Current `WebsiteMonitor` status, last check time, last HTTP status code, last response time. Summary cards count Active / Warning / Down / Unknown and compute `healthy_pct = active / total`. Color-coded status badges.
+- **Section 8 — Vulnerability Summary (90-day window).** Open `SecurityAlert` rows for the client_org with seen_at within 90 days. Per-severity counts (critical / high / medium / low / info) plus a recent-alerts table (capped at 200). Filter `client_org=org` (not just `organization=org`) so the section reflects alerts *about* the client even when ingested through an MSP-owned vendor connection.
+- **Section 9 — Backup Evidence (placeholder).** No first-party backup-job tracking model ships with the project today, so this section records "no backup integration configured" as documented evidence rather than a blank page. When a backup adapter is added, this section will list recent jobs.
+- **ZIP export** now writes 9 CSV files (was 5) plus the manifest. Manifest's `sections` key is the authoritative list — auditors can iterate over it programmatically.
+
+### Tests
+- Updated `test_owner_gets_200_html_with_org_name` to assert all 4 new section headers render.
+- Updated `test_owner_gets_200_zip` to assert all 9 CSVs are in the archive and `manifest.sections` has 9 entries.
+- New `test_v226_sections_tenant_scoped` — creates an OrgB-only `WebsiteMonitor` with a unique name + an OrgB-only `SecurityAlert` with a unique title, generates OrgA's pack, asserts neither leaks into OrgA's output.
+- All 11 compliance tests pass.
+
+### Roadmap
+- Phase 39 sub-bullets all annotated `*(shipped vN.N.N)*` (5 in v3.17.222, 4 in v3.17.226). Phase 39 marked `[in progress]` rather than `[complete]` because Backup is still a placeholder until a backup-tracking integration is built.
+
 ## [3.17.225] - 2026-05-02
 
 ### Fixed — Navbar dead band 992-1399px

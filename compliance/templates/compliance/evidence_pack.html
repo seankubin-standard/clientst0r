@@ -186,13 +186,129 @@
     </table>
 </section>
 
+<section class="evidence-section">
+    <h3>6. SSL / Domain Expiration</h3>
+    <div class="section-summary">
+        <strong>{{ ssl_domain.summary.total_monitors }}</strong> monitors ·
+        <strong>{{ ssl_domain.summary.with_ssl }}</strong> with SSL tracking ·
+        <strong>{{ ssl_domain.summary.ssl_with_expiry_tracked }}</strong> SSL expirations on file ·
+        <strong>{{ ssl_domain.summary.domain_with_expiry_tracked }}</strong> domain expirations on file.
+    </div>
+    <table class="table table-sm table-striped small">
+        <thead><tr>
+            <th>Monitor</th><th>URL</th><th>SSL</th><th>SSL expires</th>
+            <th>Issuer</th><th>Domain expires</th>
+        </tr></thead>
+        <tbody>
+        {% for r in ssl_domain.rows %}
+        <tr>
+            <td>{{ r.monitor_name }}</td>
+            <td><code>{{ r.url|truncatechars:50 }}</code></td>
+            <td>{% if r.ssl_enabled %}<span class="badge bg-success">Yes</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>{{ r.ssl_expires_at|default:'—' }}</td>
+            <td>{{ r.ssl_issuer|default:'—' }}</td>
+            <td>{{ r.domain_expires_at|default:'—' }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-muted text-center">No website monitors configured.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="evidence-section">
+    <h3>7. Uptime Evidence</h3>
+    <div class="section-summary">
+        <strong>{{ uptime.summary.total_monitors }}</strong> monitors ·
+        Active <strong>{{ uptime.summary.active }}</strong> ·
+        Warning <strong>{{ uptime.summary.warning }}</strong> ·
+        Down <strong>{{ uptime.summary.down }}</strong> ·
+        Unknown <strong>{{ uptime.summary.unknown }}</strong> ·
+        Healthy <strong>{{ uptime.summary.healthy_pct }}%</strong>.
+    </div>
+    <table class="table table-sm table-striped small">
+        <thead><tr>
+            <th>Monitor</th><th>URL</th><th>Status</th>
+            <th>Last checked</th><th>HTTP</th><th>Response (ms)</th>
+        </tr></thead>
+        <tbody>
+        {% for r in uptime.rows %}
+        <tr>
+            <td>{{ r.monitor_name }}</td>
+            <td><code>{{ r.url|truncatechars:50 }}</code></td>
+            <td>
+                {% if r.status == 'active' %}<span class="badge bg-success">Active</span>
+                {% elif r.status == 'warning' %}<span class="badge bg-warning text-dark">Warning</span>
+                {% elif r.status == 'down' %}<span class="badge bg-danger">Down</span>
+                {% else %}<span class="badge bg-secondary">{{ r.status }}</span>{% endif %}
+            </td>
+            <td>{{ r.last_checked_at|default:'—' }}</td>
+            <td>{{ r.last_status_code|default:'—' }}</td>
+            <td>{{ r.last_response_time_ms|default:'—' }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-muted text-center">No website monitors configured.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="evidence-section">
+    <h3>8. Vulnerability Summary (last {{ vulnerabilities.summary.window_days }} days)</h3>
+    <div class="section-summary">
+        <strong>{{ vulnerabilities.summary.open_count }}</strong> open security alerts ·
+        Critical <strong>{{ vulnerabilities.summary.by_severity.critical }}</strong> ·
+        High <strong>{{ vulnerabilities.summary.by_severity.high }}</strong> ·
+        Medium <strong>{{ vulnerabilities.summary.by_severity.medium }}</strong> ·
+        Low <strong>{{ vulnerabilities.summary.by_severity.low }}</strong> ·
+        Info <strong>{{ vulnerabilities.summary.by_severity.info }}</strong>.
+    </div>
+    <table class="table table-sm table-striped small">
+        <thead><tr>
+            <th>Seen at</th><th>Severity</th><th>Title</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+        {% for r in vulnerabilities.rows %}
+        <tr>
+            <td>{{ r.seen_at }}</td>
+            <td>
+                {% if r.severity == 'critical' %}<span class="badge bg-danger">Critical</span>
+                {% elif r.severity == 'high' %}<span class="badge bg-warning text-dark">High</span>
+                {% elif r.severity == 'medium' %}<span class="badge bg-info">Medium</span>
+                {% else %}<span class="badge bg-secondary">{{ r.severity|title }}</span>{% endif %}
+            </td>
+            <td>{{ r.title|truncatechars:80 }}</td>
+            <td>{{ r.status }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-muted text-center">No open security alerts in window.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="evidence-section">
+    <h3>9. Backup Evidence</h3>
+    <div class="section-summary">
+        {{ backups.summary.note }}
+    </div>
+    <p class="text-muted small">
+        Auditor note: when a backup-job tracking integration is configured for this
+        organization (e.g. Veeam / Datto / Acronis adapter), this section will list
+        the most recent backup jobs with status, size, and verification result.
+        Today this organization has <strong>{{ backups.summary.backup_jobs_tracked }}</strong>
+        tracked jobs.
+    </p>
+</section>
+
 <footer class="text-muted small mt-4">
     <hr>
     <p class="mb-0">
         Generated by Client St0r v{{ system_settings.version|default:'' }} ·
         {{ generated_at|date:'Y-m-d H:i T' }} ·
-        Pack covers 5 of 9 evidence sections planned for Phase 39 (vulnerability scan,
-        SSL/domain expiration, backup, uptime evidence are not yet included).
+        Pack covers all 9 Phase 39 evidence sections (5 shipped v3.17.222 +
+        4 added v3.17.226). Backup section is a placeholder until a backup-job
+        integration is implemented.
     </p>
 </footer>
 {% endblock %}

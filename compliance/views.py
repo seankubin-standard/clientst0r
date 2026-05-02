@@ -187,6 +187,106 @@ def _section_ticket_sla_history(org, months=12):
     }
 
 
+def _section_ssl_domain_expiration(org):
+    rows = []
+    try:
+        from monitoring.models import WebsiteMonitor
+        qs = WebsiteMonitor.objects.filter(organization=org, is_enabled=True)
+        for m in qs.order_by('name'):
+            rows.append({
+                'monitor_name': m.name,
+                'url': m.url,
+                'ssl_enabled': m.ssl_enabled,
+                'ssl_expires_at': m.ssl_expires_at.isoformat() if m.ssl_expires_at else '',
+                'ssl_issuer': m.ssl_issuer or '',
+                'domain_expires_at': m.domain_expires_at.isoformat() if m.domain_expires_at else '',
+            })
+    except Exception:
+        pass
+    summary = {
+        'total_monitors': len(rows),
+        'with_ssl': sum(1 for r in rows if r['ssl_enabled']),
+        'ssl_with_expiry_tracked': sum(1 for r in rows if r['ssl_expires_at']),
+        'domain_with_expiry_tracked': sum(1 for r in rows if r['domain_expires_at']),
+    }
+    return {'rows': rows, 'summary': summary}
+
+
+def _section_uptime(org):
+    rows = []
+    counts = {'active': 0, 'warning': 0, 'down': 0, 'unknown': 0, 'error': 0}
+    try:
+        from monitoring.models import WebsiteMonitor
+        qs = WebsiteMonitor.objects.filter(organization=org, is_enabled=True)
+        for m in qs.order_by('name'):
+            counts[m.status] = counts.get(m.status, 0) + 1
+            rows.append({
+                'monitor_name': m.name,
+                'url': m.url,
+                'status': m.status,
+                'last_checked_at': m.last_checked_at.isoformat() if m.last_checked_at else '',
+                'last_status_code': m.last_status_code or '',
+                'last_response_time_ms': m.last_response_time_ms or '',
+            })
+    except Exception:
+        pass
+    total = len(rows)
+    healthy = counts.get('active', 0)
+    summary = {
+        'total_monitors': total,
+        'active': healthy,
+        'warning': counts.get('warning', 0),
+        'down': counts.get('down', 0) + counts.get('error', 0),
+        'unknown': counts.get('unknown', 0),
+        'healthy_pct': round(100 * healthy / total, 1) if total else 0,
+    }
+    return {'rows': rows, 'summary': summary}
+
+
+def _section_vulnerability_summary(org, days=90):
+    rows = []
+    counts = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+    open_count = 0
+    try:
+        from security_alerts.models import SecurityAlert
+        cutoff = timezone.now() - timedelta(days=days)
+        qs = SecurityAlert.objects.filter(client_org=org, seen_at__gte=cutoff)
+        open_qs = qs.filter(status='new')
+        for a in open_qs.order_by('-seen_at')[:200]:
+            rows.append({
+                'seen_at': a.seen_at.isoformat(),
+                'severity': a.severity,
+                'title': (a.title or '')[:200],
+                'status': a.status,
+            })
+        for sev in counts:
+            counts[sev] = open_qs.filter(severity=sev).count()
+        open_count = open_qs.count()
+    except Exception:
+        pass
+    summary = {
+        'window_days': days,
+        'open_count': open_count,
+        'by_severity': counts,
+    }
+    return {'rows': rows, 'summary': summary}
+
+
+def _section_backup_evidence(org):
+    # v3.17.226 Phase 39 v2: backup status placeholder. No first-party
+    # backup-job tracking model ships with the project today, so this
+    # section currently only records "no backup integration configured"
+    # as evidence — auditors get a documented absence rather than a
+    # blank page. When a backup model is added (future), enrich here.
+    return {
+        'rows': [],
+        'summary': {
+            'note': 'No backup-job integration is configured for this organization.',
+            'backup_jobs_tracked': 0,
+        },
+    }
+
+
 def _build_pack(org):
     return {
         'organization': org,
@@ -196,6 +296,10 @@ def _build_pack(org):
         'password_history': _section_password_access_history(org),
         'asset_inventory': _section_asset_inventory(org),
         'ticket_sla': _section_ticket_sla_history(org),
+        'ssl_domain': _section_ssl_domain_expiration(org),
+        'uptime': _section_uptime(org),
+        'vulnerabilities': _section_vulnerability_summary(org),
+        'backups': _section_backup_evidence(org),
     }
 
 
@@ -232,23 +336,20 @@ def _zip_response(pack):
     buf = io.BytesIO()
     org = pack['organization']
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        section_keys = (
+            'two_factor', 'user_access', 'password_history',
+            'asset_inventory', 'ticket_sla',
+            'ssl_domain', 'uptime', 'vulnerabilities', 'backups',
+        )
         manifest = {
             'organization': org.name,
             'organization_id': org.pk,
             'generated_at': pack['generated_at'].isoformat(),
-            'sections': ['two_factor', 'user_access', 'password_history',
-                         'asset_inventory', 'ticket_sla'],
-            'summaries': {
-                'two_factor': pack['two_factor']['summary'],
-                'user_access': pack['user_access']['summary'],
-                'password_history': pack['password_history']['summary'],
-                'asset_inventory': pack['asset_inventory']['summary'],
-                'ticket_sla': pack['ticket_sla']['summary'],
-            },
+            'sections': list(section_keys),
+            'summaries': {k: pack[k]['summary'] for k in section_keys},
         }
         zf.writestr('manifest.json', json.dumps(manifest, indent=2, default=str))
-        for key in ('two_factor', 'user_access', 'password_history',
-                    'asset_inventory', 'ticket_sla'):
+        for key in section_keys:
             section = pack[key]
             csv_buf = io.StringIO()
             rows = section['rows']

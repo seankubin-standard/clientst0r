@@ -845,10 +845,10 @@ Planned capabilities:
 - User access report — current memberships, role templates, last-login per user *(shipped v3.17.222)*
 - Password access history *(extends vault audit shipped v3.17.181 — every reveal / edit / delete event in the period)* *(shipped v3.17.222 — last 90 days)*
 - Asset inventory — current asset list with serial / vendor / location / lifecycle stage *(shipped v3.17.222)*
-- Vulnerability scan summary *(extends Phase 9 security framework + the existing OS Package Scanner)*
-- SSL / domain expiration summary *(extends the WebsiteMonitor expiration infra)*
+- Vulnerability scan summary *(extends Phase 9 security framework + the existing OS Package Scanner)* *(shipped v3.17.226 — 90-day open-alert summary by severity)*
+- SSL / domain expiration summary *(extends the WebsiteMonitor expiration infra)* *(shipped v3.17.226)*
 - Ticket / SLA history — ticket counts, SLA-met percentages, response and resolution medians *(shipped v3.17.222 — 12-month window)*
-- Backup and uptime evidence — backup-job success rate, monitor uptime percentages over the period
+- Backup and uptime evidence — backup-job success rate, monitor uptime percentages over the period *(uptime shipped v3.17.226; backup is a placeholder until a backup-tracking integration is built)*
 
 Dependencies: Phase 9 (security data), vault, monitoring/, psa (SLA history), assets.
 

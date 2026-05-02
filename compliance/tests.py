@@ -49,6 +49,11 @@ class EvidencePackTests(TestCase):
         self.assertContains(r, 'Password Access History')
         self.assertContains(r, 'Asset Inventory')
         self.assertContains(r, 'Ticket / SLA History')
+        # v3.17.226 — Phase 39 v2 sections
+        self.assertContains(r, 'SSL / Domain Expiration')
+        self.assertContains(r, 'Uptime Evidence')
+        self.assertContains(r, 'Vulnerability Summary')
+        self.assertContains(r, 'Backup Evidence')
 
     def test_owner_gets_200_zip(self):
         c = Client()
@@ -57,7 +62,6 @@ class EvidencePackTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r['Content-Type'], 'application/zip')
         self.assertIn('attachment', r['Content-Disposition'])
-        # Verify zip contents.
         import io
         import json
         import zipfile
@@ -65,10 +69,12 @@ class EvidencePackTests(TestCase):
         names = zf.namelist()
         self.assertIn('manifest.json', names)
         for section in ('two_factor', 'user_access', 'password_history',
-                        'asset_inventory', 'ticket_sla'):
+                        'asset_inventory', 'ticket_sla',
+                        'ssl_domain', 'uptime', 'vulnerabilities', 'backups'):
             self.assertIn(f'{section}.csv', names)
         manifest = json.loads(zf.read('manifest.json').decode('utf-8'))
         self.assertEqual(manifest['organization'], 'OrgA')
+        self.assertEqual(len(manifest['sections']), 9)
 
     def test_other_org_owner_gets_404(self):
         c = Client()
@@ -124,6 +130,34 @@ class EvidencePackTests(TestCase):
         self._login(c, self.owner_a, self.org_a)
         r = c.get(f'/compliance/organizations/{self.org_a.id}/evidence-pack/')
         self.assertNotContains(r, 'Cross-tenant secret name')
+
+    def test_v226_sections_tenant_scoped(self):
+        # v3.17.226: SSL/uptime + vuln sections are tenant-scoped.
+        # Create OrgB-only WebsiteMonitor + SecurityAlert; verify they
+        # do not leak into OrgA's pack.
+        from monitoring.models import WebsiteMonitor
+        from security_alerts.models import SecurityAlert, SecurityVendorConnection
+        WebsiteMonitor.objects.create(
+            organization=self.org_b, name='OrgB-Monitor-XYZ',
+            url='https://orgb.example.com',
+        )
+        conn = SecurityVendorConnection.objects.create(
+            organization=self.org_b, name='OrgB Vendor',
+            provider='huntress', category='edr',
+            base_url='https://example.invalid/', is_active=True,
+        )
+        SecurityAlert.objects.create(
+            connection=conn, organization=self.org_b, client_org=self.org_b,
+            external_id='orgb-vuln-1',
+            title='OrgB-only-CVE-99999',
+            severity='critical', status='new',
+        )
+        c = Client()
+        self._login(c, self.owner_a, self.org_a)
+        r = c.get(f'/compliance/organizations/{self.org_a.id}/evidence-pack/')
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'OrgB-Monitor-XYZ')
+        self.assertNotContains(r, 'OrgB-only-CVE-99999')
 
     def test_audit_log_written_on_generate(self):
         from audit.models import AuditLog
