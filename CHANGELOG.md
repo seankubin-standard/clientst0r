@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.205] - 2026-05-02
+
+### Tests
+- **Baseline coverage for the `vehicles/` app** (Phase 7 polish Wave 2 — **16th and last** of 16). Service vehicles + fleet inventory + receipt scanning. ServiceVehicle is MSP-wide (no organization FK — fleet management isn't per-tenant). **18 tests across 3 classes:**
+  - `ServiceVehicleModelTests` (6) — `__str__` format with year/make/model/plate; `display_name` uses nickname when set, falls back to `<year> <make> <model>`; `has_location` true only when both lat+lng; `update_location()` sets coords + timestamp.
+  - `VehicleExpiryWarningTests` (6) — insurance + registration expiry both: true within 30-day window, false far-out, **false when unset** (regression guard for `None <= date` crash).
+  - `VehicleInventoryItemTests` (6) — `__str__` includes name + qty + unit; `is_low_stock` boundary at minimum and above; `needs_restock` only when reorder_quantity > 0 AND below min; `total_value` math; `total_value` handles None unit_cost gracefully.
+- 18/18 in 0.05 s. **No production bugs surfaced.**
+
+### Wave 2 milestone
+- **Every one of the 16 originally-untested apps now has baseline coverage.** Wave 2 closure release coming next.
+
 ## [3.17.204] - 2026-05-02
 
 ### Tests
