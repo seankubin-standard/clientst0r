@@ -1441,7 +1441,7 @@ class Quote(models.Model):
 
     def mark_accepted(self, *, user=None, create_ticket: bool = True,
                       queue=None, priority=None, ticket_type=None,
-                      status=None):
+                      status=None, create_project: bool = False):
         self.status = 'accepted'
         self.accepted_at = timezone.now()
         if create_ticket and not self.converted_ticket and queue and priority and ticket_type and status:
@@ -1454,7 +1454,43 @@ class Quote(models.Model):
                 source='manual',
                 created_by=user,
             )
+        if create_project and not self.converted_project:
+            self.convert_to_project(user=user, save=False)
         self.save()
+
+    def convert_to_project(self, *, user=None, save: bool = True):
+        """
+        Spin up a Project from this quote, with one ProjectTask per line
+        item. Idempotent — if `converted_project` is already set, returns
+        the existing project unchanged.
+
+        The line-item description becomes the task title; quantity and
+        unit price are folded into the task description so techs see what
+        was sold without flipping back to the quote PDF.
+        """
+        if self.converted_project_id:
+            return self.converted_project
+        project = Project.objects.create(
+            organization=self.organization,
+            client_org=self.client_org,
+            name=self.title[:200],
+            description=self.description or '',
+            status='planning',
+            owner=user,
+        )
+        for li in self.line_items.all().order_by('sort_order', 'pk'):
+            ProjectTask.objects.create(
+                project=project,
+                title=li.description[:300],
+                description=f'From quote {self.quote_number}: {li.quantity} × {li.unit_price}',
+                sort_order=li.sort_order,
+                estimated_hours=li.quantity,
+                created_by=user,
+            )
+        self.converted_project = project
+        if save:
+            self.save(update_fields=['converted_project'])
+        return project
 
 
 class QuoteLineItem(models.Model):

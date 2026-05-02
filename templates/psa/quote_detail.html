@@ -70,6 +70,14 @@
             </div>
         </div>
         {% endif %}
+        {% if item.converted_project %}
+        <div class="card mb-3">
+            <div class="card-body small">
+                <i class="fas fa-folder-open me-1"></i>Converted to project
+                <a href="{% url 'psa:project_detail' item.converted_project.pk %}">{{ item.converted_project.name }}</a>
+            </div>
+        </div>
+        {% endif %}
         {% if linked_pos %}
         <div class="card mb-3">
             <div class="card-header"><strong><i class="fas fa-file-invoice me-1"></i>Purchase Orders</strong></div>
@@ -92,6 +100,12 @@
                     <div class="form-check mb-2">
                         <input type="checkbox" class="form-check-input" id="create_ticket" name="create_ticket" checked>
                         <label class="form-check-label small" for="create_ticket">Also create a ticket</label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input type="checkbox" class="form-check-input" id="create_project" name="create_project">
+                        <label class="form-check-label small" for="create_project">
+                            Spin up a project (one task per line item)
+                        </label>
                     </div>
                     <button class="btn btn-sm btn-success" onclick="return confirm('Accept this quote?')">
                         <i class="fas fa-check"></i> Mark accepted

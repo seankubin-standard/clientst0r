@@ -68,7 +68,7 @@ A mature PSA covers sales-pipeline-to-invoice. Currently we have quotes; we need
 - `Lead`, `Opportunity`, `Campaign`, `Commission` models *(5.1 — shipped v3.17.152; 5.2 — shipped v3.17.153)*
 - Lead scoring + conversion funnel report *(5.2 — shipped v3.17.153)*
 - Pipeline Kanban view (Discovery → Qualified → Proposal → Closed Won/Lost) *(5.1 — shipped v3.17.152)*
-- **Quote-to-project automation** — one click on accepted quote spins a Project with tasks pre-populated from quote line items *(5.1 — opportunity → quote shipped v3.17.152; quote → project deferred to Phase 7 polish backlog)*
+- **Quote-to-project automation** — one click on accepted quote spins a Project with tasks pre-populated from quote line items *(5.1 — opportunity → quote shipped v3.17.152; quote → project shipped v3.17.213)*
 - Sales-activity timeline per org/lead (calls, emails, meetings logged) *(5.3 — shipped v3.17.155)*
 - Commission rules engine + per-tech commission report *(5.2 — shipped v3.17.153)*
 - Lead capture from web form / IMAP / API *(5.3 — web + API shipped v3.17.155; IMAP poller stubbed, full implementation deferred to 5.4 follow-up)*

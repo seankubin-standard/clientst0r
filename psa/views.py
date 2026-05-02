@@ -2821,21 +2821,34 @@ def quote_accept(request, pk):
         qs = qs.filter(organization=org)
     item = get_object_or_404(qs, pk=pk)
     create = request.POST.get('create_ticket') == 'on'
+    create_proj = request.POST.get('create_project') == 'on'
     queue = Queue.objects.filter(is_active=True).first()
     priority = TicketPriority.objects.first()
     ttype = TicketType.objects.first()
     status = TicketStatus.objects.filter(slug='new').first()
     item.mark_accepted(user=request.user, create_ticket=create,
                        queue=queue, priority=priority,
-                       ticket_type=ttype, status=status)
+                       ticket_type=ttype, status=status,
+                       create_project=create_proj)
     AuditLog.log(
         user=request.user, action='update',
         organization=org or item.organization,
         object_type='psa.Quote', object_id=item.pk,
         object_repr=item.quote_number,
-        description=f'Accepted quote {item.quote_number}; ticket={item.converted_ticket_id or "—"}',
+        description=(
+            f'Accepted quote {item.quote_number}; '
+            f'ticket={item.converted_ticket_id or "—"}; '
+            f'project={item.converted_project_id or "—"}'
+        ),
         ip_address=_client_ip(request), path=request.path,
     )
+    if item.converted_project:
+        messages.success(
+            request,
+            f'Accepted. Project "{item.converted_project.name}" created'
+            + (f' (ticket {item.converted_ticket.ticket_number}).' if item.converted_ticket else '.'),
+        )
+        return redirect('psa:project_detail', pk=item.converted_project.pk)
     if item.converted_ticket:
         messages.success(request, f'Accepted. Ticket {item.converted_ticket.ticket_number} created.')
         return redirect('psa:ticket_detail', ticket_number=item.converted_ticket.ticket_number)

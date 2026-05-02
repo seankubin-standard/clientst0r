@@ -431,6 +431,44 @@ class Phase5QuotesExpensesTests(TestCase):
         self.assertEqual(after, before)
         self.assertIsNone(q.converted_ticket)
 
+    def test_quote_convert_to_project_creates_tasks_per_line_item(self):
+        # v3.17.213: accepting a quote with `create_project=True` spins up
+        # a Project and one ProjectTask per line item.
+        from psa.models import Quote, QuoteLineItem, Project, ProjectTask
+        q = Quote.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Server refresh', description='Replace 4 hosts',
+        )
+        QuoteLineItem.objects.create(quote=q, description='Procure 4 servers', quantity=4, unit_price=2500, sort_order=0)
+        QuoteLineItem.objects.create(quote=q, description='Rack & cable', quantity=8, unit_price=150, sort_order=1)
+        QuoteLineItem.objects.create(quote=q, description='Migrate workloads', quantity=16, unit_price=200, sort_order=2)
+
+        q.mark_accepted(user=self.user, create_ticket=False, create_project=True)
+
+        self.assertEqual(q.status, 'accepted')
+        self.assertIsNotNone(q.converted_project)
+        proj = q.converted_project
+        self.assertIsInstance(proj, Project)
+        self.assertEqual(proj.organization, self.org)
+        self.assertEqual(proj.client_org, self.client_org)
+        self.assertEqual(proj.name, 'Server refresh')
+        self.assertEqual(proj.tasks.count(), 3)
+        titles = list(proj.tasks.order_by('sort_order').values_list('title', flat=True))
+        self.assertEqual(titles, ['Procure 4 servers', 'Rack & cable', 'Migrate workloads'])
+
+    def test_quote_convert_to_project_is_idempotent(self):
+        # Calling convert_to_project twice should not create a second project.
+        from psa.models import Quote, QuoteLineItem
+        q = Quote.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Idempotent test',
+        )
+        QuoteLineItem.objects.create(quote=q, description='Item', quantity=1, unit_price=10)
+        first = q.convert_to_project(user=self.user)
+        second = q.convert_to_project(user=self.user)
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(first.tasks.count(), 1)
+
     def test_expense_creation_and_billable_flag(self):
         from psa.models import Ticket, TicketExpense
         t = Ticket.objects.create(

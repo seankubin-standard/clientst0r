@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.213] - 2026-05-02
+
+### Added — Quote → Project automation
+- **Accept a quote and spin up a project in one click.** `psa.Quote` has had a `converted_project` FK reserved since the model was first written but nothing populated it. New `Quote.convert_to_project(user)` method creates a `Project` with `name=quote.title`, copies the description, owner, and tenant scoping (organization + client_org), then walks `line_items` and creates one `ProjectTask` per row — line description becomes the task title, quantity is folded into `estimated_hours`, and a "From quote Q-YYYY-NNNNN: qty × price" stub goes in the task description so techs can trace each task back to what was sold.
+- **Idempotent.** Calling `convert_to_project()` a second time returns the existing project unchanged — no duplicate tasks. Important because `mark_accepted(create_project=True)` could be re-fired by a stuck UI refresh and we'd rather a no-op than a doubled task list.
+- **Wired through `Quote.mark_accepted()`** via a new `create_project: bool = False` keyword. `quote_accept` view (`POST /psa/quotes/<pk>/accept/`) now reads a `create_project` form checkbox; if both ticket and project are created, the post-accept redirect favors the project page (techs land on the work breakdown). Audit log entry now includes `project=<pk>` alongside `ticket=<pk>` for traceability.
+- **UI.** `templates/psa/quote_detail.html` accept-card now has a second checkbox: "Spin up a project (one task per line item)" beside the existing "Also create a ticket". A new info card surfaces above the line items when `converted_project` is set, mirroring the existing "Converted to ticket" card.
+
+### Tests
+- 2 new tests in `Phase5QuotesExpensesTests`: `test_quote_convert_to_project_creates_tasks_per_line_item` (3 line items → 3 ordered tasks, project tenant-scoped correctly) and `test_quote_convert_to_project_is_idempotent` (calling twice returns the same project; task count stays at 1).
+
 ## [3.17.212] - 2026-05-02
 
 ### Added — Tier A wallboard polish (3 items in one release)
