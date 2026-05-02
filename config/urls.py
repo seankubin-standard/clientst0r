@@ -42,6 +42,7 @@ urlpatterns = [
     path('files/', include('files.urls')),
     path('integrations/', include('integrations.urls')),
     path('audit/', include('audit.urls')),
+    path('compliance/', include('compliance.urls')),
     path('monitoring/', include('monitoring.urls')),
     path('locations/', include('locations.urls')),
     path('imports/', include('imports.urls')),

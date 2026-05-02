@@ -835,19 +835,19 @@ Dependencies: `processes/` app (existing), Phase 14 (visual workflow builder for
 
 **Goal:** Turn ad-hoc tribal-knowledge onboarding/offboarding into a measurable, repeatable, completable workflow.
 
-## Phase 39 — Compliance Evidence Packs **(M)** [planned]
+## Phase 39 — Compliance Evidence Packs **(M)** [in progress]
 
 One-click exportable audit packet per client. Bundles the evidence regulators / auditors / cyber-insurance underwriters consistently ask for, sourced from data already living in Client St0r — no manual screenshot-and-paste required.
 
 Planned capabilities:
-- **Exportable client audit packet** — single PDF (or zip with PDFs + CSVs) generated on demand for a given client + date range
-- 2FA status — which users on the account have 2FA enrolled, by method
-- User access report — current memberships, role templates, last-login per user
-- Password access history *(extends vault audit shipped v3.17.181 — every reveal / edit / delete event in the period)*
-- Asset inventory — current asset list with serial / vendor / location / lifecycle stage
+- **Exportable client audit packet** — single styled HTML page (with print-to-PDF stylesheet) + downloadable ZIP of per-section CSVs *(shipped v3.17.222)*
+- 2FA status — which users on the account have 2FA enrolled, by method *(shipped v3.17.222)*
+- User access report — current memberships, role templates, last-login per user *(shipped v3.17.222)*
+- Password access history *(extends vault audit shipped v3.17.181 — every reveal / edit / delete event in the period)* *(shipped v3.17.222 — last 90 days)*
+- Asset inventory — current asset list with serial / vendor / location / lifecycle stage *(shipped v3.17.222)*
 - Vulnerability scan summary *(extends Phase 9 security framework + the existing OS Package Scanner)*
 - SSL / domain expiration summary *(extends the WebsiteMonitor expiration infra)*
-- Ticket / SLA history — ticket counts, SLA-met percentages, response and resolution medians
+- Ticket / SLA history — ticket counts, SLA-met percentages, response and resolution medians *(shipped v3.17.222 — 12-month window)*
 - Backup and uptime evidence — backup-job success rate, monitor uptime percentages over the period
 
 Dependencies: Phase 9 (security data), vault, monitoring/, psa (SLA history), assets.

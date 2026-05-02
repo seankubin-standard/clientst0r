@@ -11,6 +11,12 @@
         {% endif %}
     </h1>
     <div>
+        {% if user_membership.role == 'owner' or user_membership.role == 'admin' or user.is_superuser or user.is_staff %}
+        <a href="{% url 'compliance:evidence_pack' organization.id %}" class="btn btn-info"
+           title="One-click compliance evidence packet — 2FA status, user access, password access history, asset inventory, ticket/SLA history">
+            <i class="fas fa-shield-halved"></i> Evidence Pack
+        </a>
+        {% endif %}
         {% if user_membership.role == 'owner' or user.is_superuser %}
         <a href="{% url 'accounts:organization_edit' organization.id %}" class="btn btn-secondary">
             <i class="fas fa-edit"></i> Edit

@@ -5,6 +5,40 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.222] - 2026-05-02
+
+### Added — Phase 39 Compliance Evidence Packs (v1)
+First slice of Phase 39 — one-click bundle of compliance-relevant data per organization. Five of nine planned sections ship in this release; the rest follow.
+
+- **New `compliance/` Django app** with one view: `GET /compliance/organizations/<id>/evidence-pack/`. Returns a styled HTML page (with print-to-PDF CSS rules) by default; `?format=zip` returns a zip with `manifest.json` + 5 per-section CSV files (machine-readable for downstream automation).
+- **Five v1 evidence sections:**
+  1. **2FA status** — every active member's 2FA enabled flag + method + last login. Summary line: `N of M active members have 2FA enabled (P% coverage)`.
+  2. **User access report** — every membership (active + suspended) with role, role template, invited-at, last login.
+  3. **Password access history** — last 90 days of vault `AuditLog` rows (action ∈ {read, update, create, delete} on `object_type='password'`). Capped at 1000 rows for the HTML render; ZIP has the same set.
+  4. **Asset inventory** — every Asset with name, type, serial, vendor, location, purchase date, warranty expiry. Summary: total / with-serial / with-warranty-date counts.
+  5. **Ticket / SLA history** — last 12 months of tickets with totals, by-status breakdown, SLA-met percentages for response + resolution, and median first-response and resolution intervals (seconds).
+- **ACL** — `_user_can_access_pack` allows superuser, staff users, and active org members with role `owner` / `admin`. Other users get 404 (consistent with the rest of the app's tenant-isolation pattern).
+- **AuditLog every generation** — `AuditLog.log(action='create', object_type='compliance.EvidencePack', object_id=org.pk, object_repr='Evidence pack for {org.name}')`. Pack generation is itself audit-trailable.
+- **UI: "Evidence Pack" button** on the Organization detail page, visible to org owners + admins + staff/superuser. Sits between the existing Edit/Delete buttons and the Back-to-list link, with the existing `btn-info` styling so it stands out as a different action class from destructive ones.
+- **Templates** — `compliance/templates/compliance/evidence_pack.html` extends `base.html`, has a print stylesheet (`.no-print` hides nav/buttons in print, sections get page-break-inside: avoid), and exposes a "Print / Save PDF" button alongside the ZIP download.
+- **Settings + URL wiring** — `compliance.apps.ComplianceConfig` added to `INSTALLED_APPS`; `path('compliance/', include('compliance.urls'))` mounted in `config/urls.py`.
+
+### Tests
+- 10 tests in `compliance.tests.EvidencePackTests`:
+  - `test_owner_gets_200_html_with_org_name` — every section header rendered.
+  - `test_owner_gets_200_zip` — Content-Type `application/zip`, Content-Disposition attachment, manifest + 5 CSVs verified inside the archive.
+  - `test_other_org_owner_gets_404` — owner of org B → 404 on org A's URL.
+  - `test_anonymous_redirected_to_login` — unauth → 302.
+  - `test_superuser_can_access_any_org` — passes through.
+  - `test_missing_org_returns_404`.
+  - `test_tenant_scope_user_access` — org B's user is not in org A's pack.
+  - `test_tenant_scope_assets` — org B's asset serial number does not leak into org A's pack.
+  - `test_tenant_scope_password_history` — org B's vault audit row does not leak.
+  - `test_audit_log_written_on_generate` — exactly one `compliance.EvidencePack` AuditLog row created per generation.
+
+### Roadmap
+- Phase 39 sub-bullets annotated `*(partial — 5/9 sections shipped v3.17.222)*`. Vulnerability scan, SSL/domain expiration, backup, and uptime evidence sections deferred to follow-up releases.
+
 ## [3.17.221] - 2026-05-02
 
 ### Fixed — Wallboard rendering bugs + navbar layout

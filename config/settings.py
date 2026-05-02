@@ -88,6 +88,7 @@ INSTALLED_APPS = [
     'resourcing.apps.ResourcingConfig',
     'crm.apps.CrmConfig',
     'security_alerts.apps.SecurityAlertsConfig',
+    'compliance.apps.ComplianceConfig',
 ]
 
 # Optional apps - only add if installed (allows updates without dependencies)

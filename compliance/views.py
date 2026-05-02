@@ -1,0 +1,267 @@
+"""
+Compliance evidence packs (Phase 39).
+
+One-click bundle of compliance-relevant data for a single organization.
+v3.17.222 ships five sections — 2FA status, user access, password access
+history, asset inventory, ticket/SLA history. The remaining four (vuln
+scan, SSL/domain expiration, backup, uptime) follow in subsequent
+releases.
+"""
+import csv as _csv
+import io
+import json
+import statistics
+import zipfile
+from datetime import timedelta
+
+from django.contrib.auth.decorators import login_required
+from django.http import Http404, HttpResponse
+from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
+
+from accounts.models import Membership
+from assets.models import Asset
+from audit.models import AuditLog
+from core.models import Organization
+from psa.models import Ticket
+
+
+def _user_can_access_pack(user, org):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profile = getattr(user, 'profile', None)
+    if profile and getattr(profile, 'is_staff_user', None):
+        try:
+            if profile.is_staff_user():
+                return True
+        except Exception:
+            pass
+    return Membership.objects.filter(
+        user=user, organization=org, is_active=True,
+        role__in=['owner', 'admin'],
+    ).exists()
+
+
+def _section_two_factor(org):
+    rows = []
+    qs = (Membership.objects
+          .filter(organization=org, is_active=True)
+          .select_related('user', 'user__profile'))
+    for m in qs:
+        u = m.user
+        profile = getattr(u, 'profile', None)
+        rows.append({
+            'username': u.username,
+            'email': u.email or '',
+            'two_factor_enabled': bool(getattr(profile, 'two_factor_enabled', False)),
+            'two_factor_method': getattr(profile, 'two_factor_method', '') or '',
+            'last_login': u.last_login.isoformat() if u.last_login else '',
+        })
+    enabled = sum(1 for r in rows if r['two_factor_enabled'])
+    return {
+        'rows': rows,
+        'summary': {
+            'total_users': len(rows),
+            'two_factor_enabled': enabled,
+            'two_factor_coverage_pct': round(100 * enabled / len(rows), 1) if rows else 0,
+        },
+    }
+
+
+def _section_user_access(org):
+    rows = []
+    qs = (Membership.objects
+          .filter(organization=org)
+          .select_related('user', 'role_template'))
+    for m in qs:
+        u = m.user
+        rows.append({
+            'username': u.username,
+            'email': u.email or '',
+            'role': m.role,
+            'role_template': m.role_template.name if m.role_template_id else '',
+            'is_active': m.is_active,
+            'invited_at': m.invited_at.isoformat() if getattr(m, 'invited_at', None) else '',
+            'last_login': u.last_login.isoformat() if u.last_login else '',
+        })
+    active = sum(1 for r in rows if r['is_active'])
+    return {
+        'rows': rows,
+        'summary': {
+            'total_memberships': len(rows),
+            'active_memberships': active,
+        },
+    }
+
+
+def _section_password_access_history(org, days=90):
+    cutoff = timezone.now() - timedelta(days=days)
+    qs = (AuditLog.objects
+          .filter(organization=org, timestamp__gte=cutoff,
+                  object_type__iexact='password')
+          .order_by('-timestamp'))
+    rows = []
+    for log in qs[:1000]:
+        rows.append({
+            'timestamp': log.timestamp.isoformat(),
+            'username': log.username,
+            'action': log.action,
+            'object_repr': log.object_repr,
+            'ip_address': log.ip_address or '',
+            'success': log.success,
+        })
+    counts_by_action = {}
+    for r in rows:
+        counts_by_action[r['action']] = counts_by_action.get(r['action'], 0) + 1
+    return {
+        'rows': rows,
+        'summary': {
+            'window_days': days,
+            'total_events': len(rows),
+            'by_action': counts_by_action,
+        },
+    }
+
+
+def _section_asset_inventory(org):
+    rows = []
+    qs = Asset.objects.filter(organization=org).order_by('asset_type', 'name')
+    for a in qs:
+        rows.append({
+            'name': a.name,
+            'asset_type': a.get_asset_type_display() if hasattr(a, 'get_asset_type_display') else a.asset_type,
+            'serial_number': a.serial_number or '',
+            'vendor': getattr(a, 'vendor', '') or '',
+            'location': getattr(a, 'location', '') or '',
+            'purchase_date': a.purchase_date.isoformat() if getattr(a, 'purchase_date', None) else '',
+            'warranty_expiry': a.warranty_expiry.isoformat() if getattr(a, 'warranty_expiry', None) else '',
+        })
+    return {
+        'rows': rows,
+        'summary': {
+            'total_assets': len(rows),
+            'with_serial': sum(1 for r in rows if r['serial_number']),
+            'with_warranty_date': sum(1 for r in rows if r['warranty_expiry']),
+        },
+    }
+
+
+def _section_ticket_sla_history(org, months=12):
+    cutoff = timezone.now() - timedelta(days=30 * months)
+    qs = (Ticket.objects
+          .filter(organization=org, created_at__gte=cutoff)
+          .select_related('status', 'priority'))
+    total = qs.count()
+    by_status = {}
+    response_breaches = 0
+    resolution_breaches = 0
+    response_intervals = []
+    resolution_intervals = []
+    for t in qs:
+        status_name = t.status.name if t.status_id else 'unknown'
+        by_status[status_name] = by_status.get(status_name, 0) + 1
+        if t.sla_breached_response:
+            response_breaches += 1
+        if t.sla_breached_resolution:
+            resolution_breaches += 1
+        if t.first_response_at and t.created_at:
+            response_intervals.append((t.first_response_at - t.created_at).total_seconds())
+        if t.closed_at and t.created_at:
+            resolution_intervals.append((t.closed_at - t.created_at).total_seconds())
+
+    def median_or_none(values):
+        return round(statistics.median(values), 1) if values else None
+
+    return {
+        'rows': [{'status': k, 'count': v} for k, v in sorted(by_status.items())],
+        'summary': {
+            'window_months': months,
+            'total_tickets': total,
+            'sla_response_met_pct': round(100 * (total - response_breaches) / total, 1) if total else 0,
+            'sla_resolution_met_pct': round(100 * (total - resolution_breaches) / total, 1) if total else 0,
+            'median_first_response_seconds': median_or_none(response_intervals),
+            'median_resolution_seconds': median_or_none(resolution_intervals),
+        },
+    }
+
+
+def _build_pack(org):
+    return {
+        'organization': org,
+        'generated_at': timezone.now(),
+        'two_factor': _section_two_factor(org),
+        'user_access': _section_user_access(org),
+        'password_history': _section_password_access_history(org),
+        'asset_inventory': _section_asset_inventory(org),
+        'ticket_sla': _section_ticket_sla_history(org),
+    }
+
+
+def _client_ip(request):
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
+
+@login_required
+def evidence_pack(request, org_id):
+    org = get_object_or_404(Organization, pk=org_id)
+    if not _user_can_access_pack(request.user, org):
+        raise Http404('Evidence pack not available')
+
+    pack = _build_pack(org)
+
+    AuditLog.log(
+        user=request.user, action='create',
+        organization=org,
+        object_type='compliance.EvidencePack', object_id=org.pk,
+        object_repr=f'Evidence pack for {org.name}',
+        description='Generated compliance evidence pack',
+        ip_address=_client_ip(request), path=request.path,
+    )
+
+    if request.GET.get('format') == 'zip':
+        return _zip_response(pack)
+    return render(request, 'compliance/evidence_pack.html', pack)
+
+
+def _zip_response(pack):
+    buf = io.BytesIO()
+    org = pack['organization']
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        manifest = {
+            'organization': org.name,
+            'organization_id': org.pk,
+            'generated_at': pack['generated_at'].isoformat(),
+            'sections': ['two_factor', 'user_access', 'password_history',
+                         'asset_inventory', 'ticket_sla'],
+            'summaries': {
+                'two_factor': pack['two_factor']['summary'],
+                'user_access': pack['user_access']['summary'],
+                'password_history': pack['password_history']['summary'],
+                'asset_inventory': pack['asset_inventory']['summary'],
+                'ticket_sla': pack['ticket_sla']['summary'],
+            },
+        }
+        zf.writestr('manifest.json', json.dumps(manifest, indent=2, default=str))
+        for key in ('two_factor', 'user_access', 'password_history',
+                    'asset_inventory', 'ticket_sla'):
+            section = pack[key]
+            csv_buf = io.StringIO()
+            rows = section['rows']
+            if rows:
+                writer = _csv.DictWriter(csv_buf, fieldnames=list(rows[0].keys()))
+                writer.writeheader()
+                writer.writerows(rows)
+            zf.writestr(f'{key}.csv', csv_buf.getvalue())
+
+    response = HttpResponse(buf.getvalue(), content_type='application/zip')
+    safe_org = ''.join(c if c.isalnum() else '_' for c in org.name)[:60]
+    stamp = pack['generated_at'].strftime('%Y%m%d-%H%M%S')
+    response['Content-Disposition'] = (
+        f'attachment; filename="evidence-pack-{safe_org}-{stamp}.zip"'
+    )
+    return response
