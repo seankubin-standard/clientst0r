@@ -72,6 +72,12 @@ class Organization(models.Model):
 
     # Branding
     logo = models.ImageField(upload_to='organizations/logos/', blank=True, null=True)
+    portal_primary_color = models.CharField(
+        max_length=20, blank=True,
+        help_text='v3.17.233: hex color (e.g. #0d6efd) used as the primary '
+                  'accent on this org\'s customer portal pages. Empty = '
+                  'fall back to the system default.',
+    )
 
     # --- Phase 7: Outsourcing partner fields --------------------------
     is_outsourcing_partner = models.BooleanField(

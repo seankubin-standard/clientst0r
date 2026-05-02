@@ -116,6 +116,18 @@ class PortalAnnouncementTests(TestCase):
         r = c.post(f'/portal/announcement/{self.other_org_ann.pk}/dismiss/')
         self.assertEqual(r.status_code, 404)
 
+    def test_portal_renders_org_brand_color_when_set(self):
+        c = Client()
+        self._login(c, self.user)
+        r = c.get('/portal/')
+        body = r.content.decode('utf-8')
+        # No color set → no override CSS.
+        self.assertNotIn('--bs-primary:', body)
+        self.org.portal_primary_color = '#ff7700'
+        self.org.save(update_fields=['portal_primary_color'])
+        r = c.get('/portal/')
+        self.assertContains(r, '#ff7700')
+
     def test_critical_announcement_has_no_dismiss_button(self):
         c = Client()
         self._login(c, self.user)
@@ -133,3 +145,54 @@ class PortalAnnouncementTests(TestCase):
         )
         self.assertIsNotNone(match)
         self.assertNotIn('js-dismiss-announcement', match.group(1))
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class PortalPreferencesTests(TestCase):
+    """v3.17.233: portal notification preferences."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role, UserProfile
+        from core.models import Organization, SystemSetting
+        from psa.models import ClientPSASettings
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='PrefsCo', slug='prefs-co')
+        ClientPSASettings.objects.create(organization=cls.org, portal_enabled=True)
+        cls.user = User.objects.create_user('prefs-user', 'pp@x.com', 'pw')
+        Membership.objects.create(user=cls.user, organization=cls.org,
+                                   role=Role.READONLY, is_active=True)
+        UserProfile.objects.get_or_create(user=cls.user)
+
+    def _login(self, c):
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s.save()
+
+    def test_get_preferences_renders_three_switches(self):
+        c = Client()
+        self._login(c)
+        r = c.get('/portal/preferences/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Reply to my tickets')
+        self.assertContains(r, 'Status changes')
+        self.assertContains(r, 'CSAT survey invitations')
+
+    def test_post_persists_preferences(self):
+        from accounts.models import UserProfile
+        c = Client()
+        self._login(c)
+        r = c.post('/portal/preferences/', data={
+            'reply': 'on',
+            # status omitted → False
+            'csat': 'on',
+        })
+        self.assertEqual(r.status_code, 302)
+        from django.contrib.auth.models import User as _U
+        fresh = _U.objects.get(pk=self.user.pk)
+        self.assertTrue(fresh.profile.portal_notify_ticket_reply)
+        self.assertFalse(fresh.profile.portal_notify_status_change)
+        self.assertTrue(fresh.profile.portal_notify_csat_invite)

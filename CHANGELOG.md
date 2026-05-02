@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.233] - 2026-05-02
+
+### Added — Phase 12 Branded portals + customer notification preferences
+Two Phase 12 sub-bullets in one release.
+
+- **`Organization.portal_primary_color`** (migration `core.0052`) — hex color string. Empty = system default. Portal `base.html` reads it and emits `:root { --bs-primary: ...; ... }` plus rules overriding `.btn-primary` / `.bg-primary` / `.text-primary` / `a` so an MSP can match each client's brand on their own portal pages without per-client CSS files.
+- **Three new `UserProfile` notification preferences** (migration `accounts.0030`): `portal_notify_ticket_reply`, `portal_notify_status_change`, `portal_notify_csat_invite`. Default True so existing portal users keep getting notifications until they opt out.
+- **New view + page `/portal/preferences/`** with three Bootstrap toggle switches and the existing portal styling.
+- **CSAT email helper now respects `portal_notify_csat_invite`** — looks up the matching `User` by `recipient_email`; if a profile exists with the flag set False, the survey is skipped (no email + no DB row).
+- **"Cog" icon** added to the portal nav linking to the preferences page.
+
+### Tests
+- 3 new tests across `PortalAnnouncementTests` + `PortalPreferencesTests`:
+  - `test_portal_renders_org_brand_color_when_set` — verifies the `#ff7700` color leaks through the rendered `<style>` block when set; not present when unset.
+  - `test_get_preferences_renders_three_switches` — page title + 3 switches present.
+  - `test_post_persists_preferences` — checked / unchecked / checked round-trips correctly.
+- All 10 portal tests pass.
+
+### Roadmap
+- Phase 12 sub-bullets "Branded client portals" and "Customer notification preferences" annotated `*(shipped v3.17.233)*`.
+
 ## [3.17.232] - 2026-05-02
 
 ### Added — Phase 12 v2 Portal Announcements

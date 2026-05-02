@@ -477,6 +477,20 @@ class UserProfile(BaseModel):
                   'dashboard. Empty = use defaults.',
     )
 
+    # v3.17.233 — Customer-portal notification preferences.
+    portal_notify_ticket_reply = models.BooleanField(
+        default=True,
+        help_text='Send me an email when a staff member replies to one of my tickets.',
+    )
+    portal_notify_status_change = models.BooleanField(
+        default=True,
+        help_text='Send me an email when one of my tickets changes status.',
+    )
+    portal_notify_csat_invite = models.BooleanField(
+        default=True,
+        help_text='Email me a CSAT survey link when one of my tickets is resolved.',
+    )
+
     # Authentication Source (for SSO tracking)
     auth_source = models.CharField(
         max_length=20,

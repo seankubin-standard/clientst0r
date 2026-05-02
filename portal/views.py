@@ -522,3 +522,26 @@ def org_admin_vault_item(request, pk):
         'rows': rows,
         'organization': m.organization,
     })
+
+
+@portal_required
+def preferences(request):
+    """v3.17.233: portal user notification preferences."""
+    from accounts.models import UserProfile
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    if request.method == 'POST':
+        profile.portal_notify_ticket_reply = request.POST.get('reply') == 'on'
+        profile.portal_notify_status_change = request.POST.get('status') == 'on'
+        profile.portal_notify_csat_invite = request.POST.get('csat') == 'on'
+        profile.save(update_fields=[
+            'portal_notify_ticket_reply',
+            'portal_notify_status_change',
+            'portal_notify_csat_invite',
+            'updated_at',
+        ])
+        messages.success(request, 'Preferences saved.')
+        return redirect('portal:preferences')
+    return render(request, 'portal/preferences.html', {
+        'profile': profile,
+        'organization': request.portal_membership.organization,
+    })

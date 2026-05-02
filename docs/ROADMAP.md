@@ -274,7 +274,7 @@ Planned capabilities:
 
 Planned capabilities:
 - Customer satisfaction (CSAT) surveys post-ticket-close *(shipped v3.17.231 — token-based 1-5 star rating + optional comment, gated by `psa_csat_enabled` SystemSetting flag)*
-- Branded client portals *(extends Phase v3.17.112 per-org branding)*
+- Branded client portals *(extends Phase v3.17.112 per-org branding)* *(shipped v3.17.233 — `Organization.portal_primary_color` consumed by portal `base.html` overriding `--bs-primary` + button/link CSS)*
 - Portal announcements *(shipped v3.17.232 — per-org banners on the portal home with severity, expiry, dismissable flag + per-session dismissal endpoint; managed via Django admin in v1)*
 - Customer approval workflows
 - Threaded customer communication
@@ -283,7 +283,7 @@ Planned capabilities:
 - Customer-facing knowledge base *(partial — `Document.is_client_visible` shipped)*
 - Customer ticket voting / prioritization
 - Secure customer messaging
-- Customer notification preferences
+- Customer notification preferences *(shipped v3.17.233 — three opt-in/out switches at `/portal/preferences/` for ticket replies, status changes, CSAT survey invitations; CSAT helper now honors the flag)*
 
 **Goal:** Improve client interaction visibility and communication consistency.
 

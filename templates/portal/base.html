@@ -13,6 +13,21 @@
         .portal-nav { background: #fff; border-bottom: 1px solid #dee2e6; }
         .portal-brand { font-weight: 600; color: #2c3e50; }
         .portal-content { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+        {% if organization.portal_primary_color %}
+        :root { --bs-primary: {{ organization.portal_primary_color }}; --bs-link-color: {{ organization.portal_primary_color }}; }
+        .btn-primary {
+            background-color: {{ organization.portal_primary_color }};
+            border-color: {{ organization.portal_primary_color }};
+        }
+        .btn-primary:hover, .btn-primary:focus {
+            filter: brightness(0.92);
+            background-color: {{ organization.portal_primary_color }};
+            border-color: {{ organization.portal_primary_color }};
+        }
+        .bg-primary { background-color: {{ organization.portal_primary_color }} !important; }
+        .text-primary { color: {{ organization.portal_primary_color }} !important; }
+        a { color: {{ organization.portal_primary_color }}; }
+        {% endif %}
     </style>
 </head>
 <body>
@@ -30,6 +45,7 @@
                 <a href="{% url 'portal:ticket_list' %}" class="btn btn-link">My Tickets</a>
                 <a href="{% url 'portal:kb_list' %}" class="btn btn-link"><i class="fas fa-book"></i> Knowledge Base</a>
                 <a href="{% url 'portal:vault_list' %}" class="btn btn-link"><i class="fas fa-key"></i> Credentials</a>
+                <a href="{% url 'portal:preferences' %}" class="btn btn-link" title="Notification preferences"><i class="fas fa-cog"></i></a>
                 <a href="{% url 'portal:ticket_create' %}" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> New Ticket</a>
                 <form method="post" action="{% url 'logout' %}" style="display:inline; margin:0;">
                     {% csrf_token %}

@@ -1,0 +1,45 @@
+{% extends "portal/base.html" %}
+{% block title %}Notification Preferences{% endblock %}
+{% block content %}
+<h1 class="mb-4">Notification Preferences</h1>
+<p class="text-muted">Pick which emails you want to receive about your support tickets.</p>
+
+{% csrf_token %}
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="form-check form-switch mb-3">
+            <input type="checkbox" class="form-check-input" id="reply" name="reply"
+                   {% if profile.portal_notify_ticket_reply %}checked{% endif %}>
+            <label class="form-check-label" for="reply">
+                <strong>Reply to my tickets</strong>
+                <span class="text-muted small d-block">Email me when a staff member adds a public comment to one of my tickets.</span>
+            </label>
+        </div>
+        <div class="form-check form-switch mb-3">
+            <input type="checkbox" class="form-check-input" id="status" name="status"
+                   {% if profile.portal_notify_status_change %}checked{% endif %}>
+            <label class="form-check-label" for="status">
+                <strong>Status changes</strong>
+                <span class="text-muted small d-block">Email me when one of my tickets changes status (e.g. from "In Progress" to "Resolved").</span>
+            </label>
+        </div>
+        <div class="form-check form-switch mb-3">
+            <input type="checkbox" class="form-check-input" id="csat" name="csat"
+                   {% if profile.portal_notify_csat_invite %}checked{% endif %}>
+            <label class="form-check-label" for="csat">
+                <strong>CSAT survey invitations</strong>
+                <span class="text-muted small d-block">Email me a "how did we do?" 1-5 star rating link when a ticket is resolved.</span>
+            </label>
+        </div>
+    </div>
+    <div class="card-footer text-end">
+        <a href="{% url 'portal:ticket_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save preferences</button>
+    </div>
+</form>
+
+<p class="text-muted small mt-3">
+    Changes apply to new emails — anything sent before you saved will still be in your inbox.
+</p>
+{% endblock %}

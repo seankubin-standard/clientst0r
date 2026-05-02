@@ -24,4 +24,6 @@ urlpatterns = [
     # Org admin — manage which users in this org see which org-admin-managed items
     path('vault/admin/', views.org_admin_vault, name='org_admin_vault'),
     path('vault/admin/<int:pk>/', views.org_admin_vault_item, name='org_admin_vault_item'),
+    # v3.17.233 — portal user notification preferences.
+    path('preferences/', views.preferences, name='preferences'),
 ]

@@ -39,6 +39,18 @@ def maybe_send_csat(ticket, *, base_url=''):
     if not recipient:
         return None
 
+    # v3.17.233: respect the recipient's portal preference, when we have a
+    # matching User on file. Anonymous requesters (no User account) always
+    # get the survey since we have no other way to gauge their preference.
+    try:
+        from django.contrib.auth.models import User
+        u = User.objects.filter(email=recipient).first()
+        profile = getattr(u, 'profile', None) if u else None
+        if profile and not getattr(profile, 'portal_notify_csat_invite', True):
+            return None
+    except Exception:
+        pass
+
     survey, created = TicketCSATSurvey.objects.get_or_create(
         ticket=ticket,
         defaults={
