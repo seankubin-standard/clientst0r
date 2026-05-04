@@ -247,3 +247,113 @@ class EquipmentModelLookupTests(TestCase):
         self.assertEqual(em.assets.count(), 2)
         self.assertIn(a1, em.assets.all())
         self.assertIn(a2, em.assets.all())
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 v1 — warranty expiry alert cron (v3.17.254)
+# ---------------------------------------------------------------------------
+
+from datetime import date as _date, timedelta as _td
+
+from django.conf import settings as _django_settings
+from django.test import override_settings as _override_settings
+
+
+_TEST_MW = [
+    m for m in _django_settings.MIDDLEWARE
+    if 'Enforce2FAMiddleware' not in m and 'AxesMiddleware' not in m
+]
+
+
+@_override_settings(
+    MIDDLEWARE=_TEST_MW, SECURE_SSL_REDIRECT=False,
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+)
+class WarrantyAlertCronTests(TestCase):
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        cls.org = Organization.objects.create(name='WarrantyCo', slug='wa-co')
+        cls.owner = User.objects.create_user('wa-owner', 'wo@x.com', 'pw')
+        Membership.objects.create(
+            user=cls.owner, organization=cls.org,
+            role=Role.OWNER, is_active=True,
+        )
+        cls.expiring = Asset.objects.create(
+            organization=cls.org, name='Expiring server', asset_type='server',
+            warranty_expiry=_date.today() + _td(days=15),
+        )
+        cls.expiring_soon = Asset.objects.create(
+            organization=cls.org, name='Almost-expiring switch', asset_type='other',
+            warranty_expiry=_date.today() + _td(days=3),
+        )
+        cls.far_away = Asset.objects.create(
+            organization=cls.org, name='Future asset', asset_type='other',
+            warranty_expiry=_date.today() + _td(days=200),
+        )
+        cls.expired = Asset.objects.create(
+            organization=cls.org, name='Already expired', asset_type='other',
+            warranty_expiry=_date.today() - _td(days=10),
+        )
+        cls.no_warranty = Asset.objects.create(
+            organization=cls.org, name='No warranty data', asset_type='other',
+        )
+
+    def test_cron_sends_one_digest_per_org(self):
+        from django.core import mail
+        from django.core.management import call_command
+        mail.outbox = []
+        call_command('assets_warranty_alerts', verbosity=0)
+        self.assertEqual(len(mail.outbox), 1)
+        msg = mail.outbox[0]
+        self.assertEqual(msg.to, ['wo@x.com'])
+        self.assertIn('WarrantyCo', msg.subject)
+        # In-window assets included
+        self.assertIn('Expiring server', msg.body)
+        self.assertIn('Almost-expiring switch', msg.body)
+        # Out-of-window / no-warranty / expired excluded
+        self.assertNotIn('Future asset', msg.body)
+        self.assertNotIn('Already expired', msg.body)
+        self.assertNotIn('No warranty data', msg.body)
+
+    def test_cron_stamps_last_warranty_alert_sent_at(self):
+        from django.core.management import call_command
+        from django.utils import timezone as _tz
+        before = _tz.now()
+        call_command('assets_warranty_alerts', verbosity=0)
+        self.expiring.refresh_from_db()
+        self.assertIsNotNone(self.expiring.last_warranty_alert_sent_at)
+        self.assertGreaterEqual(self.expiring.last_warranty_alert_sent_at, before)
+
+    def test_cooldown_prevents_double_alert_within_7_days(self):
+        from django.core import mail
+        from django.core.management import call_command
+        # First run: alert sent
+        call_command('assets_warranty_alerts', verbosity=0)
+        self.assertEqual(len(mail.outbox), 1)
+        mail.outbox = []
+        # Second run immediately: cooldown prevents another alert
+        call_command('assets_warranty_alerts', verbosity=0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_dry_run_does_not_send_or_stamp(self):
+        from django.core import mail
+        from django.core.management import call_command
+        mail.outbox = []
+        call_command('assets_warranty_alerts', '--dry-run', verbosity=0)
+        self.assertEqual(len(mail.outbox), 0)
+        self.expiring.refresh_from_db()
+        self.assertIsNone(self.expiring.last_warranty_alert_sent_at)
+
+    def test_days_arg_overrides_default_window(self):
+        from django.core import mail
+        from django.core.management import call_command
+        mail.outbox = []
+        # 5-day window only catches the far-soon asset, not the 15-day one.
+        call_command('assets_warranty_alerts', '--days', '5', verbosity=0)
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].body
+        self.assertIn('Almost-expiring switch', body)
+        self.assertNotIn('Expiring server', body)

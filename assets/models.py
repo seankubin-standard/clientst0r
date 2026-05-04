@@ -212,6 +212,12 @@ class Asset(BaseModel):
     # Physical reorder flag (can be toggled from browser extension)
     needs_reorder = models.BooleanField(default=False, help_text='Flag asset as needing physical reorder/replacement')
 
+    # Phase 13 v1 (v3.17.254) — warranty alert deduplication.
+    # Stamped by the `assets_warranty_alerts` management command after
+    # a digest is sent. Prevents the same alert from going out daily
+    # while warranty is still in the warning window.
+    last_warranty_alert_sent_at = models.DateTimeField(null=True, blank=True)
+
     # Phase 18 v2 (v3.17.252) — shared infrastructure inheritance.
     # When True, this asset is also visible to descendants of its
     # organization via `Asset.visible_to_org(child_org)`. Use for

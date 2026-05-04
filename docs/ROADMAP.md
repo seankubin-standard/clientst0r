@@ -287,13 +287,13 @@ Planned capabilities:
 
 **Goal:** Improve client interaction visibility and communication consistency.
 
-## Phase 13 — Procurement & Lifecycle Management **(M)**
+## Phase 13 — Procurement & Lifecycle Management **(M)** [in progress]
 
 **Roadmap item:** Advanced Procurement & Asset Lifecycle Management. Extends Phase 4 (Procurement) + the asset lifespan tracking already shipped.
 
 Planned capabilities:
 - Serial lifecycle tracking *(partial — serial capture shipped v3.17.149)*
-- Warranty expiration tracking
+- Warranty expiration tracking *(shipped v3.17.254 — `assets_warranty_alerts` management command emails per-org digests with 7-day per-asset cooldown; configurable warning window via `--days N`)*
 - Vendor inventory checks (live stock from distributor APIs)
 - Procurement approval workflows *(shipped — Phase 4.1 PR/PO)*
 - Purchase receiving workflows *(shipped — Phase 4.2)*

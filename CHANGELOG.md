@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.254] - 2026-05-04
+
+### Added — Phase 13 v1 Warranty expiry alerts
+First slice of Phase 13 (Procurement & Lifecycle Management). Existing infra: `Asset.warranty_expiry` was already there + the `is_warranty_expiring_soon()` property. What was missing: a recurring digest that actually pushes the warning to the org's owners before the date hits.
+
+- **New `Asset.last_warranty_alert_sent_at` field** (migration `assets.0017`) — stamped after a digest is sent so the same asset doesn't re-trigger every day for 30 days.
+- **New management command `assets_warranty_alerts`** — finds assets whose `warranty_expiry` falls between today and today+N (default 30) days, groups by organization, sends one digest email per org to the org's `Role.OWNER` members, then stamps the timestamp.
+- **7-day cooldown** between alerts on the same asset — prevents daily noise while the warranty stays in the warning window.
+- **`--dry-run`** flag prints the would-send digest without touching mail or DB.
+- **`--days N`** override for tighter / looser warning windows.
+
+### Tests
+- 5 tests in `WarrantyAlertCronTests`:
+  - One digest email per org, in-window assets included, expired/no-warranty/far-future excluded.
+  - `last_warranty_alert_sent_at` stamped after send.
+  - Cooldown prevents a second alert within 7 days.
+  - Dry-run doesn't send or stamp.
+  - `--days 5` only catches the asset within 5 days, not the 15-day-out one.
+
+### Roadmap
+- Phase 13 sub-bullet "Warranty expiration tracking" annotated `*(shipped v3.17.254 — `assets_warranty_alerts` management command + `last_warranty_alert_sent_at` dedupe)*`.
+
 ## [3.17.253] - 2026-05-04
 
 ### Phase 38 + Phase 39 — closed
