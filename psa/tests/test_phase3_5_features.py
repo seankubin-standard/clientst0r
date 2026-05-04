@@ -1402,3 +1402,78 @@ class PSAApprovalEscalationTests(TestCase):
         mail.outbox = []
         call_command('psa_escalate_idle_approvals', verbosity=0)
         self.assertEqual(len(mail.outbox), 0)
+
+
+# ---------------------------------------------------------------------------
+# Phase 20 v2 — auto-flag invoices over threshold (v3.17.259)
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class InvoiceAutoFlagTests(TestCase):
+    """Phase 20 v2: SystemSetting thresholds auto-flag new invoices for approval."""
+
+    def setUp(self):
+        from accounts.models import Membership, Role
+        _setup_seed()
+        self.org = Organization.objects.create(name='AutoFlagCo', slug='af-co')
+        self.user = User.objects.create_user('af-user', 'au@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        Membership.objects.create(user=self.user, organization=self.org,
+                                   role=Role.OWNER, is_active=True)
+
+    def _make_invoice(self, total='15000'):
+        from psa.models import Invoice
+        from datetime import date
+        from decimal import Decimal as _D
+        return Invoice.objects.create(
+            organization=self.org, client_org=self.org,
+            title='Auto-flag candidate',
+            invoice_date=date.today(), total=_D(total),
+        )
+
+    def test_invoice_below_threshold_not_flagged(self):
+        s = SystemSetting.get_settings()
+        s.invoice_approval_threshold_total = 10000
+        s.save()
+        inv = self._make_invoice(total='5000')
+        inv.refresh_from_db()
+        self.assertFalse(inv.requires_approval)
+
+    def test_invoice_above_threshold_auto_flagged(self):
+        s = SystemSetting.get_settings()
+        s.invoice_approval_threshold_total = 10000
+        s.save()
+        inv = self._make_invoice(total='15000')
+        inv.refresh_from_db()
+        self.assertTrue(inv.requires_approval)
+        self.assertIn('total', inv.approval_reason)
+
+    def test_threshold_zero_disables_auto_flag(self):
+        # Default 0 = disabled; even huge invoices stay unflagged.
+        s = SystemSetting.get_settings()
+        s.invoice_approval_threshold_total = 0
+        s.invoice_approval_overage_pct = 0
+        s.save()
+        inv = self._make_invoice(total='1000000')
+        inv.refresh_from_db()
+        self.assertFalse(inv.requires_approval)
+
+    def test_already_approved_invoice_not_re_flagged(self):
+        # An invoice approved by a manager (requires_approval=False,
+        # approved_at set) should NOT be re-flagged on subsequent saves
+        # even if it crosses the threshold.
+        from psa.models import Invoice
+        s = SystemSetting.get_settings()
+        s.invoice_approval_threshold_total = 1
+        s.save()
+        inv = self._make_invoice(total='5000')
+        inv.refresh_from_db()
+        # Manager approves
+        inv.approve(user=self.user)
+        inv.refresh_from_db()
+        self.assertFalse(inv.requires_approval)
+        # Subsequent save (e.g. tweak title) shouldn't re-flag
+        inv.title = 'tweaked'
+        inv.save()
+        inv.refresh_from_db()
+        self.assertFalse(inv.requires_approval)

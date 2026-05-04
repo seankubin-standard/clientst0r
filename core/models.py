@@ -694,6 +694,19 @@ class SystemSetting(models.Model):
         help_text='Show pending PSAApproval rows flagged is_client_approval '
                   'to portal users + accept their decisions.',
     )
+    # Phase 20 v2 (v3.17.259) — financial approval thresholds. When set,
+    # a post-save signal auto-flags `Invoice.requires_approval=True` for
+    # any invoice that crosses either threshold. 0 = disabled.
+    invoice_approval_threshold_total = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text='Auto-flag invoices for manager approval when total >= '
+                  'this dollar amount. 0 = disabled.',
+    )
+    invoice_approval_overage_pct = models.PositiveIntegerField(
+        default=0,
+        help_text='Auto-flag invoices when their source contract is at >= '
+                  'this consumed-percent. 0 = disabled.',
+    )
 
     # Billing defaults — used by the quote and invoice forms when the
     # specific row doesn't override.

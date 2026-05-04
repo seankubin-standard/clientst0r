@@ -433,7 +433,7 @@ Planned capabilities:
 - Multi-stage approvals (sequential gates: tech lead → manager → CAB)
 - Change advisory workflows *(shipped — Phase 6.1 CAB)*
 - Quote approval routing (gate quotes above threshold)
-- Financial approval chains (POs / invoices over $X)
+- Financial approval chains (POs / invoices over $X) *(shipped v3.17.259 — `SystemSetting.invoice_approval_threshold_total` + `invoice_approval_overage_pct` auto-flag invoices via post_save signal; uses existing `Invoice.flag_for_approval` machinery)*
 - Escalation approvals (auto-escalate idle approvals) *(shipped v3.17.256 — `psa_escalate_idle_approvals` management command + per-row `escalation_threshold_hours` + `escalated_at` dedupe; emails superusers a single digest)*
 - Conditional approvals (rules: "if value > $5k, route to owner")
 - Approval audit trails *(partial — single-approver audit shipped)*

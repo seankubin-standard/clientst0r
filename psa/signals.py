@@ -255,3 +255,35 @@ def _auto_create_change_request(sender, instance, created, **kwargs):
             )
     except Exception:
         logger.exception('PSA change request auto-create signal failed')
+
+
+# v3.17.259 — Phase 20 v2: auto-flag Invoice for approval when its total
+# crosses the SystemSetting thresholds. Fires on every save; skips if
+# the invoice is already approved or already pending.
+from .models import Invoice
+
+
+@receiver(post_save, sender=Invoice)
+def _auto_flag_invoice_approval(sender, instance, created, **kwargs):
+    if instance.requires_approval or instance.approved_at:
+        return  # already handled or already approved
+    try:
+        from core.models import SystemSetting
+        ss = SystemSetting.get_settings()
+    except Exception:
+        return
+    total_thresh = float(ss.invoice_approval_threshold_total or 0)
+    pct_thresh = int(ss.invoice_approval_overage_pct or 0)
+    if total_thresh <= 0 and pct_thresh <= 0:
+        return  # both knobs disabled
+    flagged = instance.flag_for_approval(
+        total_threshold=total_thresh if total_thresh > 0 else None,
+        overage_pct_threshold=pct_thresh if pct_thresh > 0 else None,
+    )
+    if flagged:
+        # flag_for_approval mutates fields but doesn't save — persist now,
+        # using update() to dodge re-firing this signal.
+        Invoice.objects.filter(pk=instance.pk).update(
+            requires_approval=True,
+            approval_reason=instance.approval_reason,
+        )

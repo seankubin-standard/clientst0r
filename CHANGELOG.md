@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.259] - 2026-05-04
+
+### Added — Phase 20 v2 Auto-flag Invoices over threshold
+Closes the "Financial approval chains (POs / invoices over $X)" sub-bullet of Phase 20 by wiring the existing `Invoice.flag_for_approval` method into a post_save signal driven by two new SystemSetting knobs.
+
+- **2 new SystemSetting fields** (migration `core.0055`):
+  - `invoice_approval_threshold_total` (Decimal, default 0) — auto-flag invoices when `total >= this`. 0 disables.
+  - `invoice_approval_overage_pct` (PositiveInt, default 0) — auto-flag invoices when their source contract is consumed at or above this percentage. 0 disables.
+- **New `_auto_flag_invoice_approval` post_save signal on `Invoice`** — calls the existing `flag_for_approval()` method with the configured thresholds and persists `requires_approval=True` + the human-readable `approval_reason` via a direct `Invoice.objects.update()` to dodge re-firing the signal.
+- **Skips already-approved or already-pending invoices** — once an invoice has been manually approved (or already flagged), subsequent saves don't re-flag.
+- **Both thresholds are independent** — set either one or both. Setting both disabled (the default) means the auto-flag is a no-op, preserving existing behavior for installs that don't want financial gates.
+
+### Tests
+- 4 new tests in `InvoiceAutoFlagTests`:
+  - Invoice below threshold not flagged.
+  - Invoice above threshold auto-flagged with reason text mentioning total.
+  - Both thresholds = 0 disables auto-flag (existing behavior preserved).
+  - Already-approved invoice not re-flagged on subsequent save (idempotency).
+- All 11 invoice-approval tests still pass.
+
+### Roadmap
+- Phase 20 sub-bullet "Financial approval chains (POs / invoices over $X)" annotated `*(shipped v3.17.259 — `SystemSetting.invoice_approval_threshold_total` + `invoice_approval_overage_pct` knobs auto-flag via post_save signal)*`.
+
 ## [3.17.258] - 2026-05-04
 
 ### Added — Phase 13 v3 Procurement summary report
