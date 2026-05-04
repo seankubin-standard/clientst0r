@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.250] - 2026-05-04
+
+### Added — Phase 22 v2 Editorial approval queue
+Closes the "Article approvals" sub-bullet. Drafts move through a manager review gate before they go live in the KB.
+
+- **New view `/docs/approval-queue/`** lists `Document` rows where `is_draft=True`. Staff sees everything; org members see drafts in their own orgs only.
+- **`POST /docs/<slug>/approve/`** — staff-only. Flips `is_draft=False, is_published=True` and stamps `last_modified_by`. Article becomes visible in the KB.
+- **`POST /docs/<slug>/reject/`** — staff-only. Keeps the article as draft, optionally appends a `[Rejected by user @ timestamp] note` block to the body so the author has the feedback inline when they re-edit.
+- **`POST /docs/<slug>/submit-for-review/`** — owner or staff. Sets `is_draft=True, is_published=False` so the article disappears from the KB until approved.
+
+### Tests
+- 6 new tests in `KBApprovalQueueTests`: queue lists only drafts, approve flips state, reject keeps draft + appends note, submit-for-review sets draft, submit-for-review blocked for non-owner, approve blocked for non-staff.
+
+### Roadmap — Phase 22 marked complete
+Phase 22 — Knowledge Base & SOP Management flipped to `[complete]`. All major sub-bullets shipped: versioning (DocumentVersion existed), article ownership + review reminders (v3.17.245), article approval queue (v3.17.250), portal KB analytics (v3.17.234), draft → published lifecycle (v3.17.250). Remaining items (SOP-to-workflow auto-link, public knowledge publishing, dead-link analytics) are future polish.
+
 ## [3.17.249] - 2026-05-04
 
 ### Added — Phase 25 v2 Lock approved + Bulk approve + Payroll CSV

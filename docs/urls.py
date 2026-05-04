@@ -13,6 +13,11 @@ urlpatterns = [
     # Phase 22 v1 (v3.17.245) — review queue + mark-reviewed.
     path('review-queue/', views.kb_review_queue, name='kb_review_queue'),
     path('<slug:slug>/mark-reviewed/', views.kb_mark_reviewed, name='kb_mark_reviewed'),
+    # Phase 22 v2 (v3.17.250) — editorial approval queue.
+    path('approval-queue/', views.kb_approval_queue, name='kb_approval_queue'),
+    path('<slug:slug>/approve/', views.kb_approve, name='kb_approve'),
+    path('<slug:slug>/reject/', views.kb_reject, name='kb_reject'),
+    path('<slug:slug>/submit-for-review/', views.kb_submit_for_review, name='kb_submit_for_review'),
     path('templates/', views.template_list, name='template_list'),
     path('templates/create/', views.template_create, name='template_create'),
     path('templates/<int:pk>/edit/', views.template_edit, name='template_edit'),

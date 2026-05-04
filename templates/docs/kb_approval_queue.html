@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}KB Approval Queue{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'docs:document_list' %}">Knowledge Base</a></li>
+        <li class="breadcrumb-item active">Approval queue</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3"><i class="fas fa-check-double me-2"></i>KB Approval Queue</h2>
+<p class="text-muted small">Articles flagged as drafts awaiting editorial review. Approve to publish; reject with notes to send back for revision.</p>
+
+{% if drafts %}
+{% for d in drafts %}
+<div class="card mb-2 border-warning">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+            <div>
+                <a href="{% url 'docs:document_detail' d.slug %}"><strong>{{ d.title }}</strong></a>
+                <div class="text-muted small">
+                    Owner: {{ d.owner.username|default:'—' }}
+                    · Updated {{ d.updated_at|date:'Y-m-d H:i' }}
+                    {% if d.organization %}· Org: {{ d.organization.name }}{% endif %}
+                </div>
+            </div>
+        </div>
+        {% if d.body %}
+        <div class="mt-2 p-2 bg-light rounded small" style="white-space: pre-wrap; max-height: 14rem; overflow: auto;">{{ d.body|truncatechars:1000 }}</div>
+        {% endif %}
+        {% if is_staff %}
+        <div class="d-flex gap-2 mt-3 flex-wrap">
+            <form method="post" action="{% url 'docs:kb_approve' d.slug %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-success">
+                    <i class="fas fa-check me-1"></i>Approve & publish
+                </button>
+            </form>
+            <form method="post" action="{% url 'docs:kb_reject' d.slug %}" class="d-flex gap-2 align-items-center flex-grow-1">
+                {% csrf_token %}
+                <input name="note" type="text" class="form-control form-control-sm"
+                       placeholder="Reason for rejection (optional but recommended)" maxlength="1000">
+                <button type="submit" class="btn btn-sm btn-outline-danger text-nowrap">
+                    <i class="fas fa-times me-1"></i>Reject
+                </button>
+            </form>
+        </div>
+        {% else %}
+        <p class="text-muted small mt-3 mb-0"><em>Awaiting staff review.</em></p>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-success small"><i class="fas fa-check-circle me-1"></i>No drafts awaiting approval.</div>
+{% endif %}
+{% endblock %}

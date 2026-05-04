@@ -291,6 +291,85 @@ class KBReviewQueueTests(TestCase):
         self.assertEqual(self.overdue.last_reviewed_at, before)
 
 
+@override_settings(MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class KBApprovalQueueTests(TestCase):
+    """Phase 22 v2 (v3.17.250) — editorial approval queue."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Organization
+        cls.org = Organization.objects.create(name='ApprovalCo', slug='kb-app-co')
+        cls.staff = User.objects.create_user('kb-app-staff', 'kas@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.owner = User.objects.create_user('kb-app-owner', 'kao@x.com', 'pw')
+        cls.draft = Document.objects.create(
+            organization=cls.org, title='Draft article', body='New content',
+            is_published=False, is_draft=True, owner=cls.owner,
+        )
+        cls.published = Document.objects.create(
+            organization=cls.org, title='Live article', body='Live',
+            is_published=True, is_draft=False, owner=cls.owner,
+        )
+
+    def _login(self, c, user):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s.save()
+
+    def test_queue_lists_drafts_only(self):
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/docs/approval-queue/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Draft article')
+        self.assertNotContains(r, 'Live article')
+
+    def test_approve_flips_to_published(self):
+        c = Client()
+        self._login(c, self.staff)
+        r = c.post(f'/docs/{self.draft.slug}/approve/')
+        self.assertEqual(r.status_code, 302)
+        self.draft.refresh_from_db()
+        self.assertFalse(self.draft.is_draft)
+        self.assertTrue(self.draft.is_published)
+
+    def test_reject_keeps_draft_and_appends_note(self):
+        c = Client()
+        self._login(c, self.staff)
+        c.post(f'/docs/{self.draft.slug}/reject/', data={
+            'note': 'Tone is too informal',
+        })
+        self.draft.refresh_from_db()
+        self.assertTrue(self.draft.is_draft)
+        self.assertFalse(self.draft.is_published)
+        self.assertIn('Tone is too informal', self.draft.body)
+        self.assertIn('[Rejected by', self.draft.body)
+
+    def test_submit_for_review_sets_draft(self):
+        c = Client()
+        self._login(c, self.owner)
+        c.post(f'/docs/{self.published.slug}/submit-for-review/')
+        self.published.refresh_from_db()
+        self.assertTrue(self.published.is_draft)
+        self.assertFalse(self.published.is_published)
+
+    def test_submit_for_review_blocked_for_non_owner(self):
+        peer = User.objects.create_user('kb-peer', 'p@x.com', 'pw')
+        c = Client()
+        self._login(c, peer)
+        c.post(f'/docs/{self.published.slug}/submit-for-review/')
+        self.published.refresh_from_db()
+        self.assertFalse(self.published.is_draft)
+
+    def test_approve_blocked_for_non_staff(self):
+        c = Client()
+        self._login(c, self.owner)
+        c.post(f'/docs/{self.draft.slug}/approve/')
+        self.draft.refresh_from_db()
+        self.assertTrue(self.draft.is_draft)
+
+
 @override_settings(MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
                    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class KBReviewReminderCommandTests(TestCase):

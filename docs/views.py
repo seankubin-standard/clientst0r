@@ -1499,3 +1499,87 @@ def kb_mark_reviewed(request, slug):
     article.mark_reviewed(user=request.user)
     messages.success(request, f'Marked "{article.title}" as reviewed.')
     return redirect('docs:document_detail', slug=slug)
+
+
+@login_required
+def kb_approval_queue(request):
+    """
+    Phase 22 v2 (v3.17.250): list KB articles in draft state awaiting
+    approval. Articles flagged `is_draft=True` show up here regardless
+    of their `requires_approval` setting (admins can also use is_draft
+    as a manual review gate).
+    """
+    is_staff = getattr(request, 'is_staff_user', False) or request.user.is_superuser
+    qs = Document.objects.filter(is_draft=True, is_archived=False).select_related('owner')
+    if not is_staff:
+        # Org members see drafts in their own orgs only.
+        if hasattr(request.user, 'memberships'):
+            org_ids = list(request.user.memberships.filter(is_active=True)
+                                       .values_list('organization_id', flat=True))
+            qs = qs.filter(organization_id__in=org_ids)
+        else:
+            qs = qs.none()
+    qs = qs.order_by('-updated_at')
+    return render(request, 'docs/kb_approval_queue.html', {
+        'drafts': qs,
+        'is_staff': is_staff,
+    })
+
+
+@login_required
+@require_http_methods(['POST'])
+def kb_approve(request, slug):
+    """v3.17.250: approve a draft article — flips to published."""
+    article = get_object_or_404(Document, slug=slug)
+    is_staff = getattr(request, 'is_staff_user', False) or request.user.is_superuser
+    if not is_staff:
+        messages.error(request, 'Only staff can approve articles.')
+        return redirect('docs:document_detail', slug=slug)
+    article.is_draft = False
+    article.is_published = True
+    article.last_modified_by = request.user
+    article.save(update_fields=['is_draft', 'is_published', 'updated_at',
+                                 'last_modified_by', 'published_at'])
+    messages.success(request, f'Approved & published "{article.title}".')
+    return redirect('docs:kb_approval_queue')
+
+
+@login_required
+@require_http_methods(['POST'])
+def kb_reject(request, slug):
+    """v3.17.250: reject a draft article — stays as draft, optional note
+    appended to the body so the author has the feedback inline."""
+    article = get_object_or_404(Document, slug=slug)
+    is_staff = getattr(request, 'is_staff_user', False) or request.user.is_superuser
+    if not is_staff:
+        messages.error(request, 'Only staff can reject articles.')
+        return redirect('docs:document_detail', slug=slug)
+    note = (request.POST.get('note') or '').strip()[:1000]
+    if note:
+        from django.utils import timezone as _tz
+        stamp = _tz.now().strftime('%Y-%m-%d %H:%M')
+        marker = f'\n\n---\n[Rejected by {request.user.username} @ {stamp}]\n{note}\n'
+        article.body = (article.body or '') + marker
+    article.is_draft = True
+    article.is_published = False
+    article.last_modified_by = request.user
+    article.save(update_fields=['body', 'is_draft', 'is_published',
+                                 'updated_at', 'last_modified_by'])
+    messages.success(request, f'Rejected "{article.title}". Author can revise + re-submit.')
+    return redirect('docs:kb_approval_queue')
+
+
+@login_required
+@require_http_methods(['POST'])
+def kb_submit_for_review(request, slug):
+    """v3.17.250: owner submits the article for approval (is_draft=True)."""
+    article = get_object_or_404(Document, slug=slug)
+    is_staff = getattr(request, 'is_staff_user', False) or request.user.is_superuser
+    if not is_staff and article.owner_id != request.user.id:
+        messages.error(request, 'Only the owner or staff can submit for review.')
+        return redirect('docs:document_detail', slug=slug)
+    article.is_draft = True
+    article.is_published = False
+    article.save(update_fields=['is_draft', 'is_published', 'updated_at'])
+    messages.success(request, f'"{article.title}" submitted for review.')
+    return redirect('docs:document_detail', slug=slug)

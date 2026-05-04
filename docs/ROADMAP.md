@@ -466,13 +466,13 @@ Planned capabilities:
 
 **Goal:** Improve field technician workflow efficiency and mobility.
 
-## Phase 22 — Knowledge Base & SOP Management **(M)** [in progress]
+## Phase 22 — Knowledge Base & SOP Management **(M)** [complete]
 
 **Roadmap item:** Knowledge Base & Operational Documentation Expansion. Extends Phase v3.17.128 (KB tree) + v3.17.134 (KB perms).
 
 Planned capabilities:
 - Knowledge base versioning (history of edits, rollback) *(shipped earlier — `DocumentVersion`)*
-- Article approvals (review-before-publish gate) *(model fields shipped v3.17.245 — `requires_approval`, `is_draft`; editorial queue UI is v2)*
+- Article approvals (review-before-publish gate) *(shipped v3.17.250 — `/docs/approval-queue/` + approve / reject / submit-for-review endpoints; rejection notes appended to article body for inline feedback)*
 - Article ownership *(shipped v3.17.245 — `Document.owner` FK defaults to `created_by`)*
 - SOP workflows (links the KB to step-by-step Process executions)
 - Review reminders (article hasn't been reviewed in 90 days → email owner) *(shipped v3.17.245 — `kb_review_reminders` management command + `Document.review_interval_days` / `last_reviewed_at` / `is_review_overdue` + `/docs/review-queue/` view + `mark-reviewed` endpoint)*
