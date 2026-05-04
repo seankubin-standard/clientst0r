@@ -1588,6 +1588,152 @@ class AgreementReconciliationTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class AccountingReconciliationTests(TestCase):
+    """Phase 27 v1 (v3.17.255) — accounting reconciliation report."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from django.contrib.auth.models import User
+        from psa.models import Invoice
+        from datetime import date as _date
+        from decimal import Decimal as _D
+        from django.utils import timezone as _tz
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.msp = Organization.objects.create(name='AcctMSP', slug='acct-msp')
+        cls.client_a = Organization.objects.create(name='AcctClientA', slug='acct-ca')
+        cls.client_b = Organization.objects.create(name='AcctClientB', slug='acct-cb')
+        cls.staff = User.objects.create_user('acct-staff', 'as@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member_a = User.objects.create_user('acct-mem-a', 'ma@x.com', 'pw')
+        Membership.objects.create(user=cls.member_a, organization=cls.client_a,
+                                   role=Role.OWNER, is_active=True)
+
+        # Outstanding pushed: pushed but unpaid.
+        cls.outstanding = Invoice.objects.create(
+            organization=cls.msp, client_org=cls.client_a,
+            title='Pushed not paid', invoice_date=_date.today(),
+            total=_D('500'), amount_paid=_D('0'),
+            status='sent',
+            accounting_provider='quickbooks_online',
+            accounting_external_id='QBO-001',
+            pushed_to_accounting_at=_tz.now(),
+        )
+        # Fully paid pushed — should NOT appear in outstanding.
+        cls.paid = Invoice.objects.create(
+            organization=cls.msp, client_org=cls.client_a,
+            title='Pushed and paid', invoice_date=_date.today(),
+            total=_D('100'), amount_paid=_D('100'),
+            status='paid',
+            accounting_provider='quickbooks_online',
+            accounting_external_id='QBO-002',
+            pushed_to_accounting_at=_tz.now(),
+        )
+        # Push error.
+        cls.error_inv = Invoice.objects.create(
+            organization=cls.msp, client_org=cls.client_a,
+            title='Failed push', invoice_date=_date.today(),
+            total=_D('250'), status='draft',
+            last_push_error='Connection timeout',
+            accounting_provider='xero',
+        )
+        # Two invoices sharing the same external ID — duplicate.
+        cls.dup1 = Invoice.objects.create(
+            organization=cls.msp, client_org=cls.client_b,
+            title='Duplicate A', invoice_date=_date.today(),
+            total=_D('99'), status='sent',
+            accounting_provider='quickbooks_online',
+            accounting_external_id='QBO-DUP',
+            pushed_to_accounting_at=_tz.now(),
+        )
+        cls.dup2 = Invoice.objects.create(
+            organization=cls.msp, client_org=cls.client_b,
+            title='Duplicate B', invoice_date=_date.today(),
+            total=_D('99'), status='sent',
+            accounting_provider='quickbooks_online',
+            accounting_external_id='QBO-DUP',
+            pushed_to_accounting_at=_tz.now(),
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_staff_sees_all_three_sections(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/accounting-reconciliation/')
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context
+        # outstanding_count = pushed AND not paid/void AND amount_paid<total.
+        # Matches: outstanding (500) + dup1 (99) + dup2 (99) = 3 invoices.
+        self.assertEqual(ctx['summary']['outstanding_count'], 3)
+        self.assertEqual(ctx['summary']['outstanding_balance'], 500.0 + 99.0 + 99.0)
+        self.assertEqual(ctx['summary']['error_count'], 1)
+        self.assertEqual(ctx['summary']['duplicate_groups'], 1)
+
+    def test_outstanding_excludes_paid_and_void(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/accounting-reconciliation/')
+        body = r.content.decode('utf-8')
+        self.assertIn('Pushed not paid', body)
+        self.assertNotIn('Pushed and paid', body)
+
+    def test_push_error_section_shows_error_message(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/accounting-reconciliation/')
+        self.assertContains(r, 'Connection timeout')
+
+    def test_duplicate_group_lists_both_invoices(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/accounting-reconciliation/')
+        body = r.content.decode('utf-8')
+        # Both invoices in the duplicate group should be listed.
+        self.assertIn('Duplicate A', body)
+        self.assertIn('Duplicate B', body)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/accounting-reconciliation/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        # Section column present
+        self.assertIn('Section', body.split('\n')[0])
+        # All three section types included
+        self.assertIn('outstanding', body)
+        self.assertIn('push_error', body)
+        self.assertIn('duplicate', body)
+
+    def test_member_sees_only_their_org_invoices(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member_a, self.client_a)
+        r = c.get('/reports/accounting-reconciliation/')
+        body = r.content.decode('utf-8')
+        # client_a invoices visible
+        self.assertIn('Pushed not paid', body)
+        # client_b duplicates NOT visible
+        self.assertNotIn('Duplicate A', body)
+        self.assertNotIn('Duplicate B', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class SavedQueryTests(TestCase):
     """Phase 26 v1 (v3.17.246) — Saved Query model + run endpoint."""
 

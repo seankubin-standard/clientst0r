@@ -568,14 +568,14 @@ Dependencies: Phase 3.5 (dashboards), Phase 3.6 (scheduled reports).
 
 **Goal:** Reduce the gap between what owners want to know and what's pre-templated.
 
-## Phase 27 — Advanced Accounting Reconciliation **(M)**
+## Phase 27 — Advanced Accounting Reconciliation **(M)** [in progress]
 
 **Roadmap item:** Deeper accounting integration than the basic invoice push that ships today (QBO + Xero — Phase shipped earlier). Adds true reconciliation between Client St0r's books and the accounting system.
 
 Planned capabilities:
 - Bidirectional payment sync — when a payment lands in QBO/Xero, mark the source Invoice as paid
-- Invoice deduplication detection (catch double-pushes)
-- Unpaid-vs-pushed reconciliation report (what's invoiced here but missing in QBO?)
+- Invoice deduplication detection (catch double-pushes) *(shipped v3.17.255 — duplicate `(provider, accounting_external_id)` groups surfaced on `/reports/accounting-reconciliation/`)*
+- Unpaid-vs-pushed reconciliation report (what's invoiced here but missing in QBO?) *(shipped v3.17.255 — outstanding-pushed section + push-error section + CSV export)*
 - Per-invoice line-item mapping to GL accounts (revenue vs. cost-of-services-sold splits)
 - Tax reconciliation (compare what we calculated vs. what QBO recorded)
 - Accounts receivable aging tied directly back to QBO/Xero AR

@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.255] - 2026-05-04
+
+### Added — Phase 27 v1 Accounting Reconciliation report
+First slice of Phase 27 (Advanced Accounting Reconciliation). Three risk classes that need manual eyes-on, surfaced from existing `psa.Invoice` accounting fields (`accounting_external_id`, `pushed_to_accounting_at`, `last_push_error`).
+
+- **New view `/reports/accounting-reconciliation/`** with three sections:
+  1. **Outstanding pushed invoices** — pushed to QBO/Xero (`pushed_to_accounting_at` is set) but `amount_paid < total` and status isn't `paid` / `void`. Catches "customer paid in QBO but our copy still says unpaid."
+  2. **Push errors** — invoices where `last_push_error` is non-empty. Need manual intervention to retry.
+  3. **Duplicate external IDs** — invoices grouped by `(provider, accounting_external_id)` having `count > 1`. Catches accidental double-pushes.
+- **Summary cards** at the top: outstanding count + balance, error count, duplicate group count.
+- **Tenant ACL:** staff/superuser sees all; org members see only their org's invoices.
+- **CSV export** at `?format=csv` — single CSV with a `Section` column tagging which class each row belongs to.
+- **Reports home page** gains an "Accounting Reconciliation" tile next to the other report links.
+
+### Tests
+- 6 tests in `AccountingReconciliationTests`:
+  - Staff sees all three sections with correct summary counts.
+  - Outstanding section excludes paid/void invoices.
+  - Push-error section shows the error message.
+  - Duplicate group lists both invoices.
+  - CSV export emits the section column + all three section types.
+  - Org member sees only their org's data (no cross-tenant leak).
+
+### Roadmap
+- Phase 27 sub-bullets "Invoice deduplication detection" and "Unpaid-vs-pushed reconciliation report" annotated `*(shipped v3.17.255)*`. Bidirectional payment sync, GL line-item mapping, AR aging tied to QBO/Xero AR remain on the planned list.
+
 ## [3.17.254] - 2026-05-04
 
 ### Added — Phase 13 v1 Warranty expiry alerts

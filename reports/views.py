@@ -2702,3 +2702,113 @@ def agreement_reconciliation_detail(request, pk):
             overage_by_user.items(), key=lambda x: -x[1],
         ),
     })
+
+
+@login_required
+def accounting_reconciliation(request):
+    """
+    Phase 27 v1 (v3.17.255) — accounting reconciliation report.
+
+    Three sections:
+      1. **Outstanding pushed invoices** — invoices that have been
+         pushed to QBO/Xero (`pushed_to_accounting_at` is set) but
+         aren't fully paid here. Useful for "did the customer pay over
+         there but our copy still says unpaid?"
+      2. **Push errors** — invoices where `last_push_error` is set;
+         the integration couldn't write the row to the accounting
+         system. These need manual intervention.
+      3. **Duplicate external IDs** — multiple Invoice rows pointing at
+         the same `accounting_external_id`. Catches double-pushes.
+
+    Tenant ACL: superuser/staff sees all; org members see only their
+    org's invoices.
+    """
+    from psa.models import Invoice
+    from django.db.models import Count, F, Q
+
+    qs = Invoice.objects.select_related('client_org', 'organization')
+    if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+        qs = qs.filter(client_org_id__in=ids)
+
+    pushed_unpaid = qs.filter(
+        pushed_to_accounting_at__isnull=False,
+    ).filter(
+        ~Q(status='paid') & ~Q(status='void') & Q(amount_paid__lt=F('total')),
+    ).order_by('-invoice_date')
+
+    push_errors = qs.exclude(last_push_error='').order_by('-updated_at')
+
+    # Group by external_id to find duplicates. Empty IDs are excluded
+    # (an invoice with no external_id is not a duplicate of another no-id one).
+    dup_ids = (
+        qs.exclude(accounting_external_id='')
+          .values('accounting_provider', 'accounting_external_id')
+          .annotate(n=Count('id'))
+          .filter(n__gt=1)
+    )
+    duplicate_groups = []
+    for g in dup_ids:
+        members = list(qs.filter(
+            accounting_provider=g['accounting_provider'],
+            accounting_external_id=g['accounting_external_id'],
+        ).order_by('-invoice_date'))
+        duplicate_groups.append({
+            'provider': g['accounting_provider'],
+            'external_id': g['accounting_external_id'],
+            'invoices': members,
+            'count': g['n'],
+        })
+
+    summary = {
+        'outstanding_count': pushed_unpaid.count(),
+        'outstanding_balance': sum(
+            float(inv.total) - float(inv.amount_paid) for inv in pushed_unpaid
+        ),
+        'error_count': push_errors.count(),
+        'duplicate_groups': len(duplicate_groups),
+    }
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = (
+            'attachment; filename="accounting-reconciliation.csv"'
+        )
+        w = _csv.writer(resp)
+        w.writerow(['Section', 'Invoice', 'Client', 'Status', 'Total',
+                    'Paid', 'Balance', 'External ID', 'Provider', 'Error'])
+        for inv in pushed_unpaid:
+            w.writerow([
+                'outstanding', inv.invoice_number, inv.client_org.name,
+                inv.status, str(inv.total), str(inv.amount_paid),
+                str(float(inv.total) - float(inv.amount_paid)),
+                inv.accounting_external_id, inv.accounting_provider, '',
+            ])
+        for inv in push_errors:
+            w.writerow([
+                'push_error', inv.invoice_number, inv.client_org.name,
+                inv.status, str(inv.total), str(inv.amount_paid),
+                str(float(inv.total) - float(inv.amount_paid)),
+                inv.accounting_external_id, inv.accounting_provider,
+                (inv.last_push_error or '')[:200],
+            ])
+        for g in duplicate_groups:
+            for inv in g['invoices']:
+                w.writerow([
+                    'duplicate', inv.invoice_number, inv.client_org.name,
+                    inv.status, str(inv.total), str(inv.amount_paid),
+                    '', g['external_id'], g['provider'], '',
+                ])
+        return resp
+
+    return render(request, 'reports/accounting_reconciliation.html', {
+        'pushed_unpaid': pushed_unpaid[:200],
+        'push_errors': push_errors[:200],
+        'duplicate_groups': duplicate_groups,
+        'summary': summary,
+    })
