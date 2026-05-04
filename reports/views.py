@@ -2586,3 +2586,119 @@ def saved_query_delete(request, pk):
     sq.delete()
     messages.success(request, f'Deleted "{name}".')
     return redirect('reports:saved_query_list')
+
+
+@login_required
+def agreement_reconciliation_detail(request, pk):
+    """
+    Phase 36 v3 (v3.17.248): drill-down view that classifies a contract's
+    time entries as `covered` (fit within the allowance) vs `overage`
+    (past the allowance), in chronological order. Surfaces who logged
+    the overage minutes so account managers know which tech to talk to.
+
+    URL: /reports/agreement-reconciliation/<contract_pk>/
+    Tenant ACL: same as the list view — staff sees all, members see
+    only their org's contracts.
+    """
+    from psa.models import Contract, TicketTimeEntry
+    from decimal import Decimal as D
+
+    qs = Contract.objects.select_related('client_org', 'organization')
+    if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+        qs = qs.filter(client_org_id__in=ids)
+    contract = get_object_or_404(qs, pk=pk)
+
+    allowance_min = int(D(contract.total_hours or 0) * 60)
+    entries = (TicketTimeEntry.objects
+               .filter(ticket__organization=contract.client_org,
+                       duration_minutes__gt=0,
+                       ended_at__isnull=False)
+               .select_related('ticket', 'user').order_by('started_at'))
+
+    rows = []
+    cumulative = 0
+    covered_total = 0
+    overage_total = 0
+    overage_by_user = {}
+    for e in entries:
+        dur = int(e.duration_minutes or 0)
+        if not dur:
+            continue
+        prev_cum = cumulative
+        cumulative += dur
+        if allowance_min <= 0:
+            covered = dur
+            overage = 0
+            classification = 'unlimited'
+        elif cumulative <= allowance_min:
+            covered = dur
+            overage = 0
+            classification = 'covered'
+        elif prev_cum >= allowance_min:
+            covered = 0
+            overage = dur
+            classification = 'overage'
+        else:
+            covered = max(allowance_min - prev_cum, 0)
+            overage = dur - covered
+            classification = 'split'
+        covered_total += covered
+        overage_total += overage
+        if overage:
+            uname = (e.user.username if e.user_id else 'unknown')
+            overage_by_user[uname] = overage_by_user.get(uname, 0) + overage
+        rows.append({
+            'entry': e,
+            'cumulative_minutes': cumulative,
+            'covered_minutes': covered,
+            'overage_minutes': overage,
+            'classification': classification,
+        })
+
+    rate = contract.overage_rate if contract.overage_rate else contract.hourly_rate
+    overage_cost = float(D(overage_total) / D(60) * (rate or D(0)))
+
+    # Limit render to most-recent 500 rows on the page; full series is
+    # available via CSV.
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="agreement-detail-{contract.pk}.csv"'
+        )
+        w = _csv.writer(resp)
+        w.writerow(['Started', 'User', 'Ticket', 'Notes', 'Duration (min)',
+                    'Cumulative (min)', 'Covered', 'Overage', 'Classification'])
+        for r in rows:
+            e = r['entry']
+            w.writerow([
+                e.started_at.isoformat(),
+                e.user.username if e.user_id else '',
+                e.ticket.ticket_number if e.ticket_id else '',
+                (e.notes or '')[:200],
+                e.duration_minutes,
+                r['cumulative_minutes'],
+                r['covered_minutes'],
+                r['overage_minutes'],
+                r['classification'],
+            ])
+        return resp
+
+    return render(request, 'reports/agreement_reconciliation_detail.html', {
+        'contract': contract,
+        'rows': rows[-500:] if len(rows) > 500 else rows,
+        'truncated': len(rows) > 500,
+        'covered_total': covered_total,
+        'overage_total': overage_total,
+        'allowance_minutes': allowance_min,
+        'cumulative_minutes': cumulative,
+        'overage_cost': overage_cost,
+        'overage_by_user': sorted(
+            overage_by_user.items(), key=lambda x: -x[1],
+        ),
+    })

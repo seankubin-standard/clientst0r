@@ -75,6 +75,7 @@
                     <th>Status</th>
                     <th class="text-end">Overage (h)</th>
                     <th class="text-end">Est. overage</th>
+                    <th class="text-end">Detail</th>
                 </tr>
             </thead>
             <tbody>
@@ -103,9 +104,15 @@
                     <td class="text-end">
                         {% if r.overage_cost > 0 %}<strong>${{ r.overage_cost|floatformat:2 }}</strong>{% else %}<span class="text-muted">—</span>{% endif %}
                     </td>
+                    <td class="text-end">
+                        <a href="{% url 'reports:agreement_reconciliation_detail' r.contract.pk %}"
+                           class="btn btn-sm btn-outline-primary" title="Per-entry covered vs overage breakdown">
+                            <i class="fas fa-list"></i>
+                        </a>
+                    </td>
                 </tr>
             {% empty %}
-                <tr><td colspan="9" class="text-muted text-center py-4">No active contracts.</td></tr>
+                <tr><td colspan="10" class="text-muted text-center py-4">No active contracts.</td></tr>
             {% endfor %}
             </tbody>
         </table>

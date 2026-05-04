@@ -788,13 +788,13 @@ Dependencies: existing `psa.Project` + `psa.ProjectTask` models, Phase 3 (profit
 
 **Goal:** Take the lightweight Project model from "lets you group tickets" to "actually runs delivery engagements end-to-end."
 
-## Phase 36 — Agreement Reconciliation & Pre-Invoice Approval **(M)** [in progress]
+## Phase 36 — Agreement Reconciliation & Pre-Invoice Approval **(M)** [complete]
 
 MSP-specific reconciliation between what an agreement covers and what's actually being consumed. Phase 27 handles GL-level reconciliation against QBO/Xero; this phase handles agreement-vs-labor reconciliation against the contract itself, plus an explicit pre-invoice review gate so nothing goes out the door without a human nod.
 
 Planned capabilities:
 - **Recurring agreement billing review** — monthly (or per-cycle) review screen that lists every agreement, included-hours bucket consumed, overage hours, and the draft invoice *(partial — per-contract consumption table shipped v3.17.225 at /reports/agreement-reconciliation/)*
-- **Included vs billable labor reconciliation** — every TicketTimeEntry classified as "covered by agreement" / "billable on top" based on the agreement type; misclassifications flagged for review
+- **Included vs billable labor reconciliation** *(shipped v3.17.248 — `agreement_reconciliation_detail` view classifies entries chronologically as covered/overage/split; per-tech overage breakdown + CSV export)*
 - **Over-serviced / under-serviced client alerts** — if a client consistently uses < 30% of included hours (under-served = upsell signal) or > 130% of included hours 3 months running (over-served = re-quote signal), alert the account manager *(shipped v3.17.225 — surfaced as status badges + summary counts on the reconciliation page; recurring-pattern detection across multiple periods deferred to v2)*
 - **Agreement profitability reports** *(extends Phase 3.2 contract profitability with per-agreement P&L; cost-of-labor at tech rate vs. contracted revenue)*
 - **Pre-invoice approval workflow** *(extends Phase 20 approval routing — gate any draft invoice over $X or with > Y% overage on a manager queue before sending)* *(shipped v3.17.228 — `Invoice.flag_for_approval` + `Invoice.approve` + `/psa/invoices/<pk>/approve/` endpoint + push-to-accounting blocked while pending)*

@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}{{ contract.name }} — Reconciliation Detail{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'reports:agreement_reconciliation' %}">Agreement Reconciliation</a></li>
+        <li class="breadcrumb-item active">{{ contract.name }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h2 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>{{ contract.name }}</h2>
+        <p class="text-muted small mb-0">{{ contract.client_org.name }} · {{ contract.get_contract_type_display }} · started {{ contract.start_date }}</p>
+    </div>
+    <a href="?format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Export CSV
+    </a>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Allowance</div>
+                <div class="fs-5 fw-bold">{{ allowance_minutes }} min</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Covered</div>
+                <div class="fs-5 fw-bold">{{ covered_total }} min</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-danger">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Overage</div>
+                <div class="fs-5 fw-bold">{{ overage_total }} min</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Est. overage cost</div>
+                <div class="fs-5 fw-bold">${{ overage_cost|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if overage_by_user %}
+<div class="card mb-3">
+    <div class="card-header"><strong>Overage by tech</strong></div>
+    <table class="table table-sm small mb-0">
+        <thead class="table-light"><tr><th>Tech</th><th class="text-end">Overage (min)</th></tr></thead>
+        <tbody>
+        {% for username, mins in overage_by_user %}
+            <tr><td>{{ username }}</td><td class="text-end">{{ mins }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header"><strong>Time entries</strong>{% if truncated %} <span class="text-muted small ms-2">(showing the last 500; export CSV for the full list)</span>{% endif %}</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover small mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Started</th>
+                        <th>User</th>
+                        <th>Ticket</th>
+                        <th>Notes</th>
+                        <th class="text-end">Duration</th>
+                        <th class="text-end">Cumulative</th>
+                        <th class="text-end">Covered</th>
+                        <th class="text-end">Overage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for r in rows %}
+                    <tr class="{% if r.classification == 'overage' %}table-danger{% elif r.classification == 'split' %}table-warning{% endif %}">
+                        <td>{{ r.entry.started_at|date:'Y-m-d H:i' }}</td>
+                        <td>{{ r.entry.user.username|default:'—' }}</td>
+                        <td>
+                            {% if r.entry.ticket_id %}
+                            <a href="{% url 'psa:ticket_detail' r.entry.ticket.ticket_number %}">{{ r.entry.ticket.ticket_number }}</a>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="text-muted">{{ r.entry.notes|truncatechars:60 }}</td>
+                        <td class="text-end">{{ r.entry.duration_minutes }}</td>
+                        <td class="text-end">{{ r.cumulative_minutes }}</td>
+                        <td class="text-end">{{ r.covered_minutes }}</td>
+                        <td class="text-end">
+                            {% if r.overage_minutes %}<strong class="text-danger">{{ r.overage_minutes }}</strong>{% else %}—{% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="8" class="text-muted text-center py-4">No time entries logged.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted small mt-3">
+    <strong>Methodology:</strong> entries are walked chronologically by `started_at`. Each minute that brings cumulative consumption ≤ the contract's allowance is "covered" by the agreement; minutes past that are "overage" and billable at the contract's <code>overage_rate</code> (or <code>hourly_rate</code> when overage_rate is 0). Rows that span the boundary are split — covered minutes counted up to the allowance, the remainder as overage.
+</p>
+
+{% endblock %}

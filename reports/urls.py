@@ -104,6 +104,10 @@ urlpatterns = [
     # v3.17.225 — Phase 36 Agreement Reconciliation
     path('agreement-reconciliation/',
          views.agreement_reconciliation, name='agreement_reconciliation'),
+    # v3.17.248 — Phase 36 v3 included-vs-billable drill-down per contract.
+    path('agreement-reconciliation/<int:pk>/',
+         views.agreement_reconciliation_detail,
+         name='agreement_reconciliation_detail'),
     # Phase 26 v1 (v3.17.246) — Saved Queries / Custom Report Writer.
     path('saved-queries/', views.saved_query_list, name='saved_query_list'),
     path('saved-queries/new/', views.saved_query_form, name='saved_query_create'),

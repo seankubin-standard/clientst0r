@@ -1499,6 +1499,93 @@ class AgreementReconciliationTests(TestCase):
         # at $200/h overage_rate = $6000.
         self.assertContains(r, '$6000.00')
 
+    def test_detail_view_classifies_entries_chronologically(self):
+        # v3.17.248 Phase 36 v3 — drill-down view classifies time entries
+        # as covered/overage/split based on running cumulative.
+        from django.test import Client
+        from psa.models import (
+            Contract, Queue, Ticket, TicketPriority, TicketStatus,
+            TicketTimeEntry, TicketType,
+        )
+        from datetime import datetime, timedelta as _td
+        from decimal import Decimal as _D
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        # Build a contract with a 60-min allowance and three entries:
+        # 30 (covered), 40 (split: 30 covered + 10 overage), 20 (overage).
+        contract = Contract.objects.create(
+            organization=self.msp, client_org=self.client_a,
+            name='Detail-test', contract_type='block_hours',
+            status='active', start_date=datetime.now().date(),
+            total_hours=_D('1'),  # = 60 min
+            hourly_rate=_D('100'),
+        )
+        ticket = Ticket.objects.create(
+            organization=self.client_a, subject='det-test',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+        )
+        from django.utils import timezone as _tz
+        base = _tz.now() - _td(days=1)
+        for offset, dur in enumerate([30, 40, 20]):
+            started = base + _td(minutes=offset * 60)
+            TicketTimeEntry.objects.create(
+                ticket=ticket, user=self.staff,
+                started_at=started, ended_at=started + _td(minutes=dur),
+                duration_minutes=dur,
+            )
+
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get(f'/reports/agreement-reconciliation/{contract.pk}/')
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context
+        # 30 (covered) + 30 (split-covered) = 60 covered total.
+        # 10 (split-overage) + 20 (overage) = 30 overage total.
+        self.assertEqual(ctx['covered_total'], 60)
+        self.assertEqual(ctx['overage_total'], 30)
+        # Per-row classification: first entry covered, second split, third overage.
+        classifications = [r['classification'] for r in ctx['rows']]
+        self.assertEqual(classifications, ['covered', 'split', 'overage'])
+
+    def test_detail_view_csv_export(self):
+        from django.test import Client
+        from psa.models import Contract
+        from datetime import datetime
+        from decimal import Decimal as _D
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        contract = Contract.objects.create(
+            organization=self.msp, client_org=self.client_a,
+            name='CSV-test', contract_type='block_hours',
+            status='active', start_date=datetime.now().date(),
+            total_hours=_D('5'),
+        )
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get(f'/reports/agreement-reconciliation/{contract.pk}/?format=csv')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'], 'text/csv')
+
+    def test_detail_view_blocks_outsider(self):
+        from django.test import Client
+        from psa.models import Contract
+        from datetime import datetime
+        from decimal import Decimal as _D
+        contract = Contract.objects.create(
+            organization=self.msp, client_org=self.client_b,  # client B
+            name='Outsider-test', contract_type='block_hours',
+            status='active', start_date=datetime.now().date(),
+            total_hours=_D('5'),
+        )
+        # member_a only has membership in client_a; should not see client_b's.
+        c = Client()
+        self._login(c, self.member_a, self.client_a)
+        r = c.get(f'/reports/agreement-reconciliation/{contract.pk}/')
+        self.assertEqual(r.status_code, 404)
+
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class SavedQueryTests(TestCase):

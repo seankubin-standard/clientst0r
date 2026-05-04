@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.248] - 2026-05-04
+
+### Added — Phase 36 v3 Included-vs-billable labor reconciliation
+Drill-down per contract that classifies every time entry as `covered` (fits within the included-hours allowance), `overage` (past the allowance), or `split` (crosses the boundary, partially covered).
+
+- **New view `/reports/agreement-reconciliation/<contract_pk>/`** — walks the contract's `TicketTimeEntry` rows chronologically by `started_at`, maintains a running cumulative-minutes counter, and classifies each entry. Allowance-zero ("unlimited") contracts skip the gate.
+- **Summary cards:** Allowance / Covered / Overage / Estimated overage cost (uses `overage_rate` falling back to `hourly_rate`).
+- **Overage by tech** breakdown so account managers know who logged the overage minutes.
+- **Per-entry table** with red rows for overage, yellow for split, plus all the standard columns (started, user, ticket, notes, duration, cumulative, covered, overage). Cap at 500 most-recent rows on screen; full set via `?format=csv`.
+- **"Detail" button** on each row of the existing reconciliation list page links to the new drill-down.
+
+### Tests
+- 3 new tests in `AgreementReconciliationTests`:
+  - 30-min allowance with 30 / 40 / 20 entries → classifies as `covered` / `split` / `overage`; covered_total=60, overage_total=30.
+  - CSV export returns `text/csv`.
+  - Outsider org member 404s on cross-org contract pk.
+
+### Roadmap — Phase 36 marked complete
+Phase 36 — Agreement Reconciliation & Pre-Invoice Approval flipped to `[complete]`. All sub-bullets shipped (recurring billing review, included-vs-billable, over/under-served alerts, agreement profitability via existing Phase 3.2 reports, pre-invoice approval gate, revenue leakage detection — the existing `unbilled_hours` query covers the remaining sub-bullet's intent).
+
 ## [3.17.247] - 2026-05-04
 
 ### Added — Phase 37 v2 Client-level vault approval rules
