@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}RMA Returns{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="mb-0">RMA Returns</h1>
+        <p class="text-muted mb-0">{{ open_count }} open · showing latest 200</p>
+    </div>
+    <a href="{% url 'assets:rma_create' %}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Open RMA
+    </a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-md-4">
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search RMA #, serial, vendor, reason">
+    </div>
+    <div class="col-md-3">
+        <select name="status" class="form-select">
+            <option value="">All statuses</option>
+            {% for code, label in status_choices %}
+                <option value="{{ code }}" {% if current_status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-outline-secondary w-100">Filter</button>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-body">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Opened</th>
+                    <th>RMA #</th>
+                    <th>Vendor</th>
+                    <th>Asset / Serial</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rma in rmas %}
+                <tr>
+                    <td class="text-nowrap"><span data-utc="{{ rma.opened_at|date:'c' }}">{{ rma.opened_at|date:'Y-m-d' }}</span></td>
+                    <td><a href="{% url 'assets:rma_detail' rma.pk %}">{{ rma.rma_number|default:rma.pk }}</a></td>
+                    <td>{{ rma.vendor.name|default:'—' }}</td>
+                    <td>
+                        {% if rma.asset %}<a href="{% url 'assets:asset_detail' rma.asset.pk %}">{{ rma.asset.name }}</a>{% endif %}
+                        {% if rma.serial_number %}<div class="small text-muted">SN: {{ rma.serial_number }}</div>{% endif %}
+                    </td>
+                    <td>{{ rma.reason|default:'—' }}</td>
+                    <td>
+                        {% if rma.is_terminal %}
+                            <span class="badge text-bg-secondary">{{ rma.get_status_display }}</span>
+                        {% else %}
+                            <span class="badge text-bg-warning">{{ rma.get_status_display }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted">No RMAs match.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

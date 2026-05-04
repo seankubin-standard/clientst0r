@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.261] - 2026-05-04
+
+### Added — Phase 13 v4 RMA Tracking
+Closes the "RMA tracking (return / replace lifecycle)" sub-bullet of Phase 13. Adds a per-organization return-merchandise-authorization workflow with explicit lifecycle states and timeline timestamps.
+
+- **New `RMAReturn` model** (migration `assets.0018`) — fields: organization, optional asset / purchase_order / vendor FKs, rma_number, serial_number, reason, notes, status, opened_at, sent_at, received_at, closed_at, replacement_serial, refund_amount.
+- **Status states**: open → sent → received_by_vendor → replaced / refunded / closed (cancelled is terminal too). The `transition()` method validates the new status and stamps the matching timestamp; terminal statuses also stamp `closed_at`.
+- **List view** at `/assets/rma/` — filterable by status and freetext search across rma_number / serial / vendor / reason; latest 200 with an "open count" badge.
+- **Create form** at `/assets/rma/create/` — vendor, reason, optional asset, optional source PO, RMA #, serial, notes.
+- **Detail page** at `/assets/rma/<pk>/` — shows timeline + actions (Mark Sent, Mark Received, Mark Replaced w/ replacement serial, Mark Refunded w/ amount, Cancel).
+- **Tenant-scoped** — list and detail use `OrganizationManager.for_organization()`; cross-org lookups return 404.
+
+### Tests
+- 3 model tests + 5 view tests in `assets.tests.RMAModelTests` / `assets.tests.RMAViewTests` covering creation, transitions, timestamp stamping, unknown-status rejection, list scoping, detail isolation, and the replacement-serial capture path.
+
+### Roadmap
+Phase 13 sub-bullet "RMA tracking (return / replace lifecycle)" annotated `*(shipped v3.17.261)*`.
+
 ## [3.17.260] - 2026-05-04
 
 ### Added — Phase 27 v2 Accounting Audit Log

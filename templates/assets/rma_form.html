@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Open RMA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'assets:rma_list' %}">RMA Returns</a></li>
+        <li class="breadcrumb-item active">Open RMA</li>
+    </ol>
+</nav>
+
+<h1 class="mb-3">Open RMA</h1>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Vendor</label>
+            <select name="vendor" class="form-select">
+                <option value="">— Select —</option>
+                {% for v in vendors %}<option value="{{ v.pk }}">{{ v.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="row g-2">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">RMA / Case Number</label>
+                <input type="text" name="rma_number" class="form-control" placeholder="Vendor-issued #">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Serial Number</label>
+                <input type="text" name="serial_number" class="form-control">
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Reason <span class="text-danger">*</span></label>
+            <input type="text" name="reason" class="form-control" placeholder="DOA, defective, wrong-spec, …" required>
+        </div>
+        <div class="row g-2">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Asset</label>
+                <select name="asset" class="form-select">
+                    <option value="">—</option>
+                    {% for a in assets %}<option value="{{ a.pk }}">{{ a.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Source PO</label>
+                <select name="purchase_order" class="form-select">
+                    <option value="">—</option>
+                    {% for po in purchase_orders %}<option value="{{ po.pk }}">{{ po.po_number }} — {{ po.vendor_name }}</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea name="notes" class="form-control" rows="3"></textarea>
+        </div>
+    </div>
+    <div class="card-footer text-end">
+        <a href="{% url 'assets:rma_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">Open RMA</button>
+    </div>
+</form>
+{% endblock %}

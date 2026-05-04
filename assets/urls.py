@@ -42,6 +42,12 @@ urlpatterns = [
     path('relationships/create/', relationship_views.relationship_create, name='relationship_create'),
     path('relationships/<int:pk>/delete/', relationship_views.relationship_delete, name='relationship_delete'),
 
+    # Phase 13 v4 (v3.17.261) — RMA tracking
+    path('rma/', views.rma_list, name='rma_list'),
+    path('rma/create/', views.rma_create, name='rma_create'),
+    path('rma/<int:pk>/', views.rma_detail, name='rma_detail'),
+    path('rma/<int:pk>/transition/', views.rma_transition, name='rma_transition'),
+
     # Equipment Catalog
     path('vendors/', views.vendor_list, name='vendor_list'),
     path('vendors/create/', views.vendor_create, name='vendor_create'),

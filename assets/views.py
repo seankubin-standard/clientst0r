@@ -1553,3 +1553,128 @@ def update_asset_from_scan(device, existing_asset_data, org):
     asset.save()
 
     return asset
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 v4 (v3.17.261) — RMA tracking views
+# ---------------------------------------------------------------------------
+
+@login_required
+def rma_list(request):
+    """List RMA returns scoped to the active organization. Supports an
+    optional ?status= filter and a ?q= search across rma_number /
+    serial_number / vendor name."""
+    from .models import RMAReturn
+    org = get_request_organization(request)
+    qs = RMAReturn.objects.for_organization(org).select_related('vendor', 'asset', 'purchase_order')
+
+    status = (request.GET.get('status') or '').strip()
+    if status:
+        qs = qs.filter(status=status)
+
+    q = (request.GET.get('q') or '').strip()
+    if q:
+        from django.db.models import Q
+        qs = qs.filter(
+            Q(rma_number__icontains=q)
+            | Q(serial_number__icontains=q)
+            | Q(vendor__name__icontains=q)
+            | Q(reason__icontains=q)
+        )
+
+    open_count = RMAReturn.objects.for_organization(org).exclude(
+        status__in=list(RMAReturn.TERMINAL_STATUSES)
+    ).count()
+
+    return render(request, 'assets/rma_list.html', {
+        'rmas': qs.order_by('-opened_at')[:200],
+        'status_choices': RMAReturn.STATUS_CHOICES,
+        'current_status': status,
+        'q': q,
+        'open_count': open_count,
+    })
+
+
+@login_required
+@require_write
+def rma_create(request):
+    """Create a new RMA. Vendor + reason are the only required fields."""
+    from .models import RMAReturn, Vendor
+    from psa.models import PurchaseOrder
+    org = get_request_organization(request)
+    if org is None:
+        messages.error(request, 'Pick an organization before opening an RMA.')
+        return redirect('assets:rma_list')
+
+    if request.method == 'POST':
+        vendor_id = request.POST.get('vendor') or ''
+        rma_number = (request.POST.get('rma_number') or '').strip()
+        serial_number = (request.POST.get('serial_number') or '').strip()
+        reason = (request.POST.get('reason') or '').strip()
+        notes = (request.POST.get('notes') or '').strip()
+        asset_id = request.POST.get('asset') or ''
+        po_id = request.POST.get('purchase_order') or ''
+
+        if not reason:
+            messages.error(request, 'Reason is required.')
+            return redirect('assets:rma_create')
+
+        rma = RMAReturn(organization=org, reason=reason, notes=notes,
+                        rma_number=rma_number, serial_number=serial_number)
+        if vendor_id:
+            try:
+                rma.vendor = Vendor.objects.get(pk=vendor_id)
+            except Vendor.DoesNotExist:
+                pass
+        if asset_id:
+            rma.asset = Asset.objects.filter(organization=org, pk=asset_id).first()
+        if po_id:
+            rma.purchase_order = PurchaseOrder.objects.filter(pk=po_id).first()
+        rma.save()
+        messages.success(request, f'Opened RMA {rma.rma_number or rma.pk}.')
+        return redirect('assets:rma_detail', pk=rma.pk)
+
+    return render(request, 'assets/rma_form.html', {
+        'vendors': Vendor.objects.filter(is_active=True).order_by('name'),
+        'assets': Asset.objects.filter(organization=org).order_by('name')[:500],
+        'purchase_orders': PurchaseOrder.objects.filter(organization=org).order_by('-issue_date')[:200],
+    })
+
+
+@login_required
+def rma_detail(request, pk):
+    from .models import RMAReturn
+    org = get_request_organization(request)
+    rma = get_object_or_404(RMAReturn.objects.for_organization(org)
+                            .select_related('vendor', 'asset', 'purchase_order'),
+                            pk=pk)
+    return render(request, 'assets/rma_detail.html', {'rma': rma})
+
+
+@login_required
+@require_write
+def rma_transition(request, pk):
+    """POST-only — transition RMA status. The form passes ?status=NEW
+    plus optional fields specific to terminal states (replacement_serial,
+    refund_amount)."""
+    from .models import RMAReturn
+    if request.method != 'POST':
+        return redirect('assets:rma_detail', pk=pk)
+    org = get_request_organization(request)
+    rma = get_object_or_404(RMAReturn.objects.for_organization(org), pk=pk)
+    new_status = (request.POST.get('status') or '').strip()
+    try:
+        rma.transition(new_status)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('assets:rma_detail', pk=pk)
+    if new_status == 'replaced':
+        rma.replacement_serial = (request.POST.get('replacement_serial') or '').strip()
+    elif new_status == 'refunded':
+        try:
+            rma.refund_amount = request.POST.get('refund_amount') or None
+        except (TypeError, ValueError):
+            rma.refund_amount = None
+    rma.save()
+    messages.success(request, f'RMA marked {rma.get_status_display()}.')
+    return redirect('assets:rma_detail', pk=pk)

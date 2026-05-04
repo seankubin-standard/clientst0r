@@ -298,7 +298,7 @@ Planned capabilities:
 - Procurement approval workflows *(shipped — Phase 4.1 PR/PO)*
 - Purchase receiving workflows *(shipped — Phase 4.2)*
 - Margin analytics on resold hardware
-- RMA tracking (return / replace lifecycle)
+- RMA tracking (return / replace lifecycle) *(shipped v3.17.261 — `RMAReturn` model with explicit state machine: open → sent → received_by_vendor → replaced/refunded/closed; views at `/assets/rma/`; tenant-scoped)*
 - Asset lifecycle scoring (composite age × usage × warranty)
 - Procurement forecasting from historical PR/PO data
 - Recurring purchasing templates (e.g. "monthly toner refill")

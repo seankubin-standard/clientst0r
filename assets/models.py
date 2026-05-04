@@ -992,3 +992,94 @@ class NetworkPortConfiguration(BaseModel):
     def get_ports_by_vlan(self, vlan_id):
         """Get all ports assigned to a specific VLAN."""
         return [p for p in self.ports if p.get('vlan') == vlan_id]
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 v4 (v3.17.261) — RMA tracking
+# ---------------------------------------------------------------------------
+
+class RMAReturn(BaseModel):
+    """Return / replace lifecycle tracking. Optional links to a source
+    PurchaseOrder (where the bad unit came from) and an Asset (the
+    physical thing being returned). Status drives the timeline:
+    open → sent → received_by_vendor → replaced/refunded → closed.
+    Cancelled is also a terminal state."""
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('sent', 'Sent to vendor'),
+        ('received_by_vendor', 'Received by vendor'),
+        ('replaced', 'Replacement received'),
+        ('refunded', 'Refunded'),
+        ('closed', 'Closed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    TERMINAL_STATUSES = {'replaced', 'refunded', 'closed', 'cancelled'}
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='rma_returns',
+    )
+    asset = models.ForeignKey(
+        Asset, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rma_returns',
+        help_text='Optional — the physical unit being returned.',
+    )
+    purchase_order = models.ForeignKey(
+        'psa.PurchaseOrder', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rma_returns',
+        help_text='Optional — the PO the bad unit was sourced from.',
+    )
+    vendor = models.ForeignKey(
+        Vendor, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rma_returns',
+    )
+    rma_number = models.CharField(max_length=80, blank=True,
+        help_text='Vendor-issued RMA / case number.')
+    serial_number = models.CharField(max_length=120, blank=True)
+    reason = models.CharField(max_length=200, blank=True,
+        help_text='Short reason: DOA, defective, wrong-spec, etc.')
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='open')
+    opened_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    received_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    replacement_serial = models.CharField(max_length=120, blank=True,
+        help_text='Serial of the replacement unit (when status=replaced).')
+    refund_amount = models.DecimalField(max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        help_text='Refund amount in PO currency (when status=refunded).')
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'rma_returns'
+        ordering = ['-opened_at']
+        indexes = [
+            models.Index(fields=['organization', '-opened_at']),
+            models.Index(fields=['status']),
+            models.Index(fields=['vendor']),
+        ]
+
+    def __str__(self):
+        return f'RMA {self.rma_number or self.pk} ({self.get_status_display()})'
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.status in self.TERMINAL_STATUSES
+
+    def transition(self, new_status: str, *, when=None):
+        """Move to ``new_status`` and stamp the matching timestamp. Raises
+        ValueError if the transition is invalid. Caller is responsible for
+        calling save()."""
+        from django.utils import timezone
+        if new_status not in dict(self.STATUS_CHOICES):
+            raise ValueError(f'Unknown RMA status: {new_status}')
+        ts = when or timezone.now()
+        if new_status == 'sent':
+            self.sent_at = ts
+        elif new_status == 'received_by_vendor':
+            self.received_at = ts
+        elif new_status in self.TERMINAL_STATUSES:
+            self.closed_at = ts
+        self.status = new_status

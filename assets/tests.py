@@ -357,3 +357,116 @@ class WarrantyAlertCronTests(TestCase):
         body = mail.outbox[0].body
         self.assertIn('Almost-expiring switch', body)
         self.assertNotIn('Expiring server', body)
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 v4 — RMA tracking
+# ---------------------------------------------------------------------------
+
+class RMAModelTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='RMA Co', slug='rma-co')
+        cls.vendor = Vendor.objects.create(name='RMA Vendor', slug='rma-vendor')
+
+    def test_create_minimal(self):
+        from assets.models import RMAReturn
+        rma = RMAReturn.objects.create(
+            organization=self.org, vendor=self.vendor, reason='DOA',
+        )
+        self.assertEqual(rma.status, 'open')
+        self.assertFalse(rma.is_terminal)
+        self.assertIsNone(rma.sent_at)
+        self.assertIsNone(rma.closed_at)
+
+    def test_transition_stamps_timestamps(self):
+        from assets.models import RMAReturn
+        rma = RMAReturn.objects.create(
+            organization=self.org, vendor=self.vendor, reason='defective',
+        )
+        rma.transition('sent')
+        rma.save()
+        self.assertEqual(rma.status, 'sent')
+        self.assertIsNotNone(rma.sent_at)
+
+        rma.transition('received_by_vendor')
+        rma.save()
+        self.assertIsNotNone(rma.received_at)
+
+        rma.transition('replaced')
+        rma.save()
+        self.assertEqual(rma.status, 'replaced')
+        self.assertTrue(rma.is_terminal)
+        self.assertIsNotNone(rma.closed_at)
+
+    def test_transition_rejects_unknown_status(self):
+        from assets.models import RMAReturn
+        rma = RMAReturn.objects.create(
+            organization=self.org, vendor=self.vendor, reason='x',
+        )
+        with self.assertRaises(ValueError):
+            rma.transition('teleported')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class RMAViewTests(TestCase):
+    def setUp(self):
+        self.org = Organization.objects.create(name='RMAViewCo', slug='rmaview-co')
+        self.other = Organization.objects.create(name='OtherCo', slug='other-rma')
+        self.user = User.objects.create_user('rma_user', email='r@r.com', password='pw')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        self.vendor = Vendor.objects.create(name='V1', slug='v1')
+        from assets.models import RMAReturn
+        self.rma = RMAReturn.objects.create(
+            organization=self.org, vendor=self.vendor,
+            reason='DOA', rma_number='RMA-001',
+        )
+        self.cross_rma = RMAReturn.objects.create(
+            organization=self.other, vendor=self.vendor,
+            reason='other-org', rma_number='RMA-XX',
+        )
+        self.client = Client()
+        _login_in_org(self.client, self.user, self.org)
+
+    def test_list_shows_own_org_only(self):
+        resp = self.client.get('/assets/rma/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('RMA-001', body)
+        self.assertNotIn('RMA-XX', body)
+
+    def test_detail_own_org_returns_200(self):
+        resp = self.client.get(f'/assets/rma/{self.rma.pk}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'RMA-001')
+
+    def test_detail_cross_org_returns_404(self):
+        resp = self.client.get(f'/assets/rma/{self.cross_rma.pk}/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_transition_via_post(self):
+        resp = self.client.post(
+            f'/assets/rma/{self.rma.pk}/transition/', {'status': 'sent'},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.rma.refresh_from_db()
+        self.assertEqual(self.rma.status, 'sent')
+        self.assertIsNotNone(self.rma.sent_at)
+
+    def test_transition_to_replaced_captures_serial(self):
+        from assets.models import RMAReturn
+        rma = RMAReturn.objects.create(
+            organization=self.org, vendor=self.vendor, reason='defective',
+            status='received_by_vendor',
+        )
+        resp = self.client.post(
+            f'/assets/rma/{rma.pk}/transition/',
+            {'status': 'replaced', 'replacement_serial': 'NEW-SN-7'},
+        )
+        self.assertEqual(resp.status_code, 302)
+        rma.refresh_from_db()
+        self.assertEqual(rma.status, 'replaced')
+        self.assertEqual(rma.replacement_serial, 'NEW-SN-7')
+        self.assertIsNotNone(rma.closed_at)

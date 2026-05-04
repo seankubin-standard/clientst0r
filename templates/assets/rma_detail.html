@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}RMA {{ rma.rma_number|default:rma.pk }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'assets:rma_list' %}">RMA Returns</a></li>
+        <li class="breadcrumb-item active">{{ rma.rma_number|default:rma.pk }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">RMA {{ rma.rma_number|default:rma.pk }}</h1>
+    {% if rma.is_terminal %}
+        <span class="badge text-bg-secondary fs-6">{{ rma.get_status_display }}</span>
+    {% else %}
+        <span class="badge text-bg-warning fs-6">{{ rma.get_status_display }}</span>
+    {% endif %}
+</div>
+
+<div class="row g-3">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header"><strong>Details</strong></div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Vendor</dt><dd class="col-sm-8">{{ rma.vendor.name|default:'—' }}</dd>
+                    <dt class="col-sm-4">Asset</dt><dd class="col-sm-8">{% if rma.asset %}<a href="{% url 'assets:asset_detail' rma.asset.pk %}">{{ rma.asset.name }}</a>{% else %}—{% endif %}</dd>
+                    <dt class="col-sm-4">Source PO</dt><dd class="col-sm-8">{% if rma.purchase_order %}{{ rma.purchase_order.po_number }}{% else %}—{% endif %}</dd>
+                    <dt class="col-sm-4">Serial</dt><dd class="col-sm-8">{{ rma.serial_number|default:'—' }}</dd>
+                    <dt class="col-sm-4">Reason</dt><dd class="col-sm-8">{{ rma.reason|default:'—' }}</dd>
+                    {% if rma.replacement_serial %}<dt class="col-sm-4">Replacement SN</dt><dd class="col-sm-8">{{ rma.replacement_serial }}</dd>{% endif %}
+                    {% if rma.refund_amount %}<dt class="col-sm-4">Refund</dt><dd class="col-sm-8">{{ rma.refund_amount }}</dd>{% endif %}
+                    <dt class="col-sm-4">Notes</dt><dd class="col-sm-8" style="white-space:pre-wrap;">{{ rma.notes|default:'—' }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-header"><strong>Timeline</strong></div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li><strong>Opened:</strong> <span data-utc="{{ rma.opened_at|date:'c' }}">{{ rma.opened_at|date:'Y-m-d H:i' }}</span></li>
+                    {% if rma.sent_at %}<li><strong>Sent to vendor:</strong> <span data-utc="{{ rma.sent_at|date:'c' }}">{{ rma.sent_at|date:'Y-m-d H:i' }}</span></li>{% endif %}
+                    {% if rma.received_at %}<li><strong>Received by vendor:</strong> <span data-utc="{{ rma.received_at|date:'c' }}">{{ rma.received_at|date:'Y-m-d H:i' }}</span></li>{% endif %}
+                    {% if rma.closed_at %}<li><strong>Closed:</strong> <span data-utc="{{ rma.closed_at|date:'c' }}">{{ rma.closed_at|date:'Y-m-d H:i' }}</span></li>{% endif %}
+                </ul>
+            </div>
+        </div>
+
+        {% if not rma.is_terminal %}
+        <div class="card mt-3">
+            <div class="card-header"><strong>Actions</strong></div>
+            <div class="card-body">
+                {% if rma.status == 'open' %}
+                <form method="post" action="{% url 'assets:rma_transition' rma.pk %}" class="mb-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="sent">
+                    <button class="btn btn-primary btn-sm w-100">Mark Sent to Vendor</button>
+                </form>
+                {% endif %}
+                {% if rma.status == 'sent' %}
+                <form method="post" action="{% url 'assets:rma_transition' rma.pk %}" class="mb-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="received_by_vendor">
+                    <button class="btn btn-primary btn-sm w-100">Mark Received by Vendor</button>
+                </form>
+                {% endif %}
+                {% if rma.status == 'received_by_vendor' or rma.status == 'sent' %}
+                <form method="post" action="{% url 'assets:rma_transition' rma.pk %}" class="mb-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="replaced">
+                    <input type="text" name="replacement_serial" class="form-control form-control-sm mb-2" placeholder="Replacement serial">
+                    <button class="btn btn-success btn-sm w-100">Mark Replaced</button>
+                </form>
+                <form method="post" action="{% url 'assets:rma_transition' rma.pk %}" class="mb-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="refunded">
+                    <input type="number" step="0.01" name="refund_amount" class="form-control form-control-sm mb-2" placeholder="Refund amount">
+                    <button class="btn btn-success btn-sm w-100">Mark Refunded</button>
+                </form>
+                {% endif %}
+                <form method="post" action="{% url 'assets:rma_transition' rma.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="cancelled">
+                    <button class="btn btn-outline-danger btn-sm w-100">Cancel RMA</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
