@@ -103,6 +103,62 @@ class OrgHierarchyManagerTests(TestCase):
         self.assertNotIn('Parent secret', names)
 
 
+class SharedInfrastructureTests(TestCase):
+    """v3.17.252 — Phase 18 v2: descendants see ancestors' shared assets."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = Organization.objects.create(name='Holding', slug='hi-p')
+        cls.child = Organization.objects.create(
+            name='Subsidiary', slug='hi-c', parent=cls.parent,
+        )
+        cls.unrelated = Organization.objects.create(name='Unrelated', slug='hi-u')
+
+    def test_visible_to_org_includes_shared_ancestor(self):
+        from assets.models import Asset
+        # Parent owns a shared asset (is_shared_with_descendants=True)
+        shared = Asset.objects.create(
+            organization=self.parent, name='Shared switch',
+            asset_type='other', is_shared_with_descendants=True,
+        )
+        # Parent owns a private asset
+        private = Asset.objects.create(
+            organization=self.parent, name='Parent only switch',
+            asset_type='other', is_shared_with_descendants=False,
+        )
+        # Child owns its own
+        own = Asset.objects.create(
+            organization=self.child, name='Child server',
+            asset_type='other',
+        )
+        names = set(Asset.visible_to_org(self.child).values_list('name', flat=True))
+        self.assertIn('Shared switch', names)
+        self.assertIn('Child server', names)
+        self.assertNotIn('Parent only switch', names)
+
+    def test_visible_to_org_for_parent_returns_own_plus_descendants(self):
+        from assets.models import Asset
+        Asset.objects.create(
+            organization=self.parent, name='Parent asset', asset_type='other',
+        )
+        Asset.objects.create(
+            organization=self.child, name='Child asset', asset_type='other',
+        )
+        # Parent sees both via descendant inheritance from v3.17.240.
+        names = set(Asset.visible_to_org(self.parent).values_list('name', flat=True))
+        self.assertEqual(names, {'Parent asset', 'Child asset'})
+
+    def test_visible_to_org_does_not_include_unrelated_org(self):
+        from assets.models import Asset
+        Asset.objects.create(
+            organization=self.unrelated, name='Stranger asset',
+            asset_type='other', is_shared_with_descendants=True,
+        )
+        # Unrelated org's shared asset must NOT bleed into our hierarchy.
+        names = set(Asset.visible_to_org(self.child).values_list('name', flat=True))
+        self.assertNotIn('Stranger asset', names)
+
+
 class OrgFormParentValidationTests(TestCase):
     """Form prevents picking yourself or a descendant as parent."""
 

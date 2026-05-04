@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.252] - 2026-05-04
+
+### Added — Phase 18 v2 Shared infrastructure inheritance
+Closes the "Shared infrastructure inheritance" sub-bullet of Phase 18. A holding company can now own a switch / domain controller / shared service that's automatically visible to every subsidiary in the hierarchy, without having to duplicate the asset across orgs.
+
+- **New `Asset.is_shared_with_descendants` flag** (migration `assets.0016`) — default False so existing rows stay tenant-scoped.
+- **New `Asset.visible_to_org(org)` classmethod** — returns assets owned by `org` + its descendants (existing downward inheritance) UNION assets owned by ancestors where `is_shared_with_descendants=True`. Strangers (unrelated orgs' shared assets) stay out.
+- **New `core.utils.ancestor_org_ids(org)` helper** — walks UP the parent chain (closest first), capped at 5 levels with a seen-set guard against cycles.
+
+### Tests
+- 3 new tests in `SharedInfrastructureTests`:
+  - Child sees parent's `is_shared_with_descendants=True` asset; parent's private asset stays hidden; child's own asset always visible.
+  - Parent's `visible_to_org` returns its own + descendants' assets (downward inheritance still works).
+  - Unrelated org's shared asset doesn't bleed into a different hierarchy.
+
+### Roadmap — Phase 18 marked in progress (location-tied items deferred)
+Phase 18 now has its non-Location sub-bullets shipped: parent/child orgs (v3.17.240), multi-site hierarchy + breadcrumbs (v3.17.240), site filtering (v3.17.240), shared infrastructure (v3.17.252). Location-specific docs / contacts / SLA / regional views / multi-location reporting remain deferred — they belong with proper integration of the existing `locations/` app and the existing `Location` model. Tracked as future work; Phase 18 stays `[in progress]` until that integration lands.
+
 ## [3.17.251] - 2026-05-04
 
 ### Added — Phase 26 v2 Invoice + TimeEntry SavedQuery targets

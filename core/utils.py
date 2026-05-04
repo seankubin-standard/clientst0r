@@ -4,6 +4,25 @@ Core utilities
 from django.db import models
 
 
+def ancestor_org_ids(organization):
+    """
+    Phase 18 v2 (v3.17.252): return the set of organization IDs walking
+    UPWARD from `organization` via `Organization.parent`. Includes self.
+    Walks up to 5 levels deep. Used to find ancestors whose shared
+    infrastructure should propagate down to the requesting org.
+    """
+    if organization is None:
+        return set()
+    seen = {organization.pk}
+    node = organization.parent
+    for _ in range(5):
+        if node is None or node.pk in seen:
+            break
+        seen.add(node.pk)
+        node = node.parent
+    return seen
+
+
 def descendant_org_ids(organization):
     """
     Phase 18 (v3.17.240): return the set of organization IDs visible

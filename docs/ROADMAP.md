@@ -393,7 +393,7 @@ Planned capabilities:
 Planned capabilities:
 - Parent / child organizations (`Organization.parent` self-FK) *(shipped v3.17.240)*
 - Multi-site hierarchy *(shipped v3.17.240 — `Organization.ancestors` property + breadcrumb labels)*
-- Shared infrastructure inheritance
+- Shared infrastructure inheritance *(shipped v3.17.252 — `Asset.is_shared_with_descendants` flag + `Asset.visible_to_org()` classmethod that unions own/descendants/shared-from-ancestors; `core.utils.ancestor_org_ids` helper added)*
 - Location-specific documentation
 - Location-level contacts
 - Site-level SLA assignment (override parent SLA)

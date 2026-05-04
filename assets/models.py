@@ -212,6 +212,18 @@ class Asset(BaseModel):
     # Physical reorder flag (can be toggled from browser extension)
     needs_reorder = models.BooleanField(default=False, help_text='Flag asset as needing physical reorder/replacement')
 
+    # Phase 18 v2 (v3.17.252) — shared infrastructure inheritance.
+    # When True, this asset is also visible to descendants of its
+    # organization via `Asset.visible_to_org(child_org)`. Use for
+    # truly-shared things like a holding company's main domain
+    # controller that all subsidiaries depend on.
+    is_shared_with_descendants = models.BooleanField(
+        default=False,
+        help_text='Make this asset visible to descendants of its '
+                  'organization via the parent/child hierarchy. Use for '
+                  'shared infrastructure consumed across multiple sites.',
+    )
+
     # Metadata
     notes = models.TextField(blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='assets_created')
@@ -243,6 +255,23 @@ class Asset(BaseModel):
             models.Index(fields=['organization', 'name']),
             models.Index(fields=['asset_type']),
         ]
+
+    @classmethod
+    def visible_to_org(cls, organization):
+        """
+        Phase 18 v2 (v3.17.252): assets visible to `organization`,
+        including:
+          * own + descendants (via OrganizationManager.for_organization)
+          * ancestors' assets where `is_shared_with_descendants=True`
+        """
+        from django.db.models import Q
+        from core.utils import descendant_org_ids, ancestor_org_ids
+        own_set = descendant_org_ids(organization)
+        ancestor_set = ancestor_org_ids(organization) - {organization.pk if organization else None}
+        return cls.objects.filter(
+            Q(organization_id__in=own_set) |
+            (Q(organization_id__in=ancestor_set) & Q(is_shared_with_descendants=True))
+        )
 
     def __str__(self):
         return f"{self.name} ({self.get_asset_type_display()})"
