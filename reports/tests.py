@@ -2211,6 +2211,48 @@ class AccountingReconciliationTests(TestCase):
         self.assertNotIn('Duplicate A', body)
         self.assertNotIn('Duplicate B', body)
 
+    def test_tax_discrepancies_surfaced(self):
+        """Phase 27 v4 (v3.17.267) — invoices where provider_tax_amount
+        differs from local tax_amount > $0.01 land in tax_discrepancies."""
+        from django.test import Client
+        from psa.models import Invoice
+        from datetime import date as _date
+        from decimal import Decimal as _D
+        from django.utils import timezone as _tz
+
+        # Local says $10 tax; QBO says $12 — a $2 mismatch.
+        Invoice.objects.create(
+            organization=self.msp, client_org=self.client_a,
+            title='Tax mismatch', invoice_date=_date.today(),
+            total=_D('100'), tax_amount=_D('10.00'),
+            provider_tax_amount=_D('12.00'),
+            status='sent',
+            accounting_provider='quickbooks_online',
+            accounting_external_id='QBO-TAX-1',
+            pushed_to_accounting_at=_tz.now(),
+        )
+        # Aligned tax — should NOT appear.
+        Invoice.objects.create(
+            organization=self.msp, client_org=self.client_a,
+            title='Tax aligned', invoice_date=_date.today(),
+            total=_D('100'), tax_amount=_D('10.00'),
+            provider_tax_amount=_D('10.00'),
+            status='sent',
+            accounting_provider='quickbooks_online',
+            accounting_external_id='QBO-TAX-2',
+            pushed_to_accounting_at=_tz.now(),
+        )
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/accounting-reconciliation/')
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context
+        self.assertEqual(ctx['summary']['tax_mismatch_count'], 1)
+        self.assertEqual(len(ctx['tax_discrepancies']), 1)
+        d = ctx['tax_discrepancies'][0]
+        self.assertEqual(d['invoice'].title, 'Tax mismatch')
+        self.assertEqual(d['delta'], _D('2.00'))
+
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class SavedQueryTests(TestCase):

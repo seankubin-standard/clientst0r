@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.267] - 2026-05-04
+
+### Added — Phase 27 v4 Tax Reconciliation
+Closes the "Tax reconciliation (compare what we calculated vs. what QBO recorded)" sub-bullet of Phase 27. Captures the provider-side tax amount returned at push time and surfaces drift on the existing accounting reconciliation report.
+
+- **New `Invoice.provider_tax_amount` field** (Decimal, nullable; migration `psa.0040`).
+- **QBO push** now reads `Invoice.TxnTaxDetail.TotalTax` from the response and stores it.
+- **Xero push** now reads `Invoices[0].TotalTax` from the response and stores it.
+- **`/reports/accounting-reconciliation/`** gets a 4th summary card ("Tax mismatches") and a new "Tax discrepancies" section listing pushed invoices where `|provider_tax_amount - tax_amount| > $0.01`. Delta column is colored (red when provider > local, green when below). CSV export includes `tax_mismatch` rows.
+
+### Tests
+- 1 new test in `reports.tests.AccountingReconciliationTests` covering the discrepancy detection (mismatch surfaces, aligned tax does not).
+
+### Roadmap
+Phase 27 sub-bullet "Tax reconciliation (compare what we calculated vs. what QBO recorded)" annotated `*(shipped v3.17.267)*`.
+
 ## [3.17.266] - 2026-05-04
 
 ### Added — Phase 13 v7 Recurring Purchase Templates

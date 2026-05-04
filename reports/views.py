@@ -2763,6 +2763,25 @@ def accounting_reconciliation(request):
             'count': g['n'],
         })
 
+    # Phase 27 v4 (v3.17.267): tax discrepancies — pushed invoices where
+    # provider_tax_amount differs from local tax_amount by > 0.01.
+    from decimal import Decimal as _D
+    tax_discrepancies = []
+    for inv in qs.filter(
+        pushed_to_accounting_at__isnull=False,
+        provider_tax_amount__isnull=False,
+    ).order_by('-invoice_date')[:500]:
+        local = _D(str(inv.tax_amount or 0))
+        provider = _D(str(inv.provider_tax_amount or 0))
+        delta = provider - local
+        if abs(delta) > _D('0.01'):
+            tax_discrepancies.append({
+                'invoice': inv,
+                'local': local,
+                'provider': provider,
+                'delta': delta,
+            })
+
     summary = {
         'outstanding_count': pushed_unpaid.count(),
         'outstanding_balance': sum(
@@ -2770,6 +2789,7 @@ def accounting_reconciliation(request):
         ),
         'error_count': push_errors.count(),
         'duplicate_groups': len(duplicate_groups),
+        'tax_mismatch_count': len(tax_discrepancies),
     }
 
     if (request.GET.get('format') or '').lower() == 'csv':
@@ -2804,12 +2824,21 @@ def accounting_reconciliation(request):
                     inv.status, str(inv.total), str(inv.amount_paid),
                     '', g['external_id'], g['provider'], '',
                 ])
+        for d in tax_discrepancies:
+            inv = d['invoice']
+            w.writerow([
+                'tax_mismatch', inv.invoice_number, inv.client_org.name,
+                inv.status, str(inv.total), str(inv.amount_paid),
+                f'local={d["local"]} provider={d["provider"]} delta={d["delta"]}',
+                inv.accounting_external_id, inv.accounting_provider, '',
+            ])
         return resp
 
     return render(request, 'reports/accounting_reconciliation.html', {
         'pushed_unpaid': pushed_unpaid[:200],
         'push_errors': push_errors[:200],
         'duplicate_groups': duplicate_groups,
+        'tax_discrepancies': tax_discrepancies[:200],
         'summary': summary,
     })
 

@@ -2070,6 +2070,18 @@ class Invoice(models.Model):
     pushed_to_accounting_at = models.DateTimeField(null=True, blank=True)
     last_push_error = models.TextField(blank=True)
 
+    # Phase 27 v4 (v3.17.267): tax reconciliation — capture the
+    # provider-side tax amount returned at push time so we can flag
+    # discrepancies (rounding, jurisdiction differences, missing tax
+    # codes) without re-fetching the invoice from QBO/Xero.
+    provider_tax_amount = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        help_text='Tax amount reported by the accounting provider on '
+                  'the most recent push. Compare to `tax_amount` (our '
+                  'local calculation) to detect drift.',
+    )
+
     notes = models.TextField(blank=True)
     # Phase 36 v2 (v3.17.228): pre-invoice approval gate. When the invoice
     # exceeds a configured total threshold OR the source contract is over

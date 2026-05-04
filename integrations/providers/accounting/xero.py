@@ -240,9 +240,18 @@ class XeroProvider(BaseAccountingProvider):
         invoice.accounting_external_id = str(ext_id)
         invoice.pushed_to_accounting_at = timezone.now()
         invoice.last_push_error = ''
+        # Phase 27 v4 (v3.17.267): capture Xero-side tax for reconciliation
+        try:
+            from decimal import Decimal as _D
+            xero_tax = invoices[0].get('TotalTax') if invoices else None
+            if xero_tax is not None:
+                invoice.provider_tax_amount = _D(str(xero_tax))
+        except Exception:
+            pass
         invoice.save(update_fields=[
             'accounting_provider', 'accounting_external_id',
-            'pushed_to_accounting_at', 'last_push_error', 'updated_at'
+            'pushed_to_accounting_at', 'last_push_error',
+            'provider_tax_amount', 'updated_at',
         ])
         log_accounting_call(
             connection=self.connection, action='push_invoice',

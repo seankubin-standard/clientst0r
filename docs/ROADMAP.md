@@ -577,7 +577,7 @@ Planned capabilities:
 - Invoice deduplication detection (catch double-pushes) *(shipped v3.17.255 — duplicate `(provider, accounting_external_id)` groups surfaced on `/reports/accounting-reconciliation/`)*
 - Unpaid-vs-pushed reconciliation report (what's invoiced here but missing in QBO?) *(shipped v3.17.255 — outstanding-pushed section + push-error section + CSV export)*
 - Per-invoice line-item mapping to GL accounts (revenue vs. cost-of-services-sold splits)
-- Tax reconciliation (compare what we calculated vs. what QBO recorded)
+- Tax reconciliation (compare what we calculated vs. what QBO recorded) *(shipped v3.17.267 — `Invoice.provider_tax_amount` captured at push time from QBO `TxnTaxDetail.TotalTax` / Xero `TotalTax`; reconciliation report flags any |delta| > $0.01)*
 - Accounts receivable aging tied directly back to QBO/Xero AR
 - Bank-account reconciliation hooks (mark which payments matched which bank-deposit batches)
 - Refund / credit-memo workflows *(shipped v3.17.264 — `Invoice.is_credit_memo` + `credits_invoice` FK + `create_credit_memo()` method that copies/negates lines or creates a lump-sum credit; sequential `CN-YYYY-NNNNN` numbering; UI modal on invoice detail; POST-only view at `/psa/invoices/<pk>/credit-memo/`)*

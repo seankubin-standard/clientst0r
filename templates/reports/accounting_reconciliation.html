@@ -48,6 +48,14 @@
             </div>
         </div>
     </div>
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Tax mismatches</div>
+                <div class="fs-4 fw-bold">{{ summary.tax_mismatch_count }}</div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <h5 class="mt-4">Outstanding pushed invoices</h5>
@@ -133,5 +141,38 @@
 {% endfor %}
 {% else %}
 <p class="text-muted small">No duplicate external IDs detected.</p>
+{% endif %}
+
+<h5 class="mt-4">Tax discrepancies</h5>
+<p class="text-muted small mb-2">Pushed invoices where the provider-side tax amount differs from our local calculation by more than $0.01. Common causes: missing tax codes on QBO/Xero, jurisdiction differences, rounding drift across line items.</p>
+{% if tax_discrepancies %}
+<div class="card mb-3 border-warning">
+    <table class="table table-hover small mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Invoice</th><th>Client</th><th>Provider</th>
+                <th class="text-end">Local tax</th>
+                <th class="text-end">Provider tax</th>
+                <th class="text-end">Δ</th>
+                <th>External ID</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for d in tax_discrepancies %}
+            <tr>
+                <td><a href="{% url 'psa:invoice_detail' d.invoice.pk %}">{{ d.invoice.invoice_number }}</a></td>
+                <td>{{ d.invoice.client_org.name }}</td>
+                <td>{{ d.invoice.accounting_provider }}</td>
+                <td class="text-end">${{ d.local|floatformat:2 }}</td>
+                <td class="text-end">${{ d.provider|floatformat:2 }}</td>
+                <td class="text-end {% if d.delta > 0 %}text-danger{% else %}text-success{% endif %}"><strong>{{ d.delta|floatformat:2 }}</strong></td>
+                <td><code class="small">{{ d.invoice.accounting_external_id }}</code></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted small">No tax discrepancies detected.</p>
 {% endif %}
 {% endblock %}
