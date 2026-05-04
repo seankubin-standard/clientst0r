@@ -1667,3 +1667,99 @@ class MultiStageApprovalTests(TestCase):
         self.assertEqual(chain[0].status, 'pending')
         chain[0].decide(user=self.user, approved=True)
         self.assertEqual(chain[0].status, 'approved')
+
+
+class RecurringPurchaseTemplateTests(TestCase):
+    """Phase 13 v7 (v3.17.266) — RecurringPurchaseTemplate spawn flow."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='RecPurchCo', slug='rec-pur-co')
+
+    def _make(self, **overrides):
+        from psa.models import RecurringPurchaseTemplate
+        from datetime import date, timedelta
+        defaults = dict(
+            organization=self.org,
+            name='Monthly Toner',
+            recurrence='monthly',
+            next_run_at=date.today() - timedelta(days=1),
+            line_items_snapshot=[
+                {'description': 'HP Toner CF410X', 'sku': 'CF410X',
+                 'quantity': 4, 'unit_price': 89.99,
+                 'distributor_provider': 'ingram'},
+                {'description': 'HP Toner CF411X', 'sku': 'CF411X',
+                 'quantity': 1, 'unit_price': 95.00},
+            ],
+        )
+        defaults.update(overrides)
+        return RecurringPurchaseTemplate.objects.create(**defaults)
+
+    def test_spawn_pr_creates_draft_with_lines(self):
+        from psa.models import PurchaseRequisition
+        tpl = self._make()
+        pr = tpl.spawn_pr()
+        self.assertIsInstance(pr, PurchaseRequisition)
+        self.assertEqual(pr.status, 'draft')
+        self.assertEqual(pr.organization, self.org)
+        self.assertEqual(pr.line_items.count(), 2)
+        # 4 * 89.99 + 1 * 95 = 454.96
+        from decimal import Decimal as _D
+        self.assertEqual(pr.subtotal, _D('454.96'))
+        self.assertEqual(pr.total, _D('454.96'))
+
+    def test_spawn_advances_next_run_and_stamps_last_run(self):
+        from datetime import date, timedelta
+        tpl = self._make()
+        before = tpl.next_run_at
+        tpl.spawn_pr()
+        tpl.refresh_from_db()
+        self.assertEqual(tpl.last_run_at, date.today())
+        # next_run_at should be ~1 month after the OLD next_run_at
+        self.assertGreater(tpl.next_run_at, before)
+        self.assertGreaterEqual((tpl.next_run_at - before).days, 28)
+
+    def test_advance_recurrence_variants(self):
+        from psa.models import RecurringPurchaseTemplate
+        from datetime import date
+        d = date(2026, 1, 15)
+        self.assertEqual(RecurringPurchaseTemplate._advance(d, 'weekly'),
+                          date(2026, 1, 22))
+        self.assertEqual(RecurringPurchaseTemplate._advance(d, 'biweekly'),
+                          date(2026, 1, 29))
+        self.assertEqual(RecurringPurchaseTemplate._advance(d, 'monthly'),
+                          date(2026, 2, 15))
+        self.assertEqual(RecurringPurchaseTemplate._advance(d, 'quarterly'),
+                          date(2026, 4, 15))
+        self.assertEqual(RecurringPurchaseTemplate._advance(d, 'yearly'),
+                          date(2027, 1, 15))
+
+    def test_management_command_spawns_due_templates(self):
+        from django.core.management import call_command
+        from psa.models import PurchaseRequisition
+        self._make(name='Due now')
+        # Future template — should NOT spawn
+        from datetime import date, timedelta
+        self._make(name='Future', next_run_at=date.today() + timedelta(days=30))
+        # Disabled template — should NOT spawn even if due
+        self._make(name='Disabled', enabled=False)
+
+        call_command('psa_run_recurring_purchases', verbosity=0)
+        prs = PurchaseRequisition.objects.filter(organization=self.org)
+        titles = list(prs.values_list('title', flat=True))
+        self.assertIn('Due now', titles)
+        self.assertNotIn('Future', titles)
+        self.assertNotIn('Disabled', titles)
+
+    def test_dry_run_does_not_create_prs(self):
+        from django.core.management import call_command
+        from psa.models import PurchaseRequisition
+        tpl = self._make(name='Dry')
+        call_command('psa_run_recurring_purchases', '--dry-run', verbosity=0)
+        self.assertEqual(
+            PurchaseRequisition.objects.filter(organization=self.org).count(), 0,
+        )
+        # Dry-run must NOT persist the next_run_at advance either.
+        tpl.refresh_from_db()
+        from datetime import date, timedelta
+        self.assertEqual(tpl.next_run_at, date.today() - timedelta(days=1))

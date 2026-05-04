@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.266] - 2026-05-04
+
+### Added — Phase 13 v7 Recurring Purchase Templates
+Closes the "Recurring purchasing templates" sub-bullet of Phase 13. Common case: monthly toner refill, quarterly cable restock, annual license renewal — define once, the cron drops a draft PR in the queue every cycle for the buyer to review and approve.
+
+- **New `RecurringPurchaseTemplate` model** (migration `psa.0039`): organization, optional client_org, name, vendor_name, line_items_snapshot (JSONField list of `{description, sku, quantity, unit_price, distributor_provider}`), recurrence (weekly / biweekly / monthly / quarterly / yearly), next_run_at, last_run_at, enabled.
+- **New `spawn_pr()` method** — creates a draft `PurchaseRequisition` with line items copied from the snapshot, recomputes totals, advances `next_run_at` by one cycle, stamps `last_run_at`. The new PR enters the existing PR/PO approval flow unchanged.
+- **`_advance(date, recurrence)` helper** — uses `dateutil.relativedelta` so monthly/quarterly/yearly land on the same day-of-month each cycle.
+- **New management command `psa_run_recurring_purchases`** — runs daily; spawns PRs for templates whose `next_run_at <= today`. Catch-up cap of 12 cycles per template (prevents runaway after a long pause). `--dry-run` flag for safe testing.
+
+### Tests
+- 5 tests in `psa.tests.test_phase3_5_features.RecurringPurchaseTemplateTests` covering `spawn_pr()` line-item creation + totals, `next_run_at` advancement, the recurrence math for all 5 cadences, the cron's selection (due / future / disabled), and the dry-run guarantee.
+
+### Roadmap
+Phase 13 sub-bullet "Recurring purchasing templates" annotated `*(shipped v3.17.266)*`.
+
 ## [3.17.265] - 2026-05-04
 
 ### Added — Phase 20 v3 Multi-Stage Approval Chains

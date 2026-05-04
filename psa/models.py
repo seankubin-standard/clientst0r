@@ -3651,3 +3651,116 @@ def _glob_match(pattern: str, value: str) -> bool:
     """
     import fnmatch
     return fnmatch.fnmatchcase(value, pattern)
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 v7 (v3.17.266) — Recurring purchase templates
+# ---------------------------------------------------------------------------
+
+class RecurringPurchaseTemplate(models.Model):
+    """A reusable purchase template that auto-spawns a PurchaseRequisition
+    on a schedule. Common case: "Monthly toner refill — 4 units of HP CF410X
+    from Distributor X" — the template runs every month and lands a draft PR
+    in the queue, ready for the buyer to review and approve."""
+    RECURRENCE_CHOICES = [
+        ('weekly', 'Weekly'),
+        ('biweekly', 'Bi-weekly'),
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('yearly', 'Yearly'),
+    ]
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='recurring_purchase_templates',
+        help_text='MSP tenant that owns the template.',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.SET_NULL,
+        related_name='recurring_purchase_templates_for_client',
+        null=True, blank=True,
+        help_text='Optional bill-to / drop-ship-to client.',
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    vendor_name = models.CharField(max_length=200, blank=True,
+        help_text='Snapshot of the target vendor; line items are stored '
+                  'as a JSON list of {description, sku, quantity, unit_price}.')
+    line_items_snapshot = models.JSONField(
+        default=list, blank=True,
+        help_text='List of dicts: [{"description":"…","sku":"…",'
+                  '"quantity":1,"unit_price":0,"distributor_provider":""}, …]',
+    )
+    recurrence = models.CharField(max_length=20, choices=RECURRENCE_CHOICES,
+                                   default='monthly')
+    next_run_at = models.DateField(
+        help_text='Next date the cron should spawn a PR from this template.')
+    last_run_at = models.DateField(null=True, blank=True)
+    enabled = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_recurring_purchase_templates'
+        ordering = ['next_run_at', 'name']
+        indexes = [
+            models.Index(fields=['organization', 'enabled', 'next_run_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.get_recurrence_display()})'
+
+    @staticmethod
+    def _advance(date_in, recurrence: str):
+        from datetime import timedelta as _td
+        from dateutil.relativedelta import relativedelta as _rd
+        if recurrence == 'weekly':
+            return date_in + _td(days=7)
+        if recurrence == 'biweekly':
+            return date_in + _td(days=14)
+        if recurrence == 'monthly':
+            return date_in + _rd(months=1)
+        if recurrence == 'quarterly':
+            return date_in + _rd(months=3)
+        if recurrence == 'yearly':
+            return date_in + _rd(years=1)
+        return date_in + _rd(months=1)
+
+    def spawn_pr(self):
+        """Create a PurchaseRequisition (draft) from this template's
+        snapshot, advance ``next_run_at``, and stamp ``last_run_at``.
+        Returns the new PR. Caller is responsible for saving the
+        template after — `spawn_pr()` does that itself."""
+        from datetime import date as _d
+        from decimal import Decimal as _D
+
+        pr = PurchaseRequisition.objects.create(
+            organization=self.organization,
+            client_org=self.client_org,
+            title=self.name,
+            description=(self.description or
+                         f'Auto-spawned from recurring template "{self.name}"')[:5000],
+            status='draft',
+        )
+        for li in self.line_items_snapshot or []:
+            PurchaseRequisitionLineItem.objects.create(
+                requisition=pr,
+                description=str(li.get('description') or '')[:300],
+                sku=str(li.get('sku') or '')[:80],
+                distributor_provider=str(li.get('distributor_provider') or '')[:40],
+                quantity=_D(str(li.get('quantity') or '1')),
+                unit_price=_D(str(li.get('unit_price') or '0')),
+            )
+        # Recompute totals from the line items
+        total = sum((li.line_total for li in pr.line_items.all()), _D('0'))
+        pr.subtotal = total
+        pr.total = total  # tax left at 0 for templates
+        pr.save(update_fields=['subtotal', 'total', 'updated_at'])
+
+        self.last_run_at = _d.today()
+        self.next_run_at = self._advance(self.next_run_at, self.recurrence)
+        self.save(update_fields=['last_run_at', 'next_run_at', 'updated_at'])
+        return pr
