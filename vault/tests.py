@@ -440,3 +440,133 @@ class VaultApprovalAndBreakGlassTests(TestCase):
         r = c.get('/vault/reveal-requests/')
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Vault Reveal Approvals')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class VaultClientLevelApprovalTests(TestCase):
+    """v3.17.247 — Phase 37 v2: client-org admin can approve reveals for
+    their own org, closing the "Optional client-level vault approval
+    rules" sub-bullet."""
+
+    def setUp(self):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from vault.models import Password
+        self.client_org = Organization.objects.create(name='ClientCo', slug='cl-co')
+        self.other_org = Organization.objects.create(name='OtherCo', slug='cl-other')
+        # Client-org admin: a regular user who's been flagged is_org_admin
+        # for THE CLIENT ORG. NOT MSP staff/superuser.
+        self.client_admin = User.objects.create_user('cl-admin', 'a@x.com', 'pw')
+        Membership.objects.create(
+            user=self.client_admin, organization=self.client_org,
+            role=Role.OWNER, is_active=True, is_org_admin=True,
+        )
+        # Regular client user: needs to reveal a password owned by client_org.
+        self.client_user = User.objects.create_user('cl-user', 'u@x.com', 'pw')
+        Membership.objects.create(
+            user=self.client_user, organization=self.client_org,
+            role=Role.OWNER, is_active=True,
+        )
+        # Outsider: same admin role on a DIFFERENT org. Must NOT be able
+        # to approve reveals for client_org's passwords.
+        self.outsider_admin = User.objects.create_user('out-admin', 'o@x.com', 'pw')
+        Membership.objects.create(
+            user=self.outsider_admin, organization=self.other_org,
+            role=Role.OWNER, is_active=True, is_org_admin=True,
+        )
+
+        self.password = Password.objects.create(
+            organization=self.client_org, title='Client locked credential',
+            requires_reveal_approval=True,
+        )
+        self.password.set_password('client-secret')
+        self.password.save()
+
+    def _login(self, c, user, org):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = org.id
+        s.save()
+
+    def test_client_org_admin_can_approve_their_orgs_reveal(self):
+        from vault.models import VaultRevealRequest
+        # Client user requests
+        c_user = Client()
+        self._login(c_user, self.client_user, self.client_org)
+        c_user.post(f'/vault/{self.password.pk}/request-reveal/',
+                    data={'justification': 'Production access needed'})
+        req = VaultRevealRequest.objects.first()
+
+        # Client-org admin (NOT MSP staff) approves
+        c_admin = Client()
+        self._login(c_admin, self.client_admin, self.client_org)
+        r = c_admin.post(f'/vault/reveal-requests/{req.pk}/decide/', data={
+            'decision': 'approve',
+        })
+        self.assertEqual(r.status_code, 200)
+        req.refresh_from_db()
+        self.assertEqual(req.status, 'approved')
+        self.assertEqual(req.decided_by_id, self.client_admin.id)
+
+    def test_outsider_org_admin_cannot_approve(self):
+        from vault.models import VaultRevealRequest
+        c_user = Client()
+        self._login(c_user, self.client_user, self.client_org)
+        c_user.post(f'/vault/{self.password.pk}/request-reveal/',
+                    data={'justification': 'standard'})
+        req = VaultRevealRequest.objects.first()
+
+        c_outsider = Client()
+        self._login(c_outsider, self.outsider_admin, self.other_org)
+        r = c_outsider.post(f'/vault/reveal-requests/{req.pk}/decide/', data={
+            'decision': 'approve',
+        })
+        self.assertEqual(r.status_code, 403)
+        req.refresh_from_db()
+        self.assertEqual(req.status, 'pending')
+
+    def test_requester_cannot_self_approve_even_as_org_admin(self):
+        # Make the requester also an org admin — they STILL can't approve
+        # their own request (defense in depth against insider misuse).
+        from accounts.models import Membership
+        from vault.models import VaultRevealRequest
+        Membership.objects.filter(
+            user=self.client_user, organization=self.client_org,
+        ).update(is_org_admin=True)
+        c_user = Client()
+        self._login(c_user, self.client_user, self.client_org)
+        c_user.post(f'/vault/{self.password.pk}/request-reveal/',
+                    data={'justification': 'self-approval test'})
+        req = VaultRevealRequest.objects.first()
+        # Same user attempts to decide
+        r = c_user.post(f'/vault/reveal-requests/{req.pk}/decide/', data={
+            'decision': 'approve',
+        })
+        self.assertEqual(r.status_code, 403)
+        req.refresh_from_db()
+        self.assertEqual(req.status, 'pending')
+
+    def test_regular_member_without_org_admin_flag_blocked(self):
+        from vault.models import VaultRevealRequest
+        c_user = Client()
+        self._login(c_user, self.client_user, self.client_org)
+        c_user.post(f'/vault/{self.password.pk}/request-reveal/',
+                    data={'justification': 'reason'})
+        req = VaultRevealRequest.objects.first()
+
+        # Another regular member (no is_org_admin) tries to approve.
+        from accounts.models import Membership, Role
+        peer = User.objects.create_user('peer', 'p@x.com', 'pw')
+        Membership.objects.create(
+            user=peer, organization=self.client_org,
+            role=Role.OWNER, is_active=True,  # is_org_admin defaults False
+        )
+        c_peer = Client()
+        self._login(c_peer, peer, self.client_org)
+        r = c_peer.post(f'/vault/reveal-requests/{req.pk}/decide/', data={
+            'decision': 'approve',
+        })
+        self.assertEqual(r.status_code, 403)
+        req.refresh_from_db()
+        self.assertEqual(req.status, 'pending')

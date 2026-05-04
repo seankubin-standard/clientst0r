@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.247] - 2026-05-04
+
+### Added — Phase 37 v2 Client-level vault approval rules
+Closes the last sub-bullet in Phase 37 (Vault Approval & Break-Glass). MSPs can now route a client org's vault reveal approvals to that client's own admin rather than always going through MSP staff.
+
+- **New `_can_decide_vault_reveal()` policy helper** in `vault/views.py`. Approval policy:
+  - Superuser / MSP staff_user: always allowed (existing behavior preserved).
+  - Client-org admin (`Membership.is_org_admin=True` for the password's organization): allowed for reveals OF passwords in their own org.
+  - Self-approval blocked regardless of role — the requester cannot decide their own request, even if they're also an org admin.
+- **`vault_reveal_request_decide` view** uses the helper. Returns 403 with "self_approval_blocked" or "not_allowed" reason on rejection.
+
+### Tests
+- 4 new tests in `VaultClientLevelApprovalTests`:
+  - Client-org admin can approve their org's reveal request (replaces MSP staff for client-tenant credentials).
+  - Org admin of a DIFFERENT org cannot approve (cross-org isolation).
+  - Requester can't self-approve even when they're also an org admin (defense in depth).
+  - Plain member of the same org without `is_org_admin=True` cannot approve.
+- All 23 vault tests pass.
+
+### Roadmap — Phase 37 marked complete
+Phase 37 — Vault Approval & Break-Glass Workflow flipped to `[complete]`. All five sub-bullets shipped (require approval / break-glass / notifications / audit trail / client-level approval rules).
+
 ## [3.17.246] - 2026-05-04
 
 ### Added — Phase 26 v1 Custom Report Writer + Saved Queries

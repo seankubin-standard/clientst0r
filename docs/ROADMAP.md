@@ -804,7 +804,7 @@ Dependencies: Phase 1 (contract engine — `Contract`, `ContractBundle`, `Contra
 
 **Goal:** Stop money walking out the door. Make every agreement's profitability and consumption visible before invoicing, not after.
 
-## Phase 37 — Vault Approval & Break-Glass Workflow **(M)** [in progress]
+## Phase 37 — Vault Approval & Break-Glass Workflow **(M)** [complete]
 
 Per-credential approval gates and emergency-access ("break-glass") flow for the password vault. Phase 31 *(shipped v3.17.163)* provides geo / IP / time-window restrictions; this phase adds workflow restrictions on top.
 
@@ -813,7 +813,7 @@ Planned capabilities:
 - **Emergency break-glass access** *(shipped v3.17.241 — `/vault/<pk>/break-glass/` endpoint with mandatory ≥30-char justification, self-approves, hard audit log)*
 - **Manager / admin notifications** *(shipped v3.17.241 — every reveal request emails superusers; every break-glass emails superusers immediately)*
 - **Full access audit trail** *(extends the per-action vault audit shipped v3.17.181 — `vault_reveal_requested`, `vault_reveal_approved`, `vault_reveal_denied`, `vault_break_glass`, `reveal_blocked_no_approval` join the existing edit/delete events; shipped v3.17.241)*
-- **Optional client-level vault approval rules** — for client-portal users with vault access, the client's own admin approves rather than the MSP
+- **Optional client-level vault approval rules** *(shipped v3.17.247 — `_can_decide_vault_reveal` policy helper allows `Membership.is_org_admin=True` of the password's org to approve, with self-approval blocked regardless of role)*
 
 Dependencies: Phase 31 (`vault.VaultAccessRule` infra — extend rather than replace), Phase 20 (approval routing engine).
 

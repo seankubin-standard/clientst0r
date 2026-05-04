@@ -456,17 +456,55 @@ def password_break_glass(request, pk):
                          'status': req.status, 'is_break_glass': True})
 
 
+def _can_decide_vault_reveal(user, request_obj, request_meta):
+    """
+    Phase 37 v2 (v3.17.247): policy for who can approve/deny a vault
+    reveal request.
+
+      - Superuser / MSP staff_user: always allowed (existing behavior).
+      - Client-org admin (Membership.is_org_admin=True for the password's
+        organization): allowed for reveals OF passwords in their own org.
+        Closes the "client-level vault approval rules" sub-bullet so MSPs
+        can route a client org's vault approvals to that client's own
+        admin instead of an MSP staff member.
+      - Self-approval is forbidden (the requester can't approve their
+        own request) regardless of role — defense in depth.
+    """
+    if user.is_superuser:
+        return user.id != request_obj.requester_id, 'self_approval_blocked'
+    is_staff = getattr(request_meta, 'is_staff_user', False)
+    if is_staff:
+        return user.id != request_obj.requester_id, 'self_approval_blocked'
+    # Client-org admin path.
+    from accounts.models import Membership
+    if user.id == request_obj.requester_id:
+        return False, 'self_approval_blocked'
+    is_client_admin = Membership.objects.filter(
+        user=user, organization_id=request_obj.password.organization_id,
+        is_active=True, is_org_admin=True,
+    ).exists()
+    return is_client_admin, 'allowed_as_client_admin' if is_client_admin else 'not_allowed'
+
+
 @login_required
 def vault_reveal_request_decide(request, pk):
-    """Approve or deny a pending VaultRevealRequest. Staff/superuser only."""
+    """Approve or deny a pending VaultRevealRequest.
+    Staff/superuser OR client-org admin (Phase 37 v2)."""
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
-    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
-    if not (request.user.is_superuser or is_staff):
-        return JsonResponse({'error': 'Only staff/superuser can decide reveal requests'},
-                            status=403)
     from .models import VaultRevealRequest
     req = get_object_or_404(VaultRevealRequest, pk=pk)
+    allowed, reason = _can_decide_vault_reveal(request.user, req, request)
+    if not allowed:
+        if reason == 'self_approval_blocked':
+            return JsonResponse(
+                {'error': 'You cannot approve your own reveal request.'},
+                status=403,
+            )
+        return JsonResponse(
+            {'error': 'Only staff, superuser, or a client-org admin can decide reveal requests.'},
+            status=403,
+        )
     if req.status != 'pending':
         return JsonResponse({'error': f'Request already {req.status}'}, status=400)
     decision = request.POST.get('decision') or ''
