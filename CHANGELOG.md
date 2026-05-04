@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.244] - 2026-05-04
+
+### Security — Settings access tightened to superuser-only
+Audited every place that mutates `core.SystemSetting` or otherwise lets a user change feature toggles. Result: 11 of 11 `core/settings_views.py` views were already gated `@user_passes_test(is_superuser)` (correct), but `psa.views.psa_global_settings_view` allowed `is_superuser OR is_staff_user` — meaning any MSP staff (not just admins) could flip `psa_csat_enabled`, `psa_portal_*_enabled`, etc.
+
+- **Tightened `psa_global_settings_view` to superuser-only.** Non-superuser staff now get 404 (consistent with `core/settings_views.py` and the navbar gate at `templates/base.html:224` which already only renders the Admin menu for `user.is_superuser`).
+- **Other audit findings:**
+  - `core/firewall_views.py` — every endpoint already `@user_passes_test(is_superuser)`. No changes.
+  - `core/management/commands/*` — only run via cron / manage.py shell. Server-side admin context.
+  - `processes/views.py` reads `SystemSetting.psa_enabled` but never writes. No exposure.
+  - Templates — Admin nav menu already gated; PSA settings sidebar (`_settings_menu.html`) only renders inside settings views which are themselves superuser-gated.
+
+### Tests
+- 8 new tests in `core.tests.test_settings_access`:
+  - `/core/settings/general/` blocked for non-superuser, allowed for superuser.
+  - `/core/settings/features/` blocked for non-superuser, allowed for superuser.
+  - `/psa/settings/` 404 for staff user (the regression that v3.17.244 fixes).
+  - `/psa/settings/` 404 for regular user.
+  - `/psa/settings/` 200 for superuser.
+  - Staff user POSTing a feature toggle to `/psa/settings/` returns 404 and `SystemSetting.psa_csat_enabled` stays unchanged.
+
 ## [3.17.243] - 2026-05-04
 
 ### Added — Phase 12 feature toggles

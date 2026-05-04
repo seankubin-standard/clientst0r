@@ -606,8 +606,14 @@ def psa_global_settings_view(request):
     client. Per-client manual opt-outs (rare; used to override the
     auto-detect that already excludes external-PSA clients) are listed
     here too with un-opt-out buttons.
+
+    v3.17.244: tightened to superuser-only. Previously allowed
+    `is_staff_user` too, which meant any MSP staff (not just admins)
+    could mutate `SystemSetting` feature toggles. Now matches the
+    pattern in `core/settings_views.py` where every settings_* view is
+    `@user_passes_test(is_superuser)`.
     """
-    if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+    if not request.user.is_superuser:
         raise Http404()
 
     from core.models import SystemSetting
