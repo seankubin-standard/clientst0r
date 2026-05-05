@@ -416,7 +416,7 @@ Planned capabilities:
 - Quote conversion tracking *(shipped v3.17.321 — `/reports/quote-conversion/` per-creator quote → accepted → invoiced funnel; configurable rolling window via `?days=`; CSV export)*
 - Customer health scoring *(shipped — Phase 3.6B)*
 - Executive dashboards *(shipped — Phase 3.6A scorecard)*
-- KPI dashboards
+- KPI dashboards *(shipped v3.17.322 — `/reports/kpi/` live widget grid: open tickets, mean age, weekly closed, 30d SLA breaches, MRR/ARR; tenant-scoped; CSV export)*
 - Operational metrics
 - Workflow performance analytics
 - Trend analysis

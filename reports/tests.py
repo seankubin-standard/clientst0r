@@ -3963,3 +3963,146 @@ class QuoteConversionReportTests(TestCase):
         self.assertIn('rep1', body)
         self.assertIn('rep2', body)
         self.assertIn('TOTAL', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class KPIDashboardTests(TestCase):
+    """Phase 19 v4 (v3.17.322) — KPI dashboard widget grid."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from psa.models import (
+            Queue, Ticket, TicketPriority, TicketStatus, TicketType, Contract,
+        )
+        from datetime import date as _date, timedelta as _td
+        from decimal import Decimal as _D
+        from django.utils import timezone as _tz
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='KPICo', slug='kpi-co')
+        cls.outsider = Organization.objects.create(name='Out', slug='kpi-out')
+        cls.staff = User.objects.create_user('kpi-staff', 'ks@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('kpi-mem', 'km@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+
+        queue = Queue.objects.first()
+        priority = TicketPriority.objects.first()
+        ttype = TicketType.objects.first()
+        new = TicketStatus.objects.filter(slug='new').first()
+        terminal = TicketStatus.objects.filter(is_terminal=True).first()
+
+        now = _tz.now()
+
+        # 3 open tickets
+        for i in range(3):
+            t = Ticket.objects.create(
+                organization=cls.org, subject=f'open-{i}',
+                queue=queue, priority=priority,
+                ticket_type=ttype, status=new,
+            )
+            # Backdate so mean age is computable
+            Ticket.objects.filter(pk=t.pk).update(
+                created_at=now - _td(hours=10))
+
+        # 1 ticket from outsider (should not count for member)
+        Ticket.objects.create(
+            organization=cls.outsider, subject='outsider-open',
+            queue=queue, priority=priority, ticket_type=ttype, status=new,
+        )
+
+        # 2 closed in last 7 days
+        for i in range(2):
+            t = Ticket.objects.create(
+                organization=cls.org, subject=f'closed-{i}',
+                queue=queue, priority=priority,
+                ticket_type=ttype, status=terminal,
+            )
+            Ticket.objects.filter(pk=t.pk).update(
+                resolved_at=now - _td(days=2))
+
+        # 1 ticket with SLA breach in last 30 days
+        Ticket.objects.create(
+            organization=cls.org, subject='breached',
+            queue=queue, priority=priority, ticket_type=ttype, status=new,
+            sla_breached_resolution=True,
+        )
+
+        # 2 active contracts (monthly $1000 + yearly $12000 = $1000 + $1000 MRR)
+        Contract.objects.create(
+            organization=cls.org, client_org=cls.org,
+            name='Monthly',
+            start_date=_date.today() - _td(days=30),
+            status='active', billing_frequency='monthly',
+            recurring_amount=_D('1000'),
+        )
+        Contract.objects.create(
+            organization=cls.org, client_org=cls.org,
+            name='Yearly',
+            start_date=_date.today() - _td(days=30),
+            status='active', billing_frequency='yearly',
+            recurring_amount=_D('12000'),
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_staff_sees_msp_wide_widgets(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/kpi/')
+        self.assertEqual(r.status_code, 200)
+        w = r.context['widgets']
+        # 3 from KPICo + 1 outsider + 1 breached = 5 open
+        self.assertEqual(w['open_ticket_count'], 5)
+        self.assertEqual(w['weekly_closed_count'], 2)
+        self.assertEqual(w['sla_breach_count_30d'], 1)
+        self.assertEqual(w['contract_count'], 2)
+        self.assertTrue(w['is_staff_view'])
+        # MRR = 1000 (monthly) + 1000 (yearly/12) = 2000
+        self.assertEqual(int(w['mrr_total']), 2000)
+
+    def test_member_scoped_excludes_mrr(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.org)
+        r = c.get('/reports/kpi/')
+        w = r.context['widgets']
+        # 3 open + 1 breached = 4 (outsider excluded)
+        self.assertEqual(w['open_ticket_count'], 4)
+        # Non-staff: MRR is zero by design
+        self.assertEqual(int(w['mrr_total']), 0)
+        self.assertEqual(int(w['arr_total']), 0)
+        self.assertFalse(w['is_staff_view'])
+
+    def test_mean_age_present(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/kpi/')
+        w = r.context['widgets']
+        # Must be > 0 (we backdated 10h)
+        self.assertGreater(w['mean_open_ticket_age_hours'], 0)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/kpi/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('open_ticket_count', body)
+        self.assertIn('mrr_total', body)

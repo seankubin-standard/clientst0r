@@ -4237,3 +4237,121 @@ def quote_conversion_report(request):
         'rows': rows,
         'summary': summary,
     })
+
+
+@login_required
+def kpi_dashboard(request):
+    """
+    Phase 19 v4 (v3.17.322): KPI dashboard. A read-only single-page
+    grid of widgets that pulls live numbers from existing model
+    queries — no new model needed.
+
+    Widgets surfaced:
+        * open_ticket_count             — non-terminal ticket count
+        * mean_open_ticket_age_hours    — avg(now - created_at) over open
+        * weekly_closed_count           — tickets that became terminal
+                                           in the last 7 days (via resolved_at)
+        * sla_breach_count_30d          — tickets with sla_breached_resolution
+                                           within last 30 days
+        * mrr_total                     — same calc as mrr_forecast_report
+        * arr_total                     — mrr * 12
+
+    Tenant ACL: superuser/staff sees MSP-wide; org members get scoped to
+    their orgs (MRR widgets are zeroed for non-staff because contracts
+    are MSP-internal).
+    """
+    from psa.models import Ticket, Contract
+    from datetime import timedelta as _td
+    from decimal import Decimal as _D
+    from django.utils import timezone as _tz
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    org_ids = []
+    if not is_staff:
+        if hasattr(request.user, 'memberships'):
+            org_ids = list(request.user.memberships.filter(is_active=True)
+                                       .values_list('organization_id', flat=True))
+
+    now = _tz.now()
+    week_ago = now - _td(days=7)
+    month_ago = now - _td(days=30)
+
+    # Open tickets (non-terminal)
+    open_qs = Ticket.objects.filter(status__is_terminal=False)
+    if not is_staff:
+        open_qs = open_qs.filter(organization_id__in=org_ids)
+    open_count = open_qs.count()
+
+    # Mean open ticket age in hours
+    if open_count:
+        total_seconds = sum(
+            (now - t).total_seconds()
+            for t in open_qs.values_list('created_at', flat=True)
+            if t is not None
+        )
+        mean_age_hours = round(total_seconds / open_count / 3600.0, 1)
+    else:
+        mean_age_hours = 0.0
+
+    # Closed in the last 7 days (tickets that hit a terminal status)
+    weekly_closed_qs = Ticket.objects.filter(
+        status__is_terminal=True, resolved_at__gte=week_ago)
+    if not is_staff:
+        weekly_closed_qs = weekly_closed_qs.filter(organization_id__in=org_ids)
+    weekly_closed_count = weekly_closed_qs.count()
+
+    # SLA breach count last 30 days (resolution breach flag set on tickets
+    # touched in the window)
+    breach_qs = Ticket.objects.filter(
+        sla_breached_resolution=True, updated_at__gte=month_ago)
+    if not is_staff:
+        breach_qs = breach_qs.filter(organization_id__in=org_ids)
+    sla_breach_count = breach_qs.count()
+
+    # MRR / ARR — staff only
+    mrr_total = _D('0')
+    arr_total = _D('0')
+    contract_count = 0
+    if is_staff:
+        contracts = (Contract.objects.filter(status='active')
+                     .exclude(billing_frequency='none'))
+        for c in contracts:
+            amount = c.effective_recurring_amount
+            if amount <= 0:
+                continue
+            if c.billing_frequency == 'monthly':
+                mrr_total += amount
+            elif c.billing_frequency == 'quarterly':
+                mrr_total += (amount / _D('3'))
+            elif c.billing_frequency == 'yearly':
+                mrr_total += (amount / _D('12'))
+            contract_count += 1
+        mrr_total = mrr_total.quantize(_D('0.01'))
+        arr_total = (mrr_total * _D('12')).quantize(_D('0.01'))
+
+    widgets = {
+        'open_ticket_count': open_count,
+        'mean_open_ticket_age_hours': mean_age_hours,
+        'weekly_closed_count': weekly_closed_count,
+        'sla_breach_count_30d': sla_breach_count,
+        'mrr_total': mrr_total,
+        'arr_total': arr_total,
+        'contract_count': contract_count,
+        'is_staff_view': is_staff,
+    }
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="kpi-dashboard.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Metric', 'Value'])
+        for k, v in widgets.items():
+            w.writerow([k, v])
+        return resp
+
+    return render(request, 'reports/kpi_dashboard.html', {
+        'widgets': widgets,
+    })

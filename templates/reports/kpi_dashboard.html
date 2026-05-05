@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}KPI Dashboard — Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">KPI Dashboard</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>KPI Dashboard</h2>
+    <a href="?format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Export CSV
+    </a>
+</div>
+
+<p class="text-muted small">Live operational metrics. Tenant-scoped — staff sees MSP-wide totals; client members see only their organizations.</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card border-info">
+            <div class="card-body py-3">
+                <div class="text-muted small text-uppercase"><i class="fas fa-ticket-alt me-1"></i>Open tickets</div>
+                <div class="display-6 fw-bold">{{ widgets.open_ticket_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-warning">
+            <div class="card-body py-3">
+                <div class="text-muted small text-uppercase"><i class="fas fa-hourglass-half me-1"></i>Mean open age</div>
+                <div class="display-6 fw-bold">{{ widgets.mean_open_ticket_age_hours }}<small class="fs-5 text-muted">h</small></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-success">
+            <div class="card-body py-3">
+                <div class="text-muted small text-uppercase"><i class="fas fa-check me-1"></i>Closed last 7d</div>
+                <div class="display-6 fw-bold">{{ widgets.weekly_closed_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-danger">
+            <div class="card-body py-3">
+                <div class="text-muted small text-uppercase"><i class="fas fa-exclamation-triangle me-1"></i>SLA breaches (30d)</div>
+                <div class="display-6 fw-bold">{{ widgets.sla_breach_count_30d }}</div>
+            </div>
+        </div>
+    </div>
+    {% if widgets.is_staff_view %}
+    <div class="col-md-4">
+        <div class="card border-success">
+            <div class="card-body py-3">
+                <div class="text-muted small text-uppercase"><i class="fas fa-dollar-sign me-1"></i>MRR</div>
+                <div class="display-6 fw-bold">${{ widgets.mrr_total|floatformat:0 }}</div>
+                <small class="text-muted">{{ widgets.contract_count }} active contracts</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-success">
+            <div class="card-body py-3">
+                <div class="text-muted small text-uppercase"><i class="fas fa-chart-line me-1"></i>ARR</div>
+                <div class="display-6 fw-bold">${{ widgets.arr_total|floatformat:0 }}</div>
+                <small class="text-muted">MRR × 12</small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<h5 class="mt-4">Drill-down</h5>
+<div class="d-flex flex-wrap gap-2">
+    <a href="{% url 'reports:ticket_aging_report' %}" class="btn btn-sm btn-outline-warning">
+        <i class="fas fa-hourglass-half me-1"></i>Ticket aging
+    </a>
+    <a href="{% url 'reports:sla_forecast_report' %}" class="btn btn-sm btn-outline-danger">
+        <i class="fas fa-stopwatch me-1"></i>SLA forecast
+    </a>
+    {% if widgets.is_staff_view %}
+    <a href="{% url 'reports:mrr_forecast_report' %}" class="btn btn-sm btn-outline-success">
+        <i class="fas fa-chart-line me-1"></i>MRR forecast
+    </a>
+    <a href="{% url 'reports:quote_conversion_report' %}" class="btn btn-sm btn-outline-success">
+        <i class="fas fa-file-signature me-1"></i>Quote conversion
+    </a>
+    {% endif %}
+</div>
+{% endblock %}

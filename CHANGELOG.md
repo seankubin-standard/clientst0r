@@ -139,6 +139,25 @@ First slice of **Phase 28 — Browser Extension + Offline Vault Access** server-
 - Phase 28 sub-bullet "Master-password unlock" left planned — that ships in v3.17.329.
 - Documented future endpoints in v3.17.331 contract spec.
 
+## [3.17.322] - 2026-05-05
+
+### Added — Phase 19 v4 — KPI dashboard
+Third of seven Phase 19 closeout releases. Adds `/reports/kpi/` — a single-page widget grid that pulls live numbers from existing model queries. Read-only, no new model required, and tenant-scoped so client members get a useful subset.
+
+- **`reports.views.kpi_dashboard`** — six widgets:
+  - `open_ticket_count` — non-terminal tickets in scope.
+  - `mean_open_ticket_age_hours` — average `now - created_at` over the open queue.
+  - `weekly_closed_count` — tickets that hit a terminal status with `resolved_at` in the last 7 days.
+  - `sla_breach_count_30d` — tickets with `sla_breached_resolution=True` touched in the last 30 days.
+  - `mrr_total` + `arr_total` (`mrr * 12`) — same normalization used by `mrr_forecast_report`. Staff-only; non-staff see zero by design (contracts are MSP-internal).
+- **Template** `templates/reports/kpi_dashboard.html` — Bootstrap card grid + drill-down links to ticket-aging, sla-forecast, mrr-forecast, quote-conversion.
+- **Tile** added to the Reports home grid.
+- **Tenant ACL**: superuser/staff sees MSP-wide; org members see only their organizations (MRR widgets hidden).
+- **CSV export** at `?format=csv` — flat metric=value rows for piping into BI tools.
+
+### Tests
+`KPIDashboardTests` (4 tests): staff sees MSP-wide widgets incl. MRR, member tenant scoping with MRR zeroed, mean age computation, CSV export.
+
 ## [3.17.321] - 2026-05-05
 
 ### Added — Phase 19 v3 — Quote conversion tracking
