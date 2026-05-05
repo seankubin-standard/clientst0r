@@ -362,7 +362,7 @@ Planned capabilities:
 - Automatic asset linking (heuristic — same subnet, same rack, etc.) *(shipped v3.17.301 — `assets_auto_link` management command buckets by /24 subnet; creates pairwise `related` among peers + `depends` toward a single gateway when one is detected; idempotent; `--dry-run` + `--organization=<slug>` flags)*
 - Infrastructure dependency chains *(shipped v3.17.300 — `Asset.dependency_chain(direction='downstream'|'upstream', max_depth=10)` BFS walker; cycle-safe)*
 - Rack relationship visualization *(partial — racks already shipped)*
-- Service relationship tracking ("Email service depends on Exchange Online + DNS X + Connector Y")
+- Service relationship tracking ("Email service depends on Exchange Online + DNS X + Connector Y") *(shipped v3.17.302 — `assets.Service` model with status (operational/degraded/down/maintenance) + criticality + owner; `set_status()` stamps last_status_change; `asset_dependencies()` walks `Relationship(source_type='service')` rows)*
 - Documentation inheritance (child sites inherit parent SOPs)
 
 **Goal:** Improve infrastructure visibility and operational context awareness.

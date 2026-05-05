@@ -560,6 +560,85 @@ class Relationship(BaseModel):
 
     def __str__(self):
         return f"{self.source_type}:{self.source_id} {self.relation_type} {self.target_type}:{self.target_id}"
+
+
+class Service(BaseModel):
+    """Phase 16 v9 (v3.17.302): named operational service.
+
+    A service is an abstract capability — "Email", "VPN", "Internal
+    File Share" — that may depend on N physical assets, M documents,
+    K passwords. Status surfaces operational state to the relationship
+    map. Dependencies live as `Relationship(source_type='service',
+    relation_type='depends')` rows so the existing dependency_chain
+    walker reaches across model boundaries.
+    """
+    STATUS_CHOICES = [
+        ('operational', 'Operational'),
+        ('degraded', 'Degraded'),
+        ('down', 'Down / Outage'),
+        ('maintenance', 'Scheduled Maintenance'),
+    ]
+    CRITICALITY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('critical', 'Critical / Tier-0'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='services',
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES,
+                                default='operational')
+    criticality = models.CharField(max_length=20, choices=CRITICALITY_CHOICES,
+                                     default='medium')
+    owner = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='services_owned',
+    )
+    last_status_change = models.DateTimeField(null=True, blank=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'services'
+        ordering = ['name']
+        unique_together = [['organization', 'name']]
+        indexes = [
+            models.Index(fields=['organization', 'status']),
+            models.Index(fields=['criticality']),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.get_status_display()})'
+
+    def set_status(self, new_status: str):
+        """Change status + stamp `last_status_change`."""
+        from django.utils import timezone
+        valid = dict(self.STATUS_CHOICES)
+        if new_status not in valid:
+            raise ValueError(f'Unknown service status: {new_status}')
+        if self.status == new_status:
+            return False
+        self.status = new_status
+        self.last_status_change = timezone.now()
+        self.save(update_fields=['status', 'last_status_change',
+                                  'updated_at'])
+        return True
+
+    def asset_dependencies(self):
+        """Return Asset rows this service depends on, via Relationship."""
+        rels = Relationship.objects.filter(
+            organization=self.organization,
+            source_type='service', source_id=self.pk,
+            target_type='asset', relation_type='depends',
+        ).values_list('target_id', flat=True)
+        return list(Asset.objects.filter(
+            organization=self.organization, pk__in=rels,
+        ).order_by('name'))
 """
 Flexible Asset Type System - Customizable asset tracking engine
 Allows users to define their own asset types with custom fields

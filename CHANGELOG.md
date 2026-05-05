@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.302] - 2026-05-05
+
+### Added — Phase 16 v9 — Service relationship tracking
+Closes the "Service relationship tracking" sub-bullet of Phase 16. Models named operational services ("Email", "VPN", "File Share") and their asset dependencies, so a tech can answer "what's broken if exch01 goes down?" in one query.
+
+- **New `assets.Service` model** (migration `assets.0019`) — fields: organization, name (unique per org), description, status (`operational` / `degraded` / `down` / `maintenance`), criticality (`low` / `medium` / `high` / `critical`), owner User, last_status_change.
+- **`Service.set_status(new_status)` method** — validates the new status, stamps `last_status_change` only when actually changing. Idempotent on no-op.
+- **`Service.asset_dependencies()` method** — returns `Asset` rows linked via `Relationship(source_type='service', target_type='asset', relation_type='depends')`, reusing the generic `Relationship` model from earlier rather than a new dedicated table.
+- **Unique-per-org name constraint** — `Email` in OrgA and `Email` in OrgB coexist, but two `Email`s in OrgA collide.
+
+### Tests
+- 6 tests in `assets.tests.ServiceModelTests` covering: default `operational` status, `set_status()` stamps the change, idempotent on same status, rejects unknown statuses, `asset_dependencies()` returns linked assets, unique-per-org constraint enforced.
+
+### Roadmap
+Phase 16 sub-bullet "Service relationship tracking" annotated `*(shipped v3.17.302 — `Service` model with status + criticality + `asset_dependencies()` walker via `Relationship`)*`.
+
 ## [3.17.301] - 2026-05-05
 
 ### Added — Phase 16 v6 — Heuristic asset auto-linker

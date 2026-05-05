@@ -630,3 +630,61 @@ class AssetAutoLinkTests(TestCase):
             organization=self.org, relation_type='depends',
         )
         self.assertFalse(depends.exists())
+
+
+class ServiceModelTests(TestCase):
+    """Phase 16 v9 (v3.17.302): Service model + asset dependency walker."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from assets.models import Service, Relationship
+        cls.org = Organization.objects.create(name='SvcCo', slug='svc-co')
+        cls.svc = Service.objects.create(
+            organization=cls.org, name='Email', criticality='high',
+        )
+        cls.exch = Asset.objects.create(
+            organization=cls.org, name='exch01', asset_type='server',
+        )
+        cls.dns = Asset.objects.create(
+            organization=cls.org, name='dns01', asset_type='server',
+        )
+        # Service depends on both
+        for a in [cls.exch, cls.dns]:
+            Relationship.objects.create(
+                organization=cls.org,
+                source_type='service', source_id=cls.svc.pk,
+                target_type='asset', target_id=a.pk,
+                relation_type='depends',
+            )
+
+    def test_default_status_is_operational(self):
+        from assets.models import Service
+        s = Service.objects.create(organization=self.org, name='Calendaring')
+        self.assertEqual(s.status, 'operational')
+
+    def test_set_status_stamps_change(self):
+        result = self.svc.set_status('degraded')
+        self.assertTrue(result)
+        self.svc.refresh_from_db()
+        self.assertEqual(self.svc.status, 'degraded')
+        self.assertIsNotNone(self.svc.last_status_change)
+
+    def test_set_status_idempotent(self):
+        self.svc.set_status('degraded')
+        result = self.svc.set_status('degraded')
+        self.assertFalse(result)
+
+    def test_set_status_rejects_unknown(self):
+        with self.assertRaises(ValueError):
+            self.svc.set_status('exploded')
+
+    def test_asset_dependencies_returns_linked_assets(self):
+        deps = self.svc.asset_dependencies()
+        names = {a.name for a in deps}
+        self.assertEqual(names, {'exch01', 'dns01'})
+
+    def test_unique_per_org(self):
+        from django.db import IntegrityError
+        from assets.models import Service
+        with self.assertRaises(IntegrityError):
+            Service.objects.create(organization=self.org, name='Email')
