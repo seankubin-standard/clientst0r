@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.293] - 2026-05-05
+
+### Added — Phase 15 v4 — Proration handling
+Closes the "Proration handling" sub-bullet of Phase 15. When a contract starts mid-period, the first invoice bills only for the days actually active, not the full cycle.
+
+- **`Contract._proration_factor(period_start, frequency)` method** — returns the days-active fraction for the period. Returns 1.0 (full billing) when `proration_enabled=False`, when `last_billed_at` is set (already past first invoice), or when `start_date <= period_start` (contract was already running at period start).
+- **`Contract.generate_invoice()` extended** — applies the proration factor to the base recurring amount; usage-based meter line items are NOT prorated (usage is what it is). Description suffix `(prorated 51.61%)` makes the proration visible to the customer reading the invoice.
+- **Existing `proration_enabled` field** drives behavior — opt-in per contract, off by default.
+
+### Tests
+- 5 tests in `psa.tests.test_workflow_kb_contracts.ProrationTests` covering: factor math (Jan 16 start in Jan period = 16/31), full-period when contract already running, full-period when proration disabled, full-period after first invoice (last_billed_at set), end-to-end first-invoice generation includes the prorated unit_price.
+
+### Roadmap
+Phase 15 sub-bullet "Proration handling" annotated `*(shipped v3.17.293)*`.
+
 ## [3.17.292] - 2026-05-05
 
 ### Added — Phase 15 v2 — Usage-based billing

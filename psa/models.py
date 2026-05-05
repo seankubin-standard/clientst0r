@@ -1385,19 +1385,53 @@ class Contract(models.Model):
             return date_in + _rd(years=1)
         return None  # 'none' — billing disabled
 
-    def generate_invoice(self, *, on_date=None, user=None):
-        """Phase 15 v1 (v3.17.291) + v2 (v3.17.292): create a draft
-        Invoice for this contract's current billing period. Returns
-        the new invoice (or None when billing is disabled AND no
-        usage-based meters have positive quantity). Includes:
+    def _proration_factor(self, period_start, frequency: str):
+        """Phase 15 v4 (v3.17.293): when `proration_enabled=True` AND
+        this is the first invoice (last_billed_at is None) AND the
+        contract started mid-period, compute the proration factor
+        (days_active_in_period / days_in_period). Returns 1.0 in all
+        other cases — full period billing.
+        """
+        from datetime import timedelta as _td
+        from dateutil.relativedelta import relativedelta as _rd
+        if not self.proration_enabled or self.last_billed_at:
+            return 1.0
+        if not self.start_date or self.start_date <= period_start:
+            return 1.0
+        # The active period is [period_start, period_end)
+        if frequency == 'monthly':
+            period_end = period_start + _rd(months=1)
+        elif frequency == 'quarterly':
+            period_end = period_start + _rd(months=3)
+        elif frequency == 'yearly':
+            period_end = period_start + _rd(years=1)
+        else:
+            return 1.0
+        # Effective period for THIS contract starts at start_date
+        active_start = max(self.start_date, period_start)
+        total_days = (period_end - period_start).days
+        active_days = (period_end - active_start).days
+        if total_days <= 0:
+            return 1.0
+        return max(0.0, min(1.0, active_days / total_days))
 
-        - Base recurring line item (when `effective_recurring_amount > 0`)
-        - One line item per active `ContractMeter` with `current_quantity > 0`
+    def generate_invoice(self, *, on_date=None, user=None):
+        """Phase 15 v1 (v3.17.291) + v2 (v3.17.292) + v4 (v3.17.293):
+        create a draft Invoice for this contract's current billing
+        period. Returns the new invoice (or None when billing is
+        disabled AND no usage-based meters have positive quantity).
+        Includes:
+
+        - Base recurring line item, prorated when proration_enabled
+          and this is the first invoice for a mid-period start
+        - One line item per active `ContractMeter` with
+          `current_quantity > 0` (NOT prorated — usage is what it is)
 
         After successful generation the meters' `current_quantity` is
         zeroed and `last_billed_at` stamped.
         """
         from datetime import date as _d
+        from decimal import Decimal as _D
         if self.billing_frequency == 'none':
             return None
         on_date = on_date or _d.today()
@@ -1405,6 +1439,10 @@ class Contract(models.Model):
         usage = self.usage_line_items()
         if amount <= 0 and not usage:
             return None
+
+        # Phase 15 v4: prorate the base amount when applicable
+        proration = self._proration_factor(on_date, self.billing_frequency)
+        prorated_amount = (_D(str(amount)) * _D(str(proration))).quantize(_D('0.01'))
 
         inv = Invoice.objects.create(
             organization=self.organization,
@@ -1415,13 +1453,17 @@ class Contract(models.Model):
             source_contract=self,
             created_by=user,
         )
-        if amount > 0:
+        if prorated_amount > 0:
+            descr = (f'{self.get_contract_type_display()} — '
+                     f'{self.get_billing_frequency_display()} period '
+                     f'{on_date:%Y-%m-%d}')
+            if proration < 1.0:
+                descr += f' (prorated {proration:.2%})'
             InvoiceLineItem.objects.create(
                 invoice=inv,
-                description=f'{self.get_contract_type_display()} — '
-                            f'{self.get_billing_frequency_display()} period {on_date:%Y-%m-%d}',
+                description=descr,
                 quantity=1,
-                unit_price=amount,
+                unit_price=prorated_amount,
                 source='contract',
                 source_id=str(self.pk),
             )

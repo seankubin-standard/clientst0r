@@ -1127,6 +1127,66 @@ class UsageBasedBillingTests(TestCase):
         self.assertEqual(inv.subtotal, _D('135.00'))
 
 
+class ProrationTests(TestCase):
+    """Phase 15 v4 (v3.17.293): proration on the first mid-period invoice."""
+
+    def setUp(self):
+        from datetime import date
+        from decimal import Decimal as _D
+        from psa.models import Contract
+        _setup_seed()
+        self.msp = Organization.objects.create(name='ProMsp', slug='pro-msp')
+        self.client_org = Organization.objects.create(name='ProClient',
+                                                       slug='pro-client')
+        # Contract starts mid-month: Jan 16, with monthly billing
+        self.contract = Contract.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            name='Mid-period start',
+            contract_type='retainer', status='active',
+            start_date=date(2026, 1, 16),
+            recurring_amount=_D('100.00'),
+            billing_frequency='monthly',
+            next_billing_date=date(2026, 1, 1),
+            proration_enabled=True,
+        )
+
+    def test_proration_factor_mid_period_start(self):
+        from datetime import date
+        # Period Jan 1 → Feb 1 (31 days). Starts Jan 16 → 16 days active.
+        factor = self.contract._proration_factor(date(2026, 1, 1), 'monthly')
+        self.assertAlmostEqual(factor, 16/31, places=4)
+
+    def test_proration_factor_full_period_when_already_started(self):
+        from datetime import date
+        # Period Feb 1 → Mar 1; contract started Jan 16 (already running)
+        factor = self.contract._proration_factor(date(2026, 2, 1), 'monthly')
+        self.assertEqual(factor, 1.0)
+
+    def test_proration_factor_full_period_when_disabled(self):
+        from datetime import date
+        self.contract.proration_enabled = False
+        factor = self.contract._proration_factor(date(2026, 1, 1), 'monthly')
+        self.assertEqual(factor, 1.0)
+
+    def test_proration_factor_full_period_after_first_invoice(self):
+        from datetime import date
+        self.contract.last_billed_at = date(2026, 1, 16)
+        factor = self.contract._proration_factor(date(2026, 1, 1), 'monthly')
+        self.assertEqual(factor, 1.0)
+
+    def test_first_invoice_is_prorated(self):
+        from datetime import date
+        from decimal import Decimal as _D
+        inv = self.contract.generate_invoice(on_date=date(2026, 1, 1))
+        # 16/31 of $100 = ~$51.61
+        self.assertEqual(inv.line_items.count(), 1)
+        line = inv.line_items.first()
+        # Within a cent of expected
+        expected = _D('100') * _D('16') / _D('31')
+        self.assertAlmostEqual(float(line.unit_price), float(expected), places=2)
+        self.assertIn('prorated', line.description)
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 
