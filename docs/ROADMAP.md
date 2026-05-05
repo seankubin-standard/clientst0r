@@ -367,7 +367,7 @@ Planned capabilities:
 
 **Goal:** Improve infrastructure visibility and operational context awareness.
 
-## Phase 17 — Advanced Asset Intelligence **(L)**
+## Phase 17 — Advanced Asset Intelligence **(L)** [shipped — v3.17.310]
 
 **Roadmap item:** Asset Intelligence & Infrastructure Visibility.
 
@@ -375,14 +375,14 @@ Planned capabilities:
 - Asset drift detection (compare current state vs. last-known baseline) *(shipped v3.17.304 — `Asset.detect_drift()` field-by-field comparison vs. latest `AssetBaseline`; returns list of `{field, baseline, current}` dicts)*
 - Baseline comparison *(shipped v3.17.304 — `AssetBaseline` model with JSONField snapshot + `Asset.capture_baseline()` method; `is_current` flag tracks the active baseline; old ones kept for history)*
 - Software compliance auditing *(shipped v3.17.305 — `SoftwarePolicy` model with deny/require actions + severity; `/reports/software-compliance/` joins policies against `RMMSoftware` inventory and surfaces deny violations + require gaps)*
-- Hardware lifecycle scoring (composite — see Phase 13)
+- Hardware lifecycle scoring (composite — see Phase 13) *(shipped — Phase 13 v6, v3.17.263 — `Asset.lifecycle_score()` 0-100 composite)*
 - Warranty lookups (vendor API integrations) *(shipped v3.17.309 — `WarrantyConnection` model + `BaseWarrantyProvider` interface + Dell / HPE / Lenovo adapter stubs; live `lookup_warranty()` lands when an MSP connects a real account)*
 - Patch correlation (this CVE matches these N assets) *(shipped v3.17.306 — `Vulnerability` model with cve_id + cvss_score + affected_pattern; `affected_assets()` walks `RMMSoftware → RMMDevice → Asset` (by name) to surface affected endpoints)*
 - Smart asset grouping (auto-cohort by role/version/location) *(shipped v3.17.307 — `AssetGroup` model with JSON criteria + computed `members()`; supports `asset_type` / `manufacturer__icontains` / `model__icontains` / `os_version__icontains` / `tags__contains`)*
 - Vulnerability-to-ticket linking *(shipped v3.17.307 — `Vulnerability.create_remediation_ticket()` spawns a PSA Ticket with severity-mapped priority (critical→P1) and an affected-asset list)*
 - Configuration monitoring *(shipped v3.17.308 — `Asset.config_monitored` flag drives the daily `assets_capture_baselines` cron that snapshots into `AssetBaseline`; old baselines retained for history)*
 - Operational health scoring per asset *(shipped v3.17.308 — `Asset.health_score()` composite 0-100; deductions for drift (-25), vulnerabilities (-10/-5/-2 by severity, cap -40), lifecycle (cap -50), firmware update (-10); returns factor breakdown for UI)*
-- Automated remediation suggestions (**OPTIONAL AI**)
+- Automated remediation suggestions (**OPTIONAL AI**) *(shipped v3.17.310 — `RemediationSuggestion` model + `assets_generate_remediation_suggestions` heuristic command (LLM-swap-in later) gated by `psa_ai_enabled`; 4 heuristics: firmware update / drift / health regression / CVE match; review/accept/dismiss flow)*
 
 **Goal:** Improve infrastructure awareness and proactive operational management.
 

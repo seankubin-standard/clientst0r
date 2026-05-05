@@ -1107,3 +1107,80 @@ class ConfigMonitoringCronTests(TestCase):
         self.assertEqual(baselines.count(), 2)
         current = baselines.filter(is_current=True)
         self.assertEqual(current.count(), 1)
+
+
+class RemediationSuggestionTests(TestCase):
+    """Phase 17 v11 (v3.17.310): RemediationSuggestion + heuristic engine."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='RsCo', slug='rs-co')
+        cls.asset = Asset.objects.create(
+            organization=cls.org, name='target', asset_type='server',
+            firmware_version='1.0', firmware_latest='2.0',
+        )
+
+    def test_accept_creates_ticket_with_severity_priority(self):
+        from psa.tests._base import _setup_seed
+        _setup_seed()
+        from assets.models import RemediationSuggestion
+        from psa.models import Ticket
+        s = RemediationSuggestion.objects.create(
+            asset=self.asset, organization=self.org,
+            kind='firmware_update', severity='high',
+            summary='Patch firmware',
+        )
+        ticket_id = s.accept()
+        self.assertIsNotNone(ticket_id)
+        t = Ticket.objects.get(pk=ticket_id)
+        self.assertIn('Patch firmware', t.subject)
+        # severity 'high' → P2
+        self.assertEqual(t.priority.code, 'P2')
+        s.refresh_from_db()
+        self.assertEqual(s.status, 'accepted')
+
+    def test_accept_idempotent(self):
+        from psa.tests._base import _setup_seed
+        _setup_seed()
+        from assets.models import RemediationSuggestion
+        s = RemediationSuggestion.objects.create(
+            asset=self.asset, organization=self.org,
+            kind='drift', severity='low',
+            summary='Reconcile drift',
+        )
+        first = s.accept()
+        second = s.accept()
+        self.assertEqual(first, second)
+
+    def test_dismiss_changes_status(self):
+        from assets.models import RemediationSuggestion
+        s = RemediationSuggestion.objects.create(
+            asset=self.asset, organization=self.org,
+            kind='health', severity='low', summary='check',
+        )
+        s.dismiss()
+        s.refresh_from_db()
+        self.assertEqual(s.status, 'dismissed')
+
+    def test_command_no_op_when_ai_disabled(self):
+        from django.core.management import call_command
+        from assets.models import RemediationSuggestion
+        from core.models import SystemSetting
+        ss = SystemSetting.get_settings()
+        ss.psa_ai_enabled = False
+        ss.save()
+        call_command('assets_generate_remediation_suggestions', verbosity=0)
+        self.assertEqual(RemediationSuggestion.objects.count(), 0)
+
+    def test_command_generates_firmware_suggestion(self):
+        from django.core.management import call_command
+        from assets.models import RemediationSuggestion
+        from core.models import SystemSetting
+        ss = SystemSetting.get_settings()
+        ss.psa_ai_enabled = True
+        ss.save()
+        call_command('assets_generate_remediation_suggestions', verbosity=0)
+        sug = RemediationSuggestion.objects.filter(
+            kind='firmware_update', asset=self.asset).first()
+        self.assertIsNotNone(sug)
+        self.assertIn('Firmware update', sug.summary)

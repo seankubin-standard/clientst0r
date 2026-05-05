@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.310] - 2026-05-05
+
+### Added — Phase 17 v11 — AI-assisted remediation suggestions (closes Phase 17)
+Closes the last sub-bullet of Phase 17 ("Automated remediation suggestions") and advances the **Phase 17 — Advanced Asset Intelligence** marker to `[shipped — v3.17.310]` (11 of 11 sub-bullets shipped).
+
+- **New `assets.RemediationSuggestion` model** (migration `assets.0025`) — fields: asset FK, organization FK, kind (5 choices: `firmware_update` / `drift` / `vulnerability` / `lifecycle` / `health`), severity (5-level), summary, rationale, payload (JSONField for structured details like CVE id / fixed version), status (`pending` / `accepted` / `dismissed`), generated_at / decided_at / decided_by, accepted_ticket_id.
+- **`RemediationSuggestion.accept(user)`** — spawns a PSA `Ticket` with severity-mapped priority (`critical→P1, high→P2, medium→P3, low→P4, info→P5`) and a body that surfaces the suggestion summary + rationale + payload. Idempotent.
+- **`RemediationSuggestion.dismiss(user)`** — flips status without creating a ticket.
+- **New management command `assets_generate_remediation_suggestions`** — heuristic engine (LLM swap-in via the same model + accept flow). Four heuristics ship:
+  1. **firmware_update**: `has_firmware_update()` true → medium-severity suggestion.
+  2. **drift**: `detect_drift()` returns drift → low-severity suggestion listing drifted fields.
+  3. **health**: `health_score().score < 60` → severity scaled (high <30, medium <50, low <60).
+  4. **vulnerability**: `Vulnerability` row whose `affected_pattern` matches software on this asset → severity from the CVE.
+  Gated by `SystemSetting.psa_ai_enabled` — runs no-op when False. De-dups against existing pending suggestions.
+
+### Tests
+- 5 tests in `assets.tests.RemediationSuggestionTests` covering: `accept()` creates a ticket with severity-mapped priority, `accept()` is idempotent, `dismiss()` flips status, the command no-ops when `psa_ai_enabled=False`, the command generates a firmware suggestion when applicable.
+
+### Roadmap
+- Phase 17 sub-bullet "Automated remediation suggestions (**OPTIONAL AI**)" annotated `*(shipped v3.17.310 — `RemediationSuggestion` model + `assets_generate_remediation_suggestions` heuristic command (LLM-swap-in later) gated by `psa_ai_enabled`; review/accept/dismiss flow)*`.
+- **Phase 17 — Advanced Asset Intelligence** header advanced to `[shipped — v3.17.310]`.
+
 ## [3.17.309] - 2026-05-05
 
 ### Added — Phase 17 v5 — Vendor warranty lookup scaffolding (Dell + HPE + Lenovo)
