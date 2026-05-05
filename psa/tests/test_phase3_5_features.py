@@ -2107,3 +2107,93 @@ class WorkflowEnforcementTests(TestCase):
         q.refresh_from_db()
         # Quote must NOT have advanced
         self.assertEqual(q.status, 'draft')
+
+
+class ChangeRequestTransitionTests(TestCase):
+    """Phase 20 v8 (v3.17.276): ChangeRequest transition history."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='ChCo', slug='ch-co')
+        self.user = User.objects.create_user('chu', 'ch@x.com', 'pw')
+
+    def _make_change(self):
+        from psa.models import (
+            Ticket, TicketType, ChangeRequest, Queue, TicketStatus, TicketPriority,
+        )
+        # Need a change-type ticket since ChangeRequest is OneToOne to Ticket
+        change_type, _ = TicketType.objects.get_or_create(
+            slug='change', defaults={'name': 'Change', 'organization': self.org},
+        )
+        queue = Queue.objects.first()
+        priority = TicketPriority.objects.first()
+        status = TicketStatus.objects.filter(slug='new').first() or TicketStatus.objects.first()
+        ticket = Ticket.objects.create(
+            organization=self.org, subject='Change ticket',
+            queue=queue, priority=priority, ticket_type=change_type,
+            status=status,
+        )
+        # Auto-spawn signal already created the ChangeRequest; fetch it
+        return ChangeRequest.objects.get(ticket=ticket)
+
+    def test_transition_status_records_row(self):
+        from psa.models import ChangeRequestTransition
+        cr = self._make_change()
+        cr.transition_status('pending_cab', by_user=self.user, note='ready')
+        rows = ChangeRequestTransition.objects.filter(change_request=cr)
+        self.assertEqual(rows.count(), 1)
+        row = rows.first()
+        self.assertEqual(row.from_status, 'draft')
+        self.assertEqual(row.to_status, 'pending_cab')
+        self.assertEqual(row.by_user, self.user)
+        self.assertIn('ready', row.note)
+
+    def test_transition_stamps_submitted_at(self):
+        cr = self._make_change()
+        self.assertIsNone(cr.submitted_at)
+        cr.transition_status('pending_cab', by_user=self.user)
+        cr.refresh_from_db()
+        self.assertIsNotNone(cr.submitted_at)
+
+    def test_transition_stamps_decided_at_on_approve(self):
+        cr = self._make_change()
+        cr.transition_status('pending_cab', by_user=self.user)
+        cr.transition_status('approved', by_user=self.user)
+        cr.refresh_from_db()
+        self.assertIsNotNone(cr.decided_at)
+        self.assertEqual(cr.decided_by, self.user)
+
+    def test_transition_stamps_actual_start_on_implementing(self):
+        cr = self._make_change()
+        cr.transition_status('implementing', by_user=self.user)
+        cr.refresh_from_db()
+        self.assertIsNotNone(cr.actual_start)
+
+    def test_transition_to_unknown_status_raises(self):
+        cr = self._make_change()
+        with self.assertRaises(ValueError):
+            cr.transition_status('mars-bound', by_user=self.user)
+
+    def test_no_op_transition_returns_none(self):
+        cr = self._make_change()
+        result = cr.transition_status(cr.implementation_status, by_user=self.user)
+        self.assertIsNone(result)
+        from psa.models import ChangeRequestTransition
+        self.assertEqual(
+            ChangeRequestTransition.objects.filter(change_request=cr).count(),
+            0,
+        )
+
+    def test_signal_captures_direct_field_edit(self):
+        """Direct ORM edits should still produce a transition row even
+        if the caller didn't use transition_status()."""
+        from psa.models import ChangeRequestTransition
+        cr = self._make_change()
+        cr.implementation_status = 'cancelled'
+        cr.save()
+        rows = ChangeRequestTransition.objects.filter(change_request=cr)
+        self.assertEqual(rows.count(), 1)
+        self.assertEqual(rows.first().from_status, 'draft')
+        self.assertEqual(rows.first().to_status, 'cancelled')
+        # by_user is None for signal-captured edits
+        self.assertIsNone(rows.first().by_user)

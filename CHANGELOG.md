@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.276] - 2026-05-05
+
+### Added — Phase 20 v8 Change Request Transition Tracking
+Closes the "Change tracking" sub-bullet of Phase 20. Every `ChangeRequest.implementation_status` transition is now captured in a dedicated history table — drives compliance reporting and post-change retrospectives without scraping AuditLog.
+
+- **New `ChangeRequestTransition` model** (migration `psa.0041`): change_request FK, from_status, to_status, by_user, at, note.
+- **New `ChangeRequest.transition_status(new_status, *, by_user, note)`** method:
+  - Validates the new status is in `IMPLEMENTATION_STATUS`.
+  - Auto-stamps the matching timestamp/user fields (submitted_at, decided_at, actual_start, actual_end) when crossing the right state.
+  - Inserts a `ChangeRequestTransition` row with full attribution.
+- **Pre/post_save signals** capture transitions even when callers edit `implementation_status` directly (admin pages, ORM updates) — `by_user=None` for those, with a "Captured by post_save signal" note.
+- **De-dup guard** — `transition_status()` sets `_suppress_transition_signal=True` while saving so the signal-driven path doesn't double-record what the method already wrote.
+
+### Tests
+- 7 tests in `psa.tests.test_phase3_5_features.ChangeRequestTransitionTests` covering the method (row content, timestamp stamping for pending_cab/approved/implementing, unknown-status guard, no-op return) plus the signal-driven direct-edit path.
+
+### Roadmap
+Phase 20 sub-bullet "Change tracking" annotated `*(shipped v3.17.276)*`.
+
 ## [3.17.275] - 2026-05-05
 
 ### Added — Phase 20 v7 Workflow Enforcement

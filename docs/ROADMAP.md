@@ -438,7 +438,7 @@ Planned capabilities:
 - Conditional approvals (rules: "if value > $5k, route to owner") *(shipped v3.17.273 — `SystemSetting.quote_approval_threshold_total` drives a post_save signal that auto-creates a 2-stage approval chain when total ≥ threshold; only fires on draft/sent statuses; idempotent against open chains)*
 - Approval audit trails *(shipped v3.17.274 — `PSAApproval.decide()` and `create_chain()` now write to `audit.AuditLog` automatically; cascade transitions (auto-unblock, auto-cancel-on-deny) are logged too; per-approval history viewer at `/psa/approvals/<pk>/history/`)*
 - Workflow enforcement *(shipped v3.17.275 — `Quote.has_open_approvals` property + `Quote.mark_accepted()` raises ValueError when any chain stage is pending/blocked; matches the existing Invoice push gate)*
-- Change tracking
+- Change tracking *(shipped v3.17.276 — `ChangeRequestTransition` table records every implementation_status transition; `ChangeRequest.transition_status()` method auto-stamps timestamps + writes attribution; pre/post_save signals capture direct edits too)*
 - Operational sign-off workflows
 
 **Goal:** Improve workflow accountability and operational governance.

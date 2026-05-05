@@ -3158,6 +3158,83 @@ class ChangeRequest(models.Model):
             and self.is_cab_satisfied
         )
 
+    def transition_status(self, new_status: str, *, by_user=None,
+                          note: str = ''):
+        """Phase 20 v8 (v3.17.276): change implementation_status and
+        record the transition in `ChangeRequestTransition`. Caller-driven
+        hook — direct field edits are still captured by a pre_save signal,
+        but going through this method gives a friendly audit trail with a
+        note + by_user attribution.
+        """
+        valid = dict(self.IMPLEMENTATION_STATUS)
+        if new_status not in valid:
+            raise ValueError(f'Unknown implementation_status: {new_status}')
+        prev = self.implementation_status
+        if prev == new_status:
+            return None  # no-op
+        self.implementation_status = new_status
+        # Stamp matching timestamps for terminal-ish states
+        ts = timezone.now()
+        if new_status == 'pending_cab' and not self.submitted_at:
+            self.submitted_at = ts
+            if by_user is not None:
+                self.submitted_by = by_user
+        if new_status in ('approved', 'rejected'):
+            self.decided_at = ts
+            if by_user is not None:
+                self.decided_by = by_user
+        if new_status == 'implementing' and not self.actual_start:
+            self.actual_start = ts
+        if new_status in ('verified', 'failed', 'cancelled') and not self.actual_end:
+            self.actual_end = ts
+        # Suppress the post_save signal's auto-capture so we don't
+        # double-record this transition.
+        self._suppress_transition_signal = True
+        try:
+            self.save(update_fields=[
+                'implementation_status', 'submitted_at', 'submitted_by',
+                'decided_at', 'decided_by', 'actual_start', 'actual_end',
+                'updated_at',
+            ])
+        finally:
+            self._suppress_transition_signal = False
+        ChangeRequestTransition.objects.create(
+            change_request=self,
+            from_status=prev,
+            to_status=new_status,
+            by_user=by_user,
+            note=(note or '')[:1000],
+        )
+        return prev, new_status
+
+
+class ChangeRequestTransition(models.Model):
+    """Phase 20 v8 (v3.17.276): one row per implementation_status
+    transition on a ChangeRequest. Powers the change-history viewer +
+    enables compliance reporting without scraping AuditLog."""
+    change_request = models.ForeignKey(
+        ChangeRequest, on_delete=models.CASCADE,
+        related_name='transitions',
+    )
+    from_status = models.CharField(max_length=30)
+    to_status = models.CharField(max_length=30)
+    by_user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    at = models.DateTimeField(auto_now_add=True)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'psa_change_request_transitions'
+        ordering = ['-at']
+        indexes = [
+            models.Index(fields=['change_request', '-at']),
+        ]
+
+    def __str__(self):
+        return f'{self.from_status} → {self.to_status} @ {self.at:%Y-%m-%d %H:%M}'
+
 
 class CABVote(models.Model):
     """

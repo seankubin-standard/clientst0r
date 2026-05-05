@@ -13,6 +13,7 @@ import logging
 
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+from django.utils import timezone
 
 from .models import Ticket, TicketComment
 
@@ -238,6 +239,50 @@ def _capture_prior_status_for_partners(sender, instance, **kwargs):
         _PRIOR_STATUS_FOR_PARTNERS[instance.pk] = prev.status_id
     except Ticket.DoesNotExist:
         _PRIOR_STATUS_FOR_PARTNERS[instance.pk] = None
+
+
+# v3.17.276 — Phase 20 v8: change-request transition tracking. Capture
+# any implementation_status field change that didn't go through the
+# `transition_status()` method (legacy admin edits, direct ORM updates)
+# so the audit trail stays complete.
+from .models import ChangeRequest, ChangeRequestTransition
+
+_PRIOR_CHANGE_STATUS = {}
+
+
+@receiver(pre_save, sender=ChangeRequest)
+def _capture_prior_change_status(sender, instance, **kwargs):
+    if not instance.pk:
+        return
+    try:
+        prev = ChangeRequest.objects.only('implementation_status').get(pk=instance.pk)
+        _PRIOR_CHANGE_STATUS[instance.pk] = prev.implementation_status
+    except ChangeRequest.DoesNotExist:
+        _PRIOR_CHANGE_STATUS[instance.pk] = None
+
+
+@receiver(post_save, sender=ChangeRequest)
+def _record_change_status_transition(sender, instance, created, **kwargs):
+    prev = _PRIOR_CHANGE_STATUS.pop(instance.pk, None)
+    if created or prev is None:
+        return
+    if prev == instance.implementation_status:
+        return
+    # `transition_status()` sets this flag while it saves to avoid
+    # double-recording the transition (it writes the row itself with
+    # by_user attribution and the caller's note).
+    if getattr(instance, '_suppress_transition_signal', False):
+        return
+    try:
+        ChangeRequestTransition.objects.create(
+            change_request=instance,
+            from_status=prev,
+            to_status=instance.implementation_status,
+            by_user=None,
+            note='Captured by post_save signal (no by_user on direct edit)',
+        )
+    except Exception:
+        logger.exception('Change request transition signal failed')
 
 
 @receiver(post_save, sender=Ticket)
