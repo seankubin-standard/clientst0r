@@ -366,6 +366,14 @@ class Ticket(models.Model):
             self.ticket_number = self._generate_ticket_number()
         super().save(*args, **kwargs)
 
+    @property
+    def has_outstanding_checklist(self):
+        """Phase 21 v8 (v3.17.312): True when this ticket has any
+        incomplete required checklist items."""
+        return self.checklist_items.filter(
+            is_required=True, is_completed=False,
+        ).exists()
+
     def sign_off(self, *, by_user, note: str = ''):
         """Phase 20 v9 (v3.17.277): record an operational sign-off.
         Stamps `signed_off_at` + `signed_off_by` so the ticket is
@@ -4691,3 +4699,89 @@ class MileageLog(models.Model):
         a = (sin(dlat / 2) ** 2 +
              cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2)
         return round(2 * R_miles * asin(sqrt(a)), 2)
+
+
+# ---------------------------------------------------------------------------
+# Phase 21 v7 (v3.17.312) — Technician completion signature.
+# ---------------------------------------------------------------------------
+
+class TicketSignature(models.Model):
+    """Customer / on-site sign-off captured on the PWA completion screen.
+    Mirrors `QuoteSignature` shape; one-to-one per ticket.
+
+    The `signature_data` is a base64 data URI of the PNG drawn on a
+    canvas pad. Stored verbatim — no server-side rendering needed.
+    """
+    ticket = models.OneToOneField(
+        Ticket, on_delete=models.CASCADE,
+        related_name='completion_signature',
+    )
+    signed_by_name = models.CharField(max_length=200)
+    signed_by_title = models.CharField(max_length=200, blank=True)
+    signature_data = models.TextField(
+        help_text='Base64 data URI of the drawn signature (image/png)',
+    )
+    signed_at = models.DateTimeField(auto_now_add=True)
+    captured_lat = models.DecimalField(max_digits=10, decimal_places=7,
+                                          null=True, blank=True)
+    captured_lng = models.DecimalField(max_digits=11, decimal_places=7,
+                                          null=True, blank=True)
+    captured_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+
+    class Meta:
+        db_table = 'psa_ticket_signatures'
+        indexes = [
+            models.Index(fields=['ticket']),
+        ]
+
+    def __str__(self):
+        return f'{self.ticket.ticket_number} signed by {self.signed_by_name} @ {self.signed_at:%Y-%m-%d}'
+
+
+# ---------------------------------------------------------------------------
+# Phase 21 v8 (v3.17.312) — Onsite checklist enforcement.
+# ---------------------------------------------------------------------------
+
+class TicketChecklistItem(models.Model):
+    """Per-ticket pre-close checklist item. The `Ticket.has_outstanding_checklist`
+    property is True until every required item is completed."""
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE,
+        related_name='checklist_items',
+    )
+    label = models.CharField(max_length=300)
+    is_required = models.BooleanField(default=True)
+    is_completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_ticket_checklist_items'
+        ordering = ['sort_order', 'pk']
+        indexes = [
+            models.Index(fields=['ticket', 'is_completed']),
+        ]
+
+    def __str__(self):
+        check = '☑' if self.is_completed else '☐'
+        return f'{check} {self.label}'
+
+    def complete(self, *, user=None):
+        from django.utils import timezone as _tz
+        if self.is_completed:
+            return False
+        self.is_completed = True
+        self.completed_at = _tz.now()
+        self.completed_by = user
+        self.save(update_fields=['is_completed', 'completed_at',
+                                  'completed_by'])
+        return True

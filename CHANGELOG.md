@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.312] - 2026-05-05
+
+### Added — Phase 21 v7+v8 — Tech signatures + onsite checklist enforcement
+Closes 2 sub-bullets of Phase 21.
+
+- **New `TicketSignature` model** (migration `psa.0054`) — one-to-one with Ticket. Fields: signed_by_name, signed_by_title, signature_data (base64 PNG data URI from canvas pad), signed_at, captured_lat/lng, captured_by User. Mirrors the existing `QuoteSignature` shape.
+- **New `TicketChecklistItem` model** (same migration) — fields: ticket FK, label, is_required, is_completed, completed_at, completed_by, sort_order, notes. `complete(user)` method stamps the completion (idempotent).
+- **`Ticket.has_outstanding_checklist` property** — True when any required checklist item is still incomplete.
+- **`_enforce_operational_signoff` pre_save signal extended** — also raises `ValidationError` when transitioning to a `requires_signoff=True` status with outstanding required checklist items. Optional (non-required) items don't block; the gate is just for explicitly-required ones.
+
+### Tests
+- 2 tests in `TicketSignatureTests` covering: one-to-one constraint enforced, signature payload round-trip including geo capture.
+- 6 tests in `ChecklistEnforcementTests` covering: `has_outstanding_checklist` property, `complete()` marks + idempotent, transition blocked when outstanding required items, transition passes after completion, optional items don't block.
+
+### Roadmap
+- Phase 21 sub-bullet "Technician signatures (canvas signature pad on completion)" annotated `*(shipped v3.17.312 — `TicketSignature` model with PNG data-URI storage + geo capture)*`.
+- Phase 21 sub-bullet "Onsite checklist enforcement (must complete X before close)" annotated `*(shipped v3.17.312 — `TicketChecklistItem` model + `Ticket.has_outstanding_checklist` property + `_enforce_operational_signoff` signal blocks transitions with outstanding required items)*`.
+
 ## [3.17.311] - 2026-05-05
 
 ### Added — Phase 21 v13/v14 — Site check-in/out + mileage logging

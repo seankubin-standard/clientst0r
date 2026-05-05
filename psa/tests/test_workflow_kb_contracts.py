@@ -1558,6 +1558,146 @@ class MileageLogTests(TestCase):
         self.assertTrue(log.is_auto)
 
 
+class TicketSignatureTests(TestCase):
+    """Phase 21 v7 (v3.17.312): completion signature on Ticket."""
+
+    def setUp(self):
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        _setup_seed()
+        self.org = Organization.objects.create(name='SigCo', slug='sig-co')
+        from psa.models import Ticket
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Onsite work',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first()
+                or TicketStatus.objects.first(),
+        )
+
+    def test_signature_is_one_to_one(self):
+        from psa.models import TicketSignature
+        TicketSignature.objects.create(
+            ticket=self.ticket,
+            signed_by_name='Jane Customer',
+            signature_data='data:image/png;base64,iVBORw0KGgoAAA',
+        )
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            TicketSignature.objects.create(
+                ticket=self.ticket,
+                signed_by_name='Other person',
+                signature_data='data:image/png;base64,xxx',
+            )
+
+    def test_signature_round_trip(self):
+        from psa.models import TicketSignature
+        sig = TicketSignature.objects.create(
+            ticket=self.ticket,
+            signed_by_name='Jane Customer',
+            signed_by_title='IT Manager',
+            signature_data='data:image/png;base64,Zm9vYmFy',
+            captured_lat='37.7749', captured_lng='-122.4194',
+        )
+        self.assertEqual(sig.signed_by_name, 'Jane Customer')
+        self.assertEqual(sig.signed_by_title, 'IT Manager')
+
+
+class ChecklistEnforcementTests(TestCase):
+    """Phase 21 v8 (v3.17.312): incomplete checklist blocks sign-off
+    transitions."""
+
+    def setUp(self):
+        from psa.models import (
+            Queue, TicketPriority, TicketType, TicketStatus, Ticket,
+            TicketChecklistItem,
+        )
+        _setup_seed()
+        self.org = Organization.objects.create(name='ChCo', slug='ch-co')
+        self.user = User.objects.create_user('u1', 'u@x.com', 'pw')
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status_open = TicketStatus.objects.filter(slug='new').first() \
+            or TicketStatus.objects.first()
+        self.status_closed, _ = TicketStatus.objects.get_or_create(
+            slug='closed-checklist',
+            defaults={
+                'name': 'Closed (checklist)',
+                'is_terminal': True, 'requires_signoff': True,
+            },
+        )
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='With checklist',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_open,
+        )
+
+    def test_has_outstanding_checklist_property(self):
+        from psa.models import TicketChecklistItem
+        TicketChecklistItem.objects.create(
+            ticket=self.ticket, label='Verify cabling', is_required=True,
+        )
+        self.assertTrue(self.ticket.has_outstanding_checklist)
+
+    def test_complete_method_marks_done(self):
+        from psa.models import TicketChecklistItem
+        item = TicketChecklistItem.objects.create(
+            ticket=self.ticket, label='Verify cabling', is_required=True,
+        )
+        result = item.complete(user=self.user)
+        self.assertTrue(result)
+        item.refresh_from_db()
+        self.assertTrue(item.is_completed)
+        self.assertIsNotNone(item.completed_at)
+
+    def test_complete_idempotent(self):
+        from psa.models import TicketChecklistItem
+        item = TicketChecklistItem.objects.create(
+            ticket=self.ticket, label='x',
+        )
+        item.complete()
+        result = item.complete()
+        self.assertFalse(result)
+
+    def test_signoff_blocked_when_checklist_outstanding(self):
+        from django.core.exceptions import ValidationError
+        from psa.models import TicketChecklistItem
+        TicketChecklistItem.objects.create(
+            ticket=self.ticket, label='must-do', is_required=True,
+        )
+        # sign_off the ticket (so the signoff guard passes)
+        self.ticket.sign_off(by_user=self.user, note='ok')
+        # Now try to transition to closed-checklist status —
+        # checklist should block.
+        self.ticket.status = self.status_closed
+        with self.assertRaises(ValidationError):
+            self.ticket.save()
+
+    def test_signoff_passes_when_checklist_complete(self):
+        from psa.models import TicketChecklistItem
+        item = TicketChecklistItem.objects.create(
+            ticket=self.ticket, label='must-do', is_required=True,
+        )
+        item.complete()
+        self.ticket.sign_off(by_user=self.user)
+        self.ticket.status = self.status_closed
+        self.ticket.save()  # should not raise
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status_id, self.status_closed.pk)
+
+    def test_optional_items_dont_block(self):
+        from psa.models import TicketChecklistItem
+        TicketChecklistItem.objects.create(
+            ticket=self.ticket, label='nice-to-have', is_required=False,
+        )
+        self.ticket.sign_off(by_user=self.user)
+        self.ticket.status = self.status_closed
+        self.ticket.save()  # optional incomplete is fine
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status_id, self.status_closed.pk)
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

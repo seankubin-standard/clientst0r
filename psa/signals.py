@@ -53,6 +53,14 @@ def _enforce_operational_signoff(sender, instance, **kwargs):
             f'"{target.name}" without an operational sign-off. Run '
             f'Ticket.sign_off() first.'
         )
+    # Phase 21 v8 (v3.17.312): block sign-off-required transitions
+    # while any required checklist item is still incomplete.
+    if instance.has_outstanding_checklist:
+        from django.core.exceptions import ValidationError as _VE
+        raise _VE(
+            f'Ticket {instance.ticket_number or instance.pk} cannot move to '
+            f'"{target.name}" — required checklist items are incomplete.'
+        )
 
 
 @receiver(pre_save, sender=Ticket)
