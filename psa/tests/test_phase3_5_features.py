@@ -1855,3 +1855,93 @@ class QuoteApprovalRoutingTests(TestCase):
                                         object_id=q.pk).count(),
             1,
         )
+
+
+class ConditionalQuoteApprovalAutoRouteTests(TestCase):
+    """Phase 20 v5 (v3.17.273): post_save signal auto-routes large
+    quotes through a PSAApproval chain when the system threshold is set."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='AutoRouteCo', slug='autoroute-co')
+        self.client_org = Organization.objects.create(name='AutoRouteClient',
+                                                       slug='autoroute-client')
+
+    def _make(self, total='5000'):
+        from psa.models import Quote
+        from datetime import date
+        from decimal import Decimal as _D
+        return Quote.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Conditional', status='draft',
+            total=_D(total),
+        )
+
+    def test_below_threshold_no_chain_created(self):
+        from psa.models import PSAApproval
+        ss = SystemSetting.get_settings()
+        ss.quote_approval_threshold_total = 10000
+        ss.save()
+        q = self._make(total='5000')
+        self.assertEqual(
+            PSAApproval.objects.filter(object_type='psa.Quote',
+                                        object_id=q.pk).count(),
+            0,
+        )
+
+    def test_above_threshold_auto_creates_chain(self):
+        from psa.models import PSAApproval
+        ss = SystemSetting.get_settings()
+        ss.quote_approval_threshold_total = 10000
+        ss.save()
+        q = self._make(total='15000')
+        self.assertEqual(
+            PSAApproval.objects.filter(object_type='psa.Quote',
+                                        object_id=q.pk).count(),
+            2,  # 2-stage chain because total >= threshold
+        )
+
+    def test_threshold_zero_disables_auto_route(self):
+        from psa.models import PSAApproval
+        ss = SystemSetting.get_settings()
+        ss.quote_approval_threshold_total = 0
+        ss.save()
+        q = self._make(total='999999')
+        self.assertEqual(
+            PSAApproval.objects.filter(object_type='psa.Quote',
+                                        object_id=q.pk).count(),
+            0,
+        )
+
+    def test_idempotent_on_subsequent_saves(self):
+        from psa.models import PSAApproval
+        ss = SystemSetting.get_settings()
+        ss.quote_approval_threshold_total = 1000
+        ss.save()
+        q = self._make(total='5000')
+        n_before = PSAApproval.objects.filter(
+            object_type='psa.Quote', object_id=q.pk).count()
+        q.title = 'tweaked'
+        q.save()
+        n_after = PSAApproval.objects.filter(
+            object_type='psa.Quote', object_id=q.pk).count()
+        self.assertEqual(n_before, n_after)
+
+    def test_only_draft_and_sent_statuses_route(self):
+        from psa.models import PSAApproval
+        ss = SystemSetting.get_settings()
+        ss.quote_approval_threshold_total = 1000
+        ss.save()
+        # Create at status='accepted' — should NOT auto-route
+        from psa.models import Quote
+        from datetime import date
+        from decimal import Decimal as _D
+        q = Quote.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Already accepted', status='accepted', total=_D('5000'),
+        )
+        self.assertEqual(
+            PSAApproval.objects.filter(object_type='psa.Quote',
+                                        object_id=q.pk).count(),
+            0,
+        )

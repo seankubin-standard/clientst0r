@@ -707,6 +707,12 @@ class SystemSetting(models.Model):
         help_text='Auto-flag invoices when their source contract is at >= '
                   'this consumed-percent. 0 = disabled.',
     )
+    # Phase 20 v5 (v3.17.273) — conditional approval routing on Quote.
+    quote_approval_threshold_total = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text='Auto-create a PSAApproval chain when a Quote\'s total '
+                  '>= this dollar amount. 0 = disabled.',
+    )
 
     # Billing defaults — used by the quote and invoice forms when the
     # specific row doesn't override.

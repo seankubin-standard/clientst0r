@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.273] - 2026-05-05
+
+### Added — Phase 20 v5 Conditional Approvals on Quote
+Closes the "Conditional approvals" sub-bullet of Phase 20. Extends the Phase-20-v4 manual `Quote.send_for_approval()` flow with auto-routing driven by a system threshold — large quotes get routed without anyone clicking a button.
+
+- **New `SystemSetting.quote_approval_threshold_total`** (Decimal, default 0; migration `core.0056`). 0 = disabled.
+- **New `_auto_route_quote_for_approval` post_save signal on Quote** — fires when the quote is `draft` / `sent`, the threshold is set, total ≥ threshold, and no open chain exists yet. Calls the existing `Quote.send_for_approval()` so the same 2-stage chain logic applies (manager → director).
+- **Idempotent** — only routes once per quote. Subsequent saves don't re-fire because the open-chain guard catches them.
+- **Status-aware** — only `draft` and `sent` quotes auto-route; later transitions are sealed (matches the existing UI gate).
+
+### Tests
+- 5 tests in `psa.tests.test_phase3_5_features.ConditionalQuoteApprovalAutoRouteTests` covering below-threshold no-route, above-threshold 2-stage, threshold=0 disables, idempotency on resave, and the status guard.
+
+### Roadmap
+Phase 20 sub-bullet "Conditional approvals" annotated `*(shipped v3.17.273)*`.
+
 ## [3.17.272] - 2026-05-05
 
 ### Added — Phase 13 v10 Cross-Distributor Stock Check

@@ -287,3 +287,37 @@ def _auto_flag_invoice_approval(sender, instance, created, **kwargs):
             requires_approval=True,
             approval_reason=instance.approval_reason,
         )
+
+
+# v3.17.273 — Phase 20 v5: conditional approval auto-routing on Quote.
+# Fires when total >= threshold AND no open approval chain exists yet.
+from .models import Quote, PSAApproval
+
+
+@receiver(post_save, sender=Quote)
+def _auto_route_quote_for_approval(sender, instance, created, **kwargs):
+    if instance.status not in ('draft', 'sent'):
+        return  # only route on early statuses; later transitions are sealed
+    try:
+        from core.models import SystemSetting
+        ss = SystemSetting.get_settings()
+    except Exception:
+        return
+    threshold = float(ss.quote_approval_threshold_total or 0)
+    if threshold <= 0:
+        return  # disabled
+    if not instance.total or float(instance.total) < threshold:
+        return  # below threshold — no auto-route
+    # Skip if any open chain already exists for this quote
+    open_qs = PSAApproval.objects.filter(
+        object_type='psa.Quote', object_id=instance.pk,
+    ).exclude(status__in=['approved', 'denied', 'cancelled'])
+    if open_qs.exists():
+        return
+    try:
+        instance.send_for_approval(
+            user=getattr(instance, 'created_by', None),
+            default_threshold_total=threshold,
+        )
+    except Exception:
+        logger.exception('Auto-route quote for approval failed')

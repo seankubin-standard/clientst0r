@@ -435,7 +435,7 @@ Planned capabilities:
 - Quote approval routing (gate quotes above threshold) *(shipped v3.17.270 — `Quote.send_for_approval()` wraps `PSAApproval.create_chain`; default routing creates a 2-stage chain when total ≥ threshold else single-stage; idempotent against open chains; POST view at `/psa/quotes/<pk>/send-for-approval/` with modal UI on quote detail)*
 - Financial approval chains (POs / invoices over $X) *(shipped v3.17.259 — `SystemSetting.invoice_approval_threshold_total` + `invoice_approval_overage_pct` auto-flag invoices via post_save signal; uses existing `Invoice.flag_for_approval` machinery)*
 - Escalation approvals (auto-escalate idle approvals) *(shipped v3.17.256 — `psa_escalate_idle_approvals` management command + per-row `escalation_threshold_hours` + `escalated_at` dedupe; emails superusers a single digest)*
-- Conditional approvals (rules: "if value > $5k, route to owner")
+- Conditional approvals (rules: "if value > $5k, route to owner") *(shipped v3.17.273 — `SystemSetting.quote_approval_threshold_total` drives a post_save signal that auto-creates a 2-stage approval chain when total ≥ threshold; only fires on draft/sent statuses; idempotent against open chains)*
 - Approval audit trails *(partial — single-approver audit shipped)*
 - Workflow enforcement
 - Change tracking
