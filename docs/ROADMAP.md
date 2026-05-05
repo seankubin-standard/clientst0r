@@ -386,7 +386,7 @@ Planned capabilities:
 
 **Goal:** Improve infrastructure awareness and proactive operational management.
 
-## Phase 18 — Multi-Location Client Hierarchy **(M)** [in progress]
+## Phase 18 — Multi-Location Client Hierarchy **(M)** [shipped — v3.17.283]
 
 **Roadmap item:** Advanced Multi-Location Organization Management.
 
@@ -398,9 +398,9 @@ Planned capabilities:
 - Location-level contacts *(shipped — `assets.Contact` rows already scope per organization via Phase 18 v1 parent/child support; v3.17.282 confirmation)*
 - Site-level SLA assignment (override parent SLA) *(shipped v3.17.282 — `Organization.sla_overrides` JSONField + `sla_override_for(priority_code)` method that walks up the parent chain)*
 - Site filtering on every list page *(shipped v3.17.240 — `OrganizationManager.for_organization` walks parent chain via `core.utils.descendant_org_ids` helper, parent queries see all descendants automatically)*
-- Shared services mapping
-- Regional operational views (group sites by region) *(partial — `Organization.region` field + `normalized_region` shipped v3.17.282; multi-location report ships in v3.17.283)*
-- Multi-location reporting
+- Shared services mapping *(shipped v3.17.283 — `/reports/multi-location/` "Shared services" section lists every `Asset.is_shared_with_descendants=True` row + the descendant orgs that see it)*
+- Regional operational views (group sites by region) *(shipped v3.17.283 — `/reports/multi-location/` "By region" section groups orgs by `normalized_region`)*
+- Multi-location reporting *(shipped v3.17.283 — `/reports/multi-location/` per-parent rollup: tree size, open ticket count, AR balance, asset count across the full descendant tree)*
 
 **Goal:** Improve management of larger MSP client environments.
 

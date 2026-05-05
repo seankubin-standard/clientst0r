@@ -2277,6 +2277,97 @@ class BankReconciliationReportTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class MultiLocationReportTests(TestCase):
+    """Phase 18 v8/v9/v10 (v3.17.283): multi-location operational report."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth.models import User
+        from core.models import Organization
+        from assets.models import Asset
+        cls.staff = User.objects.create_user('ml-staff', 'ms@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.parent = Organization.objects.create(
+            name='HoldingCo', slug='hc', region='EMEA',
+        )
+        cls.uk = Organization.objects.create(
+            name='UK Site', slug='hc-uk', parent=cls.parent, region='EMEA',
+        )
+        cls.us = Organization.objects.create(
+            name='US Site', slug='hc-us', parent=cls.parent, region='Americas',
+        )
+        cls.shared_asset = Asset.objects.create(
+            organization=cls.parent, name='Shared firewall',
+            asset_type='firewall', is_shared_with_descendants=True,
+        )
+        # An asset that is NOT shared
+        Asset.objects.create(
+            organization=cls.parent, name='Local backup',
+            asset_type='backup_appliance',
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_staff_sees_all_three_sections(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/multi-location/')
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context
+        # Region rollup: emea + americas
+        keys = [k for k, _ in ctx['region_rows']]
+        self.assertIn('emea', keys)
+        self.assertIn('americas', keys)
+        # Per-parent rollup: HoldingCo has 2 children → tree_size 3 (incl self)
+        names = [r['parent'].name for r in ctx['parent_rows']]
+        self.assertIn('HoldingCo', names)
+        # Shared assets: 1 row
+        self.assertEqual(len(ctx['shared_rows']), 1)
+        self.assertEqual(ctx['shared_rows'][0]['asset'].name, 'Shared firewall')
+
+    def test_shared_asset_lists_descendants(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/multi-location/')
+        row = r.context['shared_rows'][0]
+        descendant_names = [d.name for d in row['visible_to']]
+        self.assertIn('UK Site', descendant_names)
+        self.assertIn('US Site', descendant_names)
+        # Owner org should NOT be in the visible_to list (we exclude it)
+        self.assertNotIn('HoldingCo', descendant_names)
+
+    def test_non_shared_asset_excluded(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/multi-location/')
+        body = r.content.decode('utf-8')
+        # 'Local backup' is not flagged shared → should not appear in
+        # the shared services section.
+        # (It might appear in other sections by name; the explicit
+        # check is on context len.)
+        self.assertEqual(len(r.context['shared_rows']), 1)
+
+    def test_unassigned_region_grouped_separately(self):
+        from core.models import Organization
+        from django.test import Client
+        Organization.objects.create(name='Untagged', slug='untag')
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/multi-location/')
+        keys = [k for k, _ in r.context['region_rows']]
+        self.assertIn('(unassigned)', keys)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class HardwareMarginReportTests(TestCase):
     """Phase 13 v9 (v3.17.271) — hardware-resale margin."""
 

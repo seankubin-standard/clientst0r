@@ -3058,6 +3058,115 @@ def bank_reconciliation_mark(request):
 
 
 @login_required
+def multi_location_report(request):
+    """
+    Phase 18 v8/v9/v10 (v3.17.283): multi-location operational report.
+    Three sections:
+      1. **By region** — top-level orgs grouped by `normalized_region`.
+      2. **Per-parent rollup** — for each parent org with children,
+         aggregate ticket counts, invoice balances, and asset counts
+         across the parent + every descendant.
+      3. **Shared services mapping** — assets flagged
+         `is_shared_with_descendants=True` and the descendant orgs
+         that see them via inheritance.
+
+    Tenant ACL: superuser/staff sees all; org members see their org's
+    parent tree (using `for_organization` semantics).
+    """
+    from core.models import Organization
+    from psa.models import Ticket, Invoice
+    from assets.models import Asset
+    from collections import defaultdict
+    from decimal import Decimal as _D
+    from django.db.models import Count, Q, F, Sum
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+
+    # Visible org universe
+    if is_staff:
+        org_qs = Organization.objects.filter(is_active=True)
+    else:
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+        # Include parents and descendants
+        from core.utils import descendant_org_ids, ancestor_org_ids
+        full_ids = set(ids)
+        for oid in ids:
+            try:
+                o = Organization.objects.get(pk=oid)
+            except Organization.DoesNotExist:
+                continue
+            full_ids.update(descendant_org_ids(o))
+            full_ids.update(ancestor_org_ids(o))
+        org_qs = Organization.objects.filter(pk__in=full_ids, is_active=True)
+
+    # Section 1: by region (only for orgs that ARE top-level OR that
+    # have a region tag — a child site can override its parent's region)
+    by_region = defaultdict(list)
+    for org in org_qs.order_by('name'):
+        key = org.normalized_region or '(unassigned)'
+        by_region[key].append(org)
+    region_rows = sorted(by_region.items(), key=lambda kv: kv[0])
+
+    # Section 2: per-parent rollup. Find every org with at least one child
+    parents = (org_qs.filter(children__isnull=False).distinct()
+               .order_by('name'))
+    parent_rows = []
+    for p in parents:
+        from core.utils import descendant_org_ids
+        tree_ids = descendant_org_ids(p)
+        tickets_open = Ticket.objects.filter(
+            organization_id__in=tree_ids,
+        ).filter(~Q(status__is_terminal=True)).count()
+        inv_balance = (Invoice.objects.filter(
+            client_org_id__in=tree_ids,
+        ).exclude(status='void').aggregate(
+            balance=Sum(F('total') - F('amount_paid')),
+        )['balance'] or _D('0'))
+        asset_count = Asset.objects.filter(organization_id__in=tree_ids).count()
+        parent_rows.append({
+            'parent': p,
+            'tree_size': len(tree_ids),
+            'tickets_open': tickets_open,
+            'invoice_balance': inv_balance,
+            'asset_count': asset_count,
+        })
+    parent_rows.sort(key=lambda r: -r['tree_size'])
+
+    # Section 3: shared services mapping
+    shared_assets = (Asset.objects.filter(
+        is_shared_with_descendants=True,
+        organization__in=org_qs,
+    ).select_related('organization').order_by('organization__name', 'name'))
+    shared_rows = []
+    for a in shared_assets:
+        from core.utils import descendant_org_ids
+        descendants = list(Organization.objects.filter(
+            pk__in=descendant_org_ids(a.organization)
+        ).exclude(pk=a.organization_id).order_by('name'))
+        shared_rows.append({
+            'asset': a,
+            'owner_org': a.organization,
+            'visible_to': descendants,
+        })
+
+    return render(request, 'reports/multi_location.html', {
+        'region_rows': region_rows,
+        'parent_rows': parent_rows,
+        'shared_rows': shared_rows,
+        'totals': {
+            'org_count': org_qs.count(),
+            'region_count': len([k for k in by_region if k != '(unassigned)']),
+            'parent_count': len(parent_rows),
+            'shared_asset_count': len(shared_rows),
+        },
+    })
+
+
+@login_required
 def ticket_aging_report(request):
     """
     Phase 19 v1 (v3.17.257): ticket aging analytics. Bucket open

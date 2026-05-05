@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.283] - 2026-05-05
+
+### Added — Phase 18 v8/v9/v10 — Multi-location report (closes Phase 18)
+Closes the last 3 sub-bullets of Phase 18 and advances the **Phase 18 — Multi-Location Client Hierarchy** marker to `[shipped — v3.17.283]` (10 of 10 sub-bullets shipped).
+
+- **New report at `/reports/multi-location/`** with 3 sections:
+  - **By region** — every visible org grouped by `normalized_region`. Untagged orgs land in `(unassigned)`.
+  - **Per-parent rollup** — for each org with at least one child: tree size, open ticket count, AR balance (sum of unpaid invoice balances across the tree), asset count. Sorted by tree size descending.
+  - **Shared services mapping** — every asset flagged `is_shared_with_descendants=True` plus the descendant orgs that see it via Phase 18 v3 inheritance.
+- **Tenant ACL** — staff sees all; org members see their org's full ancestor + descendant tree (so a child site member sees their parent's roll-up too).
+- **Reports home tile** added.
+
+### Tests
+- 4 tests in `reports.tests.MultiLocationReportTests` covering: all-three-sections rendering, shared-asset descendant listing, non-shared-asset exclusion from the shared section, unassigned-region bucketing.
+
+### Roadmap
+- "Shared services mapping" → annotated `*(shipped v3.17.283)*`.
+- "Regional operational views (group sites by region)" → upgraded from partial to `*(shipped v3.17.283)*`.
+- "Multi-location reporting" → annotated `*(shipped v3.17.283)*`.
+- **Phase 18 — Multi-Location Client Hierarchy** header advanced to `[shipped — v3.17.283]`.
+
 ## [3.17.282] - 2026-05-05
 
 ### Added — Phase 18 v5/v6/v7/v9 — Location/Region/SLA scaffolding

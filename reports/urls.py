@@ -119,6 +119,9 @@ urlpatterns = [
          views.bank_reconciliation_report, name='bank_reconciliation_report'),
     path('bank-reconciliation/mark/',
          views.bank_reconciliation_mark, name='bank_reconciliation_mark'),
+    # v3.17.283 — Phase 18 v8/v9/v10 multi-location report.
+    path('multi-location/',
+         views.multi_location_report, name='multi_location_report'),
     # v3.17.257 — Phase 19 v1 ticket aging analytics.
     path('ticket-aging/',
          views.ticket_aging_report, name='ticket_aging_report'),
