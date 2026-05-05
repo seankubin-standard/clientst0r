@@ -953,6 +953,86 @@ class WorkflowSuggestionTests(TestCase):
                           'assign_to')
 
 
+class RecurringInvoiceTests(TestCase):
+    """Phase 15 v1 (v3.17.291): contract-driven recurring invoice generation."""
+
+    def setUp(self):
+        from datetime import date, timedelta
+        from decimal import Decimal as _D
+        from psa.models import Contract
+        _setup_seed()
+        self.msp = Organization.objects.create(name='RIMsp', slug='ri-msp')
+        self.client_org = Organization.objects.create(name='RIClient', slug='ri-client')
+        # Active retainer with monthly billing, due yesterday
+        self.contract = Contract.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            name='Block 40', contract_type='retainer',
+            status='active',
+            start_date=date.today() - timedelta(days=60),
+            total_hours=40, hourly_rate=_D('150'),
+            billing_frequency='monthly',
+            next_billing_date=date.today() - timedelta(days=1),
+        )
+
+    def test_effective_recurring_amount_falls_back_to_total_x_rate(self):
+        from decimal import Decimal as _D
+        # 40 hours * $150 = $6000
+        self.assertEqual(self.contract.effective_recurring_amount,
+                          _D('6000.00'))
+
+    def test_effective_recurring_amount_uses_explicit_when_set(self):
+        from decimal import Decimal as _D
+        self.contract.recurring_amount = _D('999')
+        self.contract.save()
+        self.assertEqual(self.contract.effective_recurring_amount,
+                          _D('999'))
+
+    def test_generate_invoice_creates_draft_with_line_item(self):
+        from psa.models import Invoice
+        inv = self.contract.generate_invoice()
+        self.assertIsInstance(inv, Invoice)
+        self.assertEqual(inv.status, 'draft')
+        self.assertEqual(inv.source_contract, self.contract)
+        # One line item at $6000
+        self.assertEqual(inv.line_items.count(), 1)
+        from decimal import Decimal as _D
+        self.assertEqual(inv.subtotal, _D('6000.00'))
+
+    def test_generate_invoice_returns_none_when_billing_disabled(self):
+        self.contract.billing_frequency = 'none'
+        self.contract.save()
+        self.assertIsNone(self.contract.generate_invoice())
+
+    def test_management_command_generates_invoice_and_advances_date(self):
+        from datetime import date, timedelta
+        from django.core.management import call_command
+        from psa.models import Invoice
+        call_command('psa_generate_recurring_invoices', verbosity=0)
+        self.assertEqual(Invoice.objects.filter(
+            source_contract=self.contract).count(), 1)
+        self.contract.refresh_from_db()
+        # next_billing_date should have advanced ~1 month
+        self.assertGreater(self.contract.next_billing_date,
+                            date.today() - timedelta(days=1))
+        self.assertEqual(self.contract.last_billed_at, date.today())
+
+    def test_dry_run_creates_no_invoices(self):
+        from django.core.management import call_command
+        from psa.models import Invoice
+        call_command('psa_generate_recurring_invoices', '--dry-run', verbosity=0)
+        self.assertEqual(Invoice.objects.filter(
+            source_contract=self.contract).count(), 0)
+
+    def test_command_skips_inactive_contracts(self):
+        from django.core.management import call_command
+        from psa.models import Invoice
+        self.contract.status = 'expired'
+        self.contract.save()
+        call_command('psa_generate_recurring_invoices', verbosity=0)
+        self.assertEqual(Invoice.objects.filter(
+            source_contract=self.contract).count(), 0)
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

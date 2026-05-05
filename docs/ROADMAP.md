@@ -333,7 +333,7 @@ Planned capabilities:
 **Roadmap item:** Recurring Billing & Financial Workflow Automation. Extends Phase 1 (contract engine) + invoicing.
 
 Planned capabilities:
-- Recurring invoices (auto-generated from contract bundles)
+- Recurring invoices (auto-generated from contract bundles) *(shipped v3.17.291 — `Contract.billing_frequency` (monthly/quarterly/yearly) + `next_billing_date` + `recurring_amount`; `Contract.generate_invoice()` method; daily `psa_generate_recurring_invoices` cron with catch-up cap + dry-run)*
 - Usage-based billing (per-seat / per-device / per-GB metered)
 - Contract renewals *(partial — auto-renewal cron shipped Phase 1.2)*
 - Proration handling

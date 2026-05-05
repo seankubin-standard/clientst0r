@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.291] - 2026-05-05
+
+### Added — Phase 15 v1 — Recurring invoices
+Closes the "Recurring invoices (auto-generated from contract bundles)" sub-bullet of Phase 15. Active contracts can now bill on a monthly/quarterly/yearly cadence; cron lands a draft invoice for each cycle, ready for manager review and accounting push.
+
+- **4 new fields on `Contract`** (migration `psa.0050`):
+  - `billing_frequency` (`none` / `monthly` / `quarterly` / `yearly`; default `none` so existing contracts are unaffected)
+  - `next_billing_date` (DateField, nullable) — when the next invoice should fire
+  - `recurring_amount` (Decimal, default 0) — explicit per-period amount; 0 falls back to `total_hours * hourly_rate`
+  - `last_billed_at` (DateField, nullable) — stamped after each successful generation
+- **`Contract.effective_recurring_amount` property** — picks explicit amount or computed retainer amount.
+- **`Contract.generate_invoice(*, on_date, user)` method** — creates a draft `Invoice` with a single line item describing the period. `source_contract` FK is set so the new accounting reports tie back. Returns the invoice (or `None` when billing is disabled / amount is 0).
+- **`Contract._advance_billing(date, frequency)` helper** — uses `dateutil.relativedelta` so monthly/quarterly/yearly land on the same day-of-month each cycle.
+- **New management command `psa_generate_recurring_invoices`** — daily timer; finds active contracts whose `next_billing_date <= today`, calls `generate_invoice()`, advances the date, stamps `last_billed_at`. Catch-up cap of 12 cycles per contract. `--dry-run` for safe preview.
+
+### Tests
+- 7 tests in `psa.tests.test_workflow_kb_contracts.RecurringInvoiceTests` covering: amount fallback math (40 × $150 = $6000), explicit override wins, draft invoice creation with line item, billing-disabled returns None, the cron generates + advances + stamps, dry-run creates nothing, the cron skips non-active contracts.
+
+### Roadmap
+Phase 15 sub-bullet "Recurring invoices (auto-generated from contract bundles)" annotated `*(shipped v3.17.291)*`.
+
 ## [3.17.290] - 2026-05-05
 
 ### Added — Phase 14 v13 — AI-assisted workflow suggestions (closes Phase 14)

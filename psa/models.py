@@ -1268,6 +1268,34 @@ class Contract(models.Model):
         default=12,
         help_text='Length of each auto-renewed period in months.',
     )
+    # Phase 15 v1 (v3.17.291) — recurring billing schedule. When the
+    # cadence is non-`none`, `psa_generate_recurring_invoices` cron
+    # auto-generates a draft Invoice for the period on `next_billing_date`.
+    BILLING_FREQUENCY_CHOICES = [
+        ('none', 'No recurring billing'),
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('yearly', 'Yearly'),
+    ]
+    billing_frequency = models.CharField(
+        max_length=20, choices=BILLING_FREQUENCY_CHOICES, default='none',
+        help_text='How often a draft Invoice is auto-generated for this '
+                  'contract. Set to "none" to disable recurring billing.',
+    )
+    next_billing_date = models.DateField(
+        null=True, blank=True,
+        help_text='Next date the recurring-invoice cron should fire. '
+                  'Auto-advanced after each generation.',
+    )
+    recurring_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text='Per-period billing amount. When 0, derived from '
+                  '`total_hours * hourly_rate` for retainer-style contracts.',
+    )
+    last_billed_at = models.DateField(
+        null=True, blank=True,
+        help_text='Date of the most recent recurring-invoice generation.',
+    )
     proration_enabled = models.BooleanField(
         default=False,
         help_text='When true, mid-month start/cancel prorates the allowance '
@@ -1331,6 +1359,66 @@ class Contract(models.Model):
         if self.end_date and self.end_date < today:
             return False
         return True
+
+    @property
+    def effective_recurring_amount(self):
+        """Phase 15 v1 (v3.17.291): the dollar amount for this billing
+        period. If `recurring_amount` is set explicitly, use that;
+        otherwise fall back to `total_hours * hourly_rate` for
+        retainer/managed-services contracts."""
+        from decimal import Decimal as _D
+        if self.recurring_amount and self.recurring_amount > 0:
+            return _D(str(self.recurring_amount))
+        if self.total_hours and self.hourly_rate:
+            return (_D(str(self.total_hours)) * _D(str(self.hourly_rate))).quantize(_D('0.01'))
+        return _D('0')
+
+    @staticmethod
+    def _advance_billing(date_in, frequency: str):
+        from datetime import timedelta as _td
+        from dateutil.relativedelta import relativedelta as _rd
+        if frequency == 'monthly':
+            return date_in + _rd(months=1)
+        if frequency == 'quarterly':
+            return date_in + _rd(months=3)
+        if frequency == 'yearly':
+            return date_in + _rd(years=1)
+        return None  # 'none' — billing disabled
+
+    def generate_invoice(self, *, on_date=None, user=None):
+        """Phase 15 v1 (v3.17.291): create a draft Invoice for this
+        contract's current billing period. Returns the new invoice (or
+        None when billing is disabled / amount is 0). Caller is
+        responsible for advancing `next_billing_date` if desired —
+        `psa_generate_recurring_invoices` cron does so.
+        """
+        from datetime import date as _d
+        if self.billing_frequency == 'none':
+            return None
+        amount = self.effective_recurring_amount
+        if amount <= 0:
+            return None
+        on_date = on_date or _d.today()
+        inv = Invoice.objects.create(
+            organization=self.organization,
+            client_org=self.client_org,
+            title=f'{self.name} — {self.get_billing_frequency_display()} {on_date:%Y-%m}',
+            invoice_date=on_date,
+            currency='USD',
+            source_contract=self,
+            created_by=user,
+        )
+        InvoiceLineItem.objects.create(
+            invoice=inv,
+            description=f'{self.get_contract_type_display()} — '
+                        f'{self.get_billing_frequency_display()} period {on_date:%Y-%m-%d}',
+            quantity=1,
+            unit_price=amount,
+            source='contract',
+            source_id=str(self.pk),
+        )
+        inv.recompute_totals()
+        return inv
 
     @classmethod
     def for_ticket(cls, ticket):
