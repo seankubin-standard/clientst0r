@@ -568,7 +568,7 @@ Dependencies: Phase 3.5 (dashboards), Phase 3.6 (scheduled reports).
 
 **Goal:** Reduce the gap between what owners want to know and what's pre-templated.
 
-## Phase 27 — Advanced Accounting Reconciliation **(M)** [in progress]
+## Phase 27 — Advanced Accounting Reconciliation **(M)** [shipped — v3.17.281]
 
 **Roadmap item:** Deeper accounting integration than the basic invoice push that ships today (QBO + Xero — Phase shipped earlier). Adds true reconciliation between Client St0r's books and the accounting system.
 
@@ -579,7 +579,7 @@ Planned capabilities:
 - Per-invoice line-item mapping to GL accounts (revenue vs. cost-of-services-sold splits) *(shipped v3.17.278 — `InvoiceLineItem.gl_account_code` propagates to QBO `ItemRef.value` and Xero `AccountCode` on push; blank falls through to provider default; back-compat)*
 - Tax reconciliation (compare what we calculated vs. what QBO recorded) *(shipped v3.17.267 — `Invoice.provider_tax_amount` captured at push time from QBO `TxnTaxDetail.TotalTax` / Xero `TotalTax`; reconciliation report flags any |delta| > $0.01)*
 - Accounts receivable aging tied directly back to QBO/Xero AR *(shipped v3.17.269 — `/reports/ar-aging/` per-client 0-30 / 31-60 / 61-90 / 90+ day buckets for pushed-but-unpaid invoices; CSV export; tenant-scoped)*
-- Bank-account reconciliation hooks (mark which payments matched which bank-deposit batches)
+- Bank-account reconciliation hooks (mark which payments matched which bank-deposit batches) *(shipped v3.17.281 — `Payment.bank_deposit_batch` + `bank_reconciled_at` fields; per-batch report at `/reports/bank-reconciliation/` with mark-reconciled / reopen actions; staff-only)*
 - Refund / credit-memo workflows *(shipped v3.17.264 — `Invoice.is_credit_memo` + `credits_invoice` FK + `create_credit_memo()` method that copies/negates lines or creates a lump-sum credit; sequential `CN-YYYY-NNNNN` numbering; UI modal on invoice detail; POST-only view at `/psa/invoices/<pk>/credit-memo/`)*
 - Multi-entity / multi-book support for MSPs operating multiple legal entities *(shipped v3.17.279 — `Invoice.target_connection` FK pins the invoice to a specific AccountingConnection; push picks pinned else falls back to first sync-enabled; inactive-pinned-connection refuses push)*
 - Audit trail of every accounting-system interaction *(shipped v3.17.260 — `AccountingAuditLog` writes one row per `push_invoice` / `record_payment` call across QBO + Xero providers; viewer at `/integrations/accounting/<pk>/audit-log/`. Stores truncated req/resp summaries — full payloads intentionally not stored to keep the log free of secrets/PII)*

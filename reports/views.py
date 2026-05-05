@@ -2947,6 +2947,117 @@ def ar_aging_report(request):
 
 
 @login_required
+def bank_reconciliation_report(request):
+    """
+    Phase 27 v9 (v3.17.281): bank deposit reconciliation. Groups
+    Payment rows by `bank_deposit_batch` so a buyer can confirm each
+    batch against the bank statement and stamp `bank_reconciled_at`.
+
+    Tenant ACL: superuser/staff sees all; org members see only their
+    org's payments.
+    """
+    from psa.models import Payment
+    from collections import defaultdict
+    from decimal import Decimal as _D
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    qs = (Payment.objects.select_related('invoice', 'invoice__client_org',
+                                          'invoice__organization')
+          .order_by('-paid_on'))
+    if not is_staff:
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+        qs = qs.filter(invoice__client_org_id__in=ids)
+
+    # Three buckets:
+    #   1. Untagged payments — need a batch assigned
+    #   2. Tagged but unreconciled — batches awaiting confirmation
+    #   3. Reconciled — read-only history (latest 50 batches)
+    untagged = list(qs.filter(bank_deposit_batch=''))
+
+    # Group tagged-but-unreconciled by batch
+    tagged_unrec = defaultdict(lambda: {
+        'batch': '', 'count': 0, 'total': _D('0'),
+        'oldest': None, 'newest': None, 'payments': [],
+    })
+    for p in qs.exclude(bank_deposit_batch='').filter(bank_reconciled_at__isnull=True):
+        b = tagged_unrec[p.bank_deposit_batch]
+        b['batch'] = p.bank_deposit_batch
+        b['count'] += 1
+        b['total'] += _D(str(p.amount or 0))
+        if b['oldest'] is None or p.paid_on < b['oldest']:
+            b['oldest'] = p.paid_on
+        if b['newest'] is None or p.paid_on > b['newest']:
+            b['newest'] = p.paid_on
+        b['payments'].append(p)
+    unrec_groups = list(tagged_unrec.values())
+    unrec_groups.sort(key=lambda g: -g['total'])
+
+    # Group reconciled by batch (truncated history)
+    reconciled = defaultdict(lambda: {
+        'batch': '', 'count': 0, 'total': _D('0'),
+        'reconciled_at': None,
+    })
+    for p in qs.exclude(bank_deposit_batch='').filter(bank_reconciled_at__isnull=False):
+        b = reconciled[p.bank_deposit_batch]
+        b['batch'] = p.bank_deposit_batch
+        b['count'] += 1
+        b['total'] += _D(str(p.amount or 0))
+        if b['reconciled_at'] is None or p.bank_reconciled_at > b['reconciled_at']:
+            b['reconciled_at'] = p.bank_reconciled_at
+    rec_groups = list(reconciled.values())
+    rec_groups.sort(key=lambda g: -(g['reconciled_at'].timestamp()
+                                     if g['reconciled_at'] else 0))
+
+    return render(request, 'reports/bank_reconciliation.html', {
+        'untagged': untagged[:200],
+        'unrec_groups': unrec_groups,
+        'rec_groups': rec_groups[:50],
+        'totals': {
+            'untagged_count': len(untagged),
+            'unrec_batch_count': len(unrec_groups),
+            'unrec_total': sum(g['total'] for g in unrec_groups),
+            'rec_batch_count': len(rec_groups),
+        },
+    })
+
+
+@login_required
+def bank_reconciliation_mark(request):
+    """Phase 27 v9 (v3.17.281): bulk-mark a deposit batch reconciled
+    (or reopen it). POST `batch=NAME` + `action=reconcile|reopen`."""
+    from psa.models import Payment
+    from django.utils import timezone as _tz
+    from django.contrib import messages as _msgs
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    if not is_staff:
+        from django.http import Http404
+        raise Http404('Bank reconciliation is staff-only')
+    if request.method != 'POST':
+        return redirect('reports:bank_reconciliation_report')
+
+    batch = (request.POST.get('batch') or '').strip()
+    action = (request.POST.get('action') or '').strip()
+    if not batch or action not in ('reconcile', 'reopen'):
+        _msgs.error(request, 'Pick a batch + action (reconcile / reopen).')
+        return redirect('reports:bank_reconciliation_report')
+
+    qs = Payment.objects.filter(bank_deposit_batch=batch)
+    if action == 'reconcile':
+        n = qs.update(bank_reconciled_at=_tz.now())
+        _msgs.success(request, f'Reconciled {n} payment(s) in batch "{batch}".')
+    else:
+        n = qs.update(bank_reconciled_at=None)
+        _msgs.success(request, f'Reopened {n} payment(s) in batch "{batch}".')
+    return redirect('reports:bank_reconciliation_report')
+
+
+@login_required
 def ticket_aging_report(request):
     """
     Phase 19 v1 (v3.17.257): ticket aging analytics. Bucket open

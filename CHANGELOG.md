@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.281] - 2026-05-05
+
+### Added — Phase 27 v9 Bank Reconciliation Hooks
+Closes the "Bank-account reconciliation hooks (mark which payments matched which bank-deposit batches)" sub-bullet of Phase 27 and advances the **Phase 27 — Advanced Accounting Reconciliation** marker to `[shipped — v3.17.281]` (10 of 10 sub-bullets shipped).
+
+- **2 new fields on `Payment`** (migration `psa.0045`):
+  - `bank_deposit_batch` (CharField, indexed) — opaque tag grouping payments that landed in a single bank deposit (e.g. `DEP-2026-04-30`).
+  - `bank_reconciled_at` (DateTimeField, nullable) — stamped when an MSP confirms the deposit appeared in the bank statement.
+- **New report at `/reports/bank-reconciliation/`** with 3 sections:
+  - **Untagged payments** — need a batch assigned.
+  - **Unreconciled batches** — grouped + summed; "Mark Reconciled" button per batch.
+  - **Reconciled batches (history)** — last 50 batches with a "Reopen" button.
+- **New POST endpoint `/reports/bank-reconciliation/mark/`** — bulk-stamps `bank_reconciled_at` on every Payment in a batch (or clears it on `action=reopen`). Staff-only.
+- **Tenant ACL** — staff sees all; org members see only their own client_org's payments.
+- **Reports home tile** added.
+
+### Tests
+- 4 tests in `reports.tests.BankReconciliationReportTests` covering the bucketing math (untagged + 2 unreconciled batches), the mark-reconciled action (sets timestamp on every payment in batch), the reopen action (clears timestamp), and the non-staff 404.
+
+### Roadmap
+- Phase 27 sub-bullet "Bank-account reconciliation hooks" annotated `*(shipped v3.17.281)*`.
+- **Phase 27 — Advanced Accounting Reconciliation** header advanced to `[shipped — v3.17.281]`.
+
 ## [3.17.280] - 2026-05-05
 
 ### Added — Phase 27 v8 Bidirectional Payment Sync

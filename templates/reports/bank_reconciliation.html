@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Bank Reconciliation — Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">Bank Reconciliation</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3"><i class="fas fa-university me-2"></i>Bank Deposit Reconciliation</h2>
+<p class="text-muted">Group payments by deposit batch (e.g. <code>DEP-2026-04-30</code>), confirm each batch against the bank statement, and stamp it reconciled. Untagged payments are still in the queue.</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Untagged payments</div>
+                <div class="fs-4 fw-bold">{{ totals.untagged_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Unreconciled batches</div>
+                <div class="fs-4 fw-bold">{{ totals.unrec_batch_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Awaiting bank confirm</div>
+                <div class="fs-4 fw-bold">${{ totals.unrec_total|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Reconciled batches (history)</div>
+                <div class="fs-4 fw-bold">{{ totals.rec_batch_count }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h5 class="mt-3">Unreconciled batches</h5>
+{% if unrec_groups %}
+{% for g in unrec_groups %}
+<div class="card mb-2 border-info">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div><strong>{{ g.batch }}</strong> — {{ g.count }} payment{{ g.count|pluralize }} · ${{ g.total|floatformat:2 }} · {{ g.oldest|date:'Y-m-d' }} to {{ g.newest|date:'Y-m-d' }}</div>
+            <form method="post" action="{% url 'reports:bank_reconciliation_mark' %}" class="d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="batch" value="{{ g.batch }}">
+                <input type="hidden" name="action" value="reconcile">
+                <button class="btn btn-sm btn-success">
+                    <i class="fas fa-check"></i> Mark Reconciled
+                </button>
+            </form>
+        </div>
+        <table class="table table-sm small mb-0">
+            <thead><tr><th>Date</th><th>Invoice</th><th>Client</th><th>Method</th><th>Reference</th><th class="text-end">Amount</th></tr></thead>
+            <tbody>
+            {% for p in g.payments %}
+                <tr>
+                    <td>{{ p.paid_on|date:'Y-m-d' }}</td>
+                    <td><a href="{% url 'psa:invoice_detail' p.invoice.pk %}">{{ p.invoice.invoice_number }}</a></td>
+                    <td>{{ p.invoice.client_org.name }}</td>
+                    <td>{{ p.get_method_display }}</td>
+                    <td>{{ p.reference|default:'—' }}</td>
+                    <td class="text-end">${{ p.amount|floatformat:2 }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<p class="text-muted small">No unreconciled batches.</p>
+{% endif %}
+
+<h5 class="mt-4">Untagged payments — assign a batch</h5>
+{% if untagged %}
+<p class="text-muted small">Set <code>bank_deposit_batch</code> on each payment row (admin or PSA detail). Once tagged, the batch shows up above.</p>
+<div class="card mb-3">
+    <table class="table table-sm small mb-0">
+        <thead class="table-light"><tr><th>Date</th><th>Invoice</th><th>Client</th><th>Method</th><th>Reference</th><th class="text-end">Amount</th></tr></thead>
+        <tbody>
+        {% for p in untagged %}
+            <tr>
+                <td>{{ p.paid_on|date:'Y-m-d' }}</td>
+                <td><a href="{% url 'psa:invoice_detail' p.invoice.pk %}">{{ p.invoice.invoice_number }}</a></td>
+                <td>{{ p.invoice.client_org.name }}</td>
+                <td>{{ p.get_method_display }}</td>
+                <td>{{ p.reference|default:'—' }}</td>
+                <td class="text-end">${{ p.amount|floatformat:2 }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted small">All payments are tagged.</p>
+{% endif %}
+
+<h5 class="mt-4">Reconciled batches (history)</h5>
+{% if rec_groups %}
+<div class="card">
+    <table class="table table-sm small mb-0">
+        <thead class="table-light"><tr><th>Batch</th><th class="text-end">Payments</th><th class="text-end">Total</th><th>Reconciled at</th><th></th></tr></thead>
+        <tbody>
+        {% for g in rec_groups %}
+            <tr>
+                <td><strong>{{ g.batch }}</strong></td>
+                <td class="text-end">{{ g.count }}</td>
+                <td class="text-end">${{ g.total|floatformat:2 }}</td>
+                <td><span data-utc="{{ g.reconciled_at|date:'c' }}">{{ g.reconciled_at|date:'Y-m-d H:i' }}</span></td>
+                <td>
+                    <form method="post" action="{% url 'reports:bank_reconciliation_mark' %}" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="batch" value="{{ g.batch }}">
+                        <input type="hidden" name="action" value="reopen">
+                        <button class="btn btn-sm btn-outline-secondary">Reopen</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted small">No reconciled batches yet.</p>
+{% endif %}
+{% endblock %}

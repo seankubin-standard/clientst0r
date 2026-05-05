@@ -2159,6 +2159,124 @@ class ARAgingReportTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class BankReconciliationReportTests(TestCase):
+    """Phase 27 v9 (v3.17.281): bank deposit reconciliation."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from psa.models import Invoice, InvoiceLineItem, Payment
+        from datetime import date as _date
+        from decimal import Decimal as _D
+
+        cls.org = Organization.objects.create(name='BankCo', slug='bank-co')
+        cls.client_org = Organization.objects.create(name='BankClient', slug='bank-client')
+        cls.staff = User.objects.create_user('bank-staff', 'bs@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('bank-mem', 'bm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.client_org,
+                                   role=Role.OWNER, is_active=True)
+
+        # Three invoices, each fully paid; payments grouped into 2 batches + 1 untagged
+        for n, batch in enumerate(['DEP-1', 'DEP-1', 'DEP-2']):
+            inv = Invoice.objects.create(
+                organization=cls.org, client_org=cls.client_org,
+                title=f'Inv {n}', invoice_date=_date.today(),
+            )
+            InvoiceLineItem.objects.create(
+                invoice=inv, description='Service',
+                quantity=1, unit_price=_D('100'),
+            )
+            inv.recompute_totals()
+            Payment.objects.create(
+                invoice=inv, amount=_D('100'), paid_on=_date.today(),
+                method='ach', bank_deposit_batch=batch,
+            )
+
+        # One untagged payment
+        inv_u = Invoice.objects.create(
+            organization=cls.org, client_org=cls.client_org,
+            title='Untagged', invoice_date=_date.today(),
+        )
+        InvoiceLineItem.objects.create(
+            invoice=inv_u, description='Untagged service',
+            quantity=1, unit_price=_D('50'),
+        )
+        inv_u.recompute_totals()
+        Payment.objects.create(
+            invoice=inv_u, amount=_D('50'), paid_on=_date.today(),
+            method='ach', bank_deposit_batch='',
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_staff_sees_batches_and_untagged(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/bank-reconciliation/')
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context
+        # 1 untagged payment
+        self.assertEqual(len(ctx['untagged']), 1)
+        # 2 unreconciled batches: DEP-1 (2 payments) + DEP-2 (1 payment)
+        self.assertEqual(ctx['totals']['unrec_batch_count'], 2)
+        from decimal import Decimal as _D
+        # Total awaiting confirm = 100+100+100 = 300
+        self.assertEqual(ctx['totals']['unrec_total'], _D('300'))
+        # No reconciled batches yet
+        self.assertEqual(ctx['totals']['rec_batch_count'], 0)
+
+    def test_mark_reconciled_endpoint(self):
+        from django.test import Client
+        from psa.models import Payment
+        c = Client()
+        self._login(c, self.staff)
+        r = c.post('/reports/bank-reconciliation/mark/',
+                   {'batch': 'DEP-1', 'action': 'reconcile'})
+        self.assertEqual(r.status_code, 302)
+        # 2 payments in DEP-1 should now have bank_reconciled_at set
+        rec_count = Payment.objects.filter(
+            bank_deposit_batch='DEP-1',
+            bank_reconciled_at__isnull=False,
+        ).count()
+        self.assertEqual(rec_count, 2)
+
+    def test_reopen_clears_reconciled_at(self):
+        from django.test import Client
+        from psa.models import Payment
+        c = Client()
+        self._login(c, self.staff)
+        # First reconcile
+        c.post('/reports/bank-reconciliation/mark/',
+               {'batch': 'DEP-2', 'action': 'reconcile'})
+        # Then reopen
+        c.post('/reports/bank-reconciliation/mark/',
+               {'batch': 'DEP-2', 'action': 'reopen'})
+        rec_count = Payment.objects.filter(
+            bank_deposit_batch='DEP-2',
+            bank_reconciled_at__isnull=False,
+        ).count()
+        self.assertEqual(rec_count, 0)
+
+    def test_non_staff_cannot_mark(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.client_org)
+        r = c.post('/reports/bank-reconciliation/mark/',
+                   {'batch': 'DEP-1', 'action': 'reconcile'})
+        self.assertEqual(r.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class HardwareMarginReportTests(TestCase):
     """Phase 13 v9 (v3.17.271) — hardware-resale margin."""
 

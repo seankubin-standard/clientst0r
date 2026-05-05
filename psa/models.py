@@ -2518,6 +2518,23 @@ class Payment(models.Model):
     reference = models.CharField(max_length=120, blank=True,
         help_text='Check number, wire confirmation, etc.')
     notes = models.TextField(blank=True)
+
+    # Phase 27 v9 (v3.17.281): bank-account reconciliation hooks.
+    # `bank_deposit_batch` — opaque tag a buyer sets to group every
+    # payment that landed in a single bank deposit (e.g. "DEP-2026-04-30").
+    # `bank_reconciled_at` — stamped when an MSP confirms the deposit
+    # appeared in the bank statement; nulls out if the batch is reopened.
+    bank_deposit_batch = models.CharField(
+        max_length=80, blank=True, db_index=True,
+        help_text='Opaque tag grouping payments that share a single '
+                  'bank deposit. Used by the bank-reconciliation report.',
+    )
+    bank_reconciled_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the deposit batch was confirmed against the '
+                  'bank statement.',
+    )
+
     created_by = models.ForeignKey(
         django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='psa_payments_recorded',
