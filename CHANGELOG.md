@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.286] - 2026-05-05
+
+### Added — Phase 14 v3 — SLA-driven workflow automation
+Closes the "SLA-driven automation" sub-bullet of Phase 14. Workflow rules can now fire when a ticket's resolution-SLA window has elapsed past a configurable percentage — typical use is "warn the owner at 75%, escalate to manager at 95%, page on-call at 100%."
+
+- **New trigger choice `sla_threshold_crossed`** on `WorkflowRule`. Fired by the new `psa_sla_workflow_tick` cron, not by signals.
+- **New condition key `sla_pct_at_least`** in the rule DSL — truthy when `(now - created_at) / (resolution_due_at - created_at) * 100 >= N`. 0 / past-due ticket reads as 100. Combine with the existing `priority`/`queue`/`status` conditions for precise targeting.
+- **New `WorkflowRule.fire_once_per_ticket`** boolean (default False). When True, the engine consults the new `WorkflowRuleFiring(rule, ticket)` join table and skips already-fired pairs — prevents the cron from re-firing the same alert every tick. Also creates the firing row after a successful fire so subsequent ticks no-op.
+- **New `WorkflowRuleFiring` model** (migration `psa.0047`) — composite `unique_together [['rule', 'ticket']]`.
+- **New management command `psa_sla_workflow_tick`** — runs every 5 min via systemd timer; iterates open tickets with `resolution_due_at` set, fires the engine; terminal-status tickets are excluded. `--dry-run` + `--limit N` flags.
+- **Existing single-fire and per-org/MSP-wide rules unchanged** — the new boolean defaults False.
+
+### Tests
+- 4 tests in `psa.tests.test_workflow_kb_contracts.WorkflowSLAThresholdTests` covering: `sla_pct_at_least` condition matching at 50% elapsed (matches >=50, fails >=80), the once-per-ticket guard preventing duplicates, the cron actually firing rules on open tickets, the cron correctly skipping terminal-status tickets.
+
+### Roadmap
+Phase 14 sub-bullet "SLA-driven automation" annotated `*(shipped v3.17.286)*`.
+
 ## [3.17.285] - 2026-05-05
 
 ### Added — Phase 14 v2/v4 — Workflow branching + multi-step orchestration

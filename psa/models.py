@@ -2120,6 +2120,11 @@ class WorkflowRule(models.Model):
         ('ticket_updated', 'Ticket updated'),
         ('status_changed', 'Status changed'),
         ('comment_added', 'Comment added'),
+        # Phase 14 v3 (v3.17.286): SLA-driven automation. Fired by the
+        # `psa_sla_workflow_tick` cron when the ticket's elapsed-vs-due
+        # SLA percentage crosses a threshold. Use with the
+        # `sla_pct_at_least` condition.
+        ('sla_threshold_crossed', 'SLA threshold crossed'),
     ]
 
     organization = models.ForeignKey(
@@ -2140,6 +2145,16 @@ class WorkflowRule(models.Model):
     else_actions = models.JSONField(default=list, blank=True,
         help_text='Actions to run when conditions evaluate false. '
                   'Empty = no-op when conditions fail.')
+
+    # Phase 14 v3 (v3.17.286): once-per-ticket fire guard. When True,
+    # the engine consults `WorkflowRuleFiring(rule, ticket)` and skips
+    # if the pair already fired. Designed for SLA tick rules that
+    # otherwise fire every cron tick.
+    fire_once_per_ticket = models.BooleanField(
+        default=False,
+        help_text='Fire at most once per (rule, ticket). Use for '
+                  'SLA-driven rules so the cron doesn\'t spam.',
+    )
 
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0,
@@ -2165,6 +2180,32 @@ class WorkflowRule(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.get_trigger_display()})'
+
+
+class WorkflowRuleFiring(models.Model):
+    """Phase 14 v3 (v3.17.286): one row per (rule, ticket) to support
+    `WorkflowRule.fire_once_per_ticket=True`. Used by SLA tick rules so
+    the cron doesn't re-fire the same alert every minute.
+    """
+    rule = models.ForeignKey(
+        'WorkflowRule', on_delete=models.CASCADE,
+        related_name='firings',
+    )
+    ticket = models.ForeignKey(
+        'Ticket', on_delete=models.CASCADE,
+        related_name='workflow_firings',
+    )
+    fired_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_workflow_rule_firings'
+        unique_together = [['rule', 'ticket']]
+        indexes = [
+            models.Index(fields=['ticket', '-fired_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.rule.name} → {self.ticket.ticket_number} @ {self.fired_at:%Y-%m-%d %H:%M}'
 
 
 # ---------------------------------------------------------------------------

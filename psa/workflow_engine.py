@@ -39,7 +39,27 @@ def _get(ticket, key: str):
             return False
     if key == 'subject':
         return ticket.subject or ''
+    if key == 'sla_pct_elapsed':
+        # Phase 14 v3 (v3.17.286): SLA-driven automation.
+        # Returns 0..100+ percent of resolution SLA window elapsed.
+        # 0 if no resolution_due_at is set on the ticket.
+        return _sla_pct_elapsed(ticket)
     return None
+
+
+def _sla_pct_elapsed(ticket) -> float:
+    """How far through the resolution-SLA window the ticket is."""
+    from django.utils import timezone
+    if not getattr(ticket, 'resolution_due_at', None):
+        return 0
+    started = getattr(ticket, 'created_at', None)
+    if started is None:
+        return 0
+    total = (ticket.resolution_due_at - started).total_seconds()
+    if total <= 0:
+        return 100  # already past due
+    elapsed = (timezone.now() - started).total_seconds()
+    return max(0, (elapsed / total) * 100)
 
 
 def matches(ticket, condition: Dict[str, Any]) -> bool:
@@ -61,9 +81,19 @@ def matches(ticket, condition: Dict[str, Any]) -> bool:
         if needle and needle not in (ticket.subject or '').lower():
             return False
 
+    # Phase 14 v3 (v3.17.286): SLA-percent threshold. Truthy when the
+    # ticket has burned through at least N% of its resolution SLA window.
+    if 'sla_pct_at_least' in condition:
+        try:
+            threshold = float(condition['sla_pct_at_least'])
+        except (TypeError, ValueError):
+            return False
+        if _sla_pct_elapsed(ticket) < threshold:
+            return False
+
     # Generic field comparisons
     for key, val in condition.items():
-        if key in ('any', 'all', 'subject_contains'):
+        if key in ('any', 'all', 'subject_contains', 'sla_pct_at_least'):
             continue
         if key.endswith('__in'):
             base = key[:-4]
@@ -191,9 +221,19 @@ def fire(trigger: str, ticket, *, prior_status=None) -> int:
         is_active=True,
     ).order_by('sort_order', 'pk')
 
+    from .models import WorkflowRuleFiring
+
     fired = 0
     for rule in rules:
         try:
+            # Phase 14 v3 (v3.17.286): once-per-(rule,ticket) guard for
+            # SLA tick rules so cron-driven fires don't spam.
+            if (getattr(rule, 'fire_once_per_ticket', False)
+                    and ticket.pk
+                    and WorkflowRuleFiring.objects.filter(
+                        rule=rule, ticket=ticket).exists()):
+                continue
+
             if matches(ticket, rule.conditions or {}):
                 for action in (rule.actions or []):
                     run_action(ticket, action)
@@ -211,6 +251,11 @@ def fire(trigger: str, ticket, *, prior_status=None) -> int:
             rule.fire_count = (rule.fire_count or 0) + 1
             rule.last_error = ''
             rule.save(update_fields=['last_fired_at', 'fire_count', 'last_error'])
+
+            if getattr(rule, 'fire_once_per_ticket', False) and ticket.pk:
+                WorkflowRuleFiring.objects.get_or_create(
+                    rule=rule, ticket=ticket,
+                )
             fired += 1
         except Exception as exc:
             logger.exception('workflow rule %s failed', rule.pk)

@@ -414,6 +414,118 @@ class WorkflowConditionalRoutingTests(TestCase):
             self.assertNotIn('sub-true', t.tags or [])
 
 
+class WorkflowSLAThresholdTests(TestCase):
+    """Phase 14 v3 (v3.17.286): SLA-driven automation."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='SlaCo', slug='sla-co')
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus, Ticket
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status_open = TicketStatus.objects.filter(slug='new').first() \
+                           or TicketStatus.objects.first()
+        # A separate non-terminal status for "in progress"-style
+        self.status_terminal, _ = TicketStatus.objects.get_or_create(
+            slug='terminal-test',
+            defaults={'name': 'Terminal Test', 'is_terminal': True},
+        )
+        # Ticket whose resolution SLA window is half-elapsed
+        now = timezone.now()
+        self.t_half = Ticket.objects.create(
+            organization=self.org, subject='Halfway',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_open,
+        )
+        # Manually set SLA timing so 50% elapsed.
+        Ticket.objects.filter(pk=self.t_half.pk).update(
+            created_at=now - timedelta(hours=2),
+            resolution_due_at=now + timedelta(hours=2),
+        )
+        self.t_half.refresh_from_db()
+
+    def test_sla_pct_at_least_condition_matches_when_threshold_crossed(self):
+        from psa.workflow_engine import matches
+        # 50% elapsed should match >=50 but not >=80
+        self.assertTrue(matches(self.t_half, {'sla_pct_at_least': 50}))
+        self.assertFalse(matches(self.t_half, {'sla_pct_at_least': 80}))
+
+    def test_fire_once_per_ticket_prevents_double_firing(self):
+        from psa.models import Ticket, WorkflowRule, WorkflowRuleFiring
+        from psa.workflow_engine import fire
+        WorkflowRule.objects.create(
+            organization=None,
+            name='SLA 50%',
+            trigger='sla_threshold_crossed',
+            conditions={'sla_pct_at_least': 50},
+            actions=[{'type': 'add_tag', 'tag': 'sla-warned'}],
+            fire_once_per_ticket=True,
+            is_active=True,
+        )
+        # First fire — rule should match + tag
+        n1 = fire('sla_threshold_crossed', self.t_half)
+        self.assertGreaterEqual(n1, 1)
+        self.t_half.refresh_from_db()
+        self.assertIn('sla-warned', self.t_half.tags or [])
+        # Second fire on the same ticket — guard kicks in
+        firings_after_first = WorkflowRuleFiring.objects.filter(
+            ticket=self.t_half).count()
+        self.assertEqual(firings_after_first, 1)
+        n2 = fire('sla_threshold_crossed', self.t_half)
+        firings_after_second = WorkflowRuleFiring.objects.filter(
+            ticket=self.t_half).count()
+        self.assertEqual(firings_after_second, 1)  # not duplicated
+
+    def test_management_command_fires_rules_for_open_tickets(self):
+        from psa.models import Ticket, WorkflowRule
+        from django.core.management import call_command
+        WorkflowRule.objects.create(
+            organization=None,
+            name='SLA 25%',
+            trigger='sla_threshold_crossed',
+            conditions={'sla_pct_at_least': 25},
+            actions=[{'type': 'add_tag', 'tag': 'crossed-25'}],
+            fire_once_per_ticket=True,
+            is_active=True,
+        )
+        call_command('psa_sla_workflow_tick', verbosity=0)
+        self.t_half.refresh_from_db()
+        self.assertIn('crossed-25', self.t_half.tags or [])
+
+    def test_management_command_skips_terminal_tickets(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from psa.models import Ticket, WorkflowRule
+        from django.core.management import call_command
+        # Closed ticket — shouldn't fire even though it would match.
+        now = timezone.now()
+        t_closed = Ticket.objects.create(
+            organization=self.org, subject='Closed',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_terminal,
+        )
+        Ticket.objects.filter(pk=t_closed.pk).update(
+            created_at=now - timedelta(hours=10),
+            resolution_due_at=now - timedelta(hours=1),
+        )
+        WorkflowRule.objects.create(
+            organization=None,
+            name='SLA 10% (closed should skip)',
+            trigger='sla_threshold_crossed',
+            conditions={'sla_pct_at_least': 10},
+            actions=[{'type': 'add_tag', 'tag': 'should-not-fire'}],
+            fire_once_per_ticket=True,
+            is_active=True,
+        )
+        call_command('psa_sla_workflow_tick', verbosity=0)
+        t_closed.refresh_from_db()
+        self.assertNotIn('should-not-fire', t_closed.tags or [])
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 
