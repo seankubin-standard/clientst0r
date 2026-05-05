@@ -3355,6 +3355,93 @@ def mrr_forecast_report(request):
 
 
 @login_required
+def software_compliance_report(request):
+    """
+    Phase 17 v3 (v3.17.305): software compliance audit. Joins
+    `assets.SoftwarePolicy` rows against `integrations.RMMSoftware`
+    inventory to surface:
+      - **Deny violations**: software that matches a `deny` policy.
+      - **Require gaps**: devices missing software required by a
+        `require` policy.
+
+    Tenant-scoped — staff sees all; org members see only their tree.
+    """
+    from assets.models import SoftwarePolicy
+    from integrations.models import RMMSoftware, RMMDevice
+    from django.db.models import Q
+    from collections import defaultdict
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    org_qs_filter = Q()
+    if not is_staff:
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+        org_qs_filter = Q(organization_id__in=ids)
+
+    # MSP-wide (org=None) policies + org-scoped ones
+    policies = list(SoftwarePolicy.objects.filter(is_active=True))
+    deny = [p for p in policies if p.action == 'deny']
+    require = [p for p in policies if p.action == 'require']
+
+    deny_violations = []
+    if deny:
+        sw_qs = RMMSoftware.objects.filter(org_qs_filter).select_related(
+            'organization', 'device')[:5000]
+        for sw in sw_qs:
+            for p in deny:
+                if p.organization_id and p.organization_id != sw.organization_id:
+                    continue
+                if p.matches(sw.name):
+                    deny_violations.append({
+                        'software': sw.name,
+                        'version': sw.version,
+                        'device': sw.device.name if sw.device else '',
+                        'org': sw.organization.name,
+                        'policy': p.name,
+                        'severity': p.severity,
+                    })
+
+    require_gaps = []
+    if require:
+        # For each device, see which require-policies have no matching software
+        devices = RMMDevice.objects.filter(org_qs_filter).select_related(
+            'organization')[:2000]
+        for d in devices:
+            installed = list(RMMSoftware.objects.filter(
+                device=d).values_list('name', flat=True))
+            for p in require:
+                if p.organization_id and p.organization_id != d.organization_id:
+                    continue
+                if not any(p.matches(name) for name in installed):
+                    require_gaps.append({
+                        'device': d.name,
+                        'org': d.organization.name,
+                        'policy': p.name,
+                        'severity': p.severity,
+                        'missing': p.pattern,
+                    })
+
+    # Summary by severity
+    by_sev = defaultdict(int)
+    for r in deny_violations + require_gaps:
+        by_sev[r['severity']] += 1
+
+    return render(request, 'reports/software_compliance.html', {
+        'deny_violations': deny_violations[:500],
+        'require_gaps': require_gaps[:500],
+        'totals': {
+            'deny_count': len(deny_violations),
+            'require_count': len(require_gaps),
+            'policy_count': len(policies),
+            'by_severity': dict(by_sev),
+        },
+    })
+
+
+@login_required
 def ticket_aging_report(request):
     """
     Phase 19 v1 (v3.17.257): ticket aging analytics. Bucket open

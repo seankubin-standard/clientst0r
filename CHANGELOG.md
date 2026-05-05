@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.305] - 2026-05-05
+
+### Added — Phase 17 v3 — Software compliance auditing
+Closes the "Software compliance auditing" sub-bullet of Phase 17. Allow/deny rules + a report that joins the rules against `RMMSoftware` inventory.
+
+- **New `assets.SoftwarePolicy` model** (migration `assets.0021`) — fields: organization (nullable for MSP-wide), name, pattern (substring match), action (`deny` / `require`), severity (5-level), is_active, notes.
+- **`SoftwarePolicy.matches(software_name)` method** — case-insensitive substring match. Empty pattern matches nothing.
+- **New report at `/reports/software-compliance/`** — joins active policies against `integrations.RMMSoftware` inventory:
+  - **Deny violations** — software found that matches a `deny` policy.
+  - **Require gaps** — devices missing software required by a `require` policy.
+  - Summary cards (total policies, deny count, require count, high/critical count).
+- **Tenant-scoped** — staff sees all; org members see only their tree.
+
+### Tests
+- 3 tests in `assets.tests.SoftwarePolicyTests` covering: case-insensitive substring matching, empty pattern matches nothing, MSP-wide policy with `organization=None`.
+
+### Roadmap
+Phase 17 sub-bullet "Software compliance auditing" annotated `*(shipped v3.17.305)*`.
+
 ## [3.17.304] - 2026-05-05
 
 ### Added — Phase 17 v1/v2 — Asset baseline + drift detection

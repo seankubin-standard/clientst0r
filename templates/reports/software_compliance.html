@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Software Compliance — Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">Software Compliance</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3"><i class="fas fa-shield-alt me-2"></i>Software Compliance</h2>
+<p class="text-muted">Cross-references RMM software inventory against active <code>SoftwarePolicy</code> rules. Deny violations surface forbidden installs; require gaps surface devices missing mandatory software.</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Active policies</div>
+                <div class="fs-4 fw-bold">{{ totals.policy_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-danger">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Deny violations</div>
+                <div class="fs-4 fw-bold">{{ totals.deny_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Require gaps</div>
+                <div class="fs-4 fw-bold">{{ totals.require_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-secondary">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">High/critical</div>
+                <div class="fs-4 fw-bold">{{ totals.by_severity.high|default:0|add:totals.by_severity.critical|default:0 }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h5 class="mt-4">Deny violations</h5>
+{% if deny_violations %}
+<div class="card mb-3 border-danger">
+    <table class="table table-sm small mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Software</th>
+                <th>Version</th>
+                <th>Device</th>
+                <th>Org</th>
+                <th>Policy</th>
+                <th>Severity</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for v in deny_violations %}
+            <tr>
+                <td>{{ v.software }}</td>
+                <td>{{ v.version|default:'—' }}</td>
+                <td>{{ v.device }}</td>
+                <td>{{ v.org }}</td>
+                <td>{{ v.policy }}</td>
+                <td>
+                    {% if v.severity == 'critical' %}<span class="badge text-bg-danger">Critical</span>
+                    {% elif v.severity == 'high' %}<span class="badge text-bg-warning">High</span>
+                    {% else %}<span class="badge text-bg-secondary">{{ v.severity|title }}</span>{% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted small">No deny violations.</p>
+{% endif %}
+
+<h5 class="mt-4">Require gaps</h5>
+{% if require_gaps %}
+<div class="card border-warning">
+    <table class="table table-sm small mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Device</th>
+                <th>Org</th>
+                <th>Missing</th>
+                <th>Policy</th>
+                <th>Severity</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for v in require_gaps %}
+            <tr>
+                <td>{{ v.device }}</td>
+                <td>{{ v.org }}</td>
+                <td><code>{{ v.missing }}</code></td>
+                <td>{{ v.policy }}</td>
+                <td>
+                    {% if v.severity == 'critical' %}<span class="badge text-bg-danger">Critical</span>
+                    {% elif v.severity == 'high' %}<span class="badge text-bg-warning">High</span>
+                    {% else %}<span class="badge text-bg-secondary">{{ v.severity|title }}</span>{% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted small">No require gaps.</p>
+{% endif %}
+{% endblock %}

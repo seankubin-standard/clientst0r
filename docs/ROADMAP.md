@@ -374,7 +374,7 @@ Planned capabilities:
 Planned capabilities:
 - Asset drift detection (compare current state vs. last-known baseline) *(shipped v3.17.304 — `Asset.detect_drift()` field-by-field comparison vs. latest `AssetBaseline`; returns list of `{field, baseline, current}` dicts)*
 - Baseline comparison *(shipped v3.17.304 — `AssetBaseline` model with JSONField snapshot + `Asset.capture_baseline()` method; `is_current` flag tracks the active baseline; old ones kept for history)*
-- Software compliance auditing
+- Software compliance auditing *(shipped v3.17.305 — `SoftwarePolicy` model with deny/require actions + severity; `/reports/software-compliance/` joins policies against `RMMSoftware` inventory and surfaces deny violations + require gaps)*
 - Hardware lifecycle scoring (composite — see Phase 13)
 - Warranty lookups (vendor API integrations)
 - Patch correlation (this CVE matches these N assets)

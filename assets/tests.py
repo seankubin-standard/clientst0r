@@ -809,3 +809,36 @@ class AssetBaselineDriftTests(TestCase):
         self.assertIsNotNone(ip_drift)
         self.assertEqual(ip_drift['baseline'], '10.0.0.5')
         self.assertEqual(ip_drift['current'], '10.0.0.99')
+
+
+class SoftwarePolicyTests(TestCase):
+    """Phase 17 v3 (v3.17.305): SoftwarePolicy match logic."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='SpCo', slug='sp-co')
+
+    def test_substring_match_case_insensitive(self):
+        from assets.models import SoftwarePolicy
+        p = SoftwarePolicy.objects.create(
+            organization=self.org, name='Block TeamViewer',
+            pattern='TeamViewer', action='deny', severity='high',
+        )
+        self.assertTrue(p.matches('TeamViewer 15.x'))
+        self.assertTrue(p.matches('teamviewer host'))
+        self.assertFalse(p.matches('AnyDesk'))
+
+    def test_empty_pattern_matches_nothing(self):
+        from assets.models import SoftwarePolicy
+        p = SoftwarePolicy(pattern='')
+        self.assertFalse(p.matches('TeamViewer'))
+
+    def test_msp_wide_policy_organization_is_none(self):
+        from assets.models import SoftwarePolicy
+        p = SoftwarePolicy.objects.create(
+            organization=None,
+            name='MSP-wide ban',
+            pattern='Crypto', action='deny',
+        )
+        self.assertIsNone(p.organization)
+        self.assertTrue(p.matches('CryptoLocker variant'))

@@ -686,6 +686,66 @@ class Service(BaseModel):
         ).order_by('name'))
 
 
+class SoftwarePolicy(BaseModel):
+    """Phase 17 v3 (v3.17.305): allow/deny rules for software inventory.
+    The compliance report scans `RMMSoftware` rows per org and flags
+    matches against `deny` policies (forbidden software) or non-matches
+    against `allow` policies (mandatory software missing).
+
+    Pattern is a case-insensitive substring match against
+    `RMMSoftware.name` — kept simple to avoid regex pitfalls. A
+    future iteration can add full regex / glob support.
+    """
+    ACTION_CHOICES = [
+        ('deny', 'Deny — flag installs as violations'),
+        ('require', 'Require — flag missing as violations'),
+    ]
+    SEVERITY_CHOICES = [
+        ('info', 'Info'),
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('critical', 'Critical'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='software_policies',
+        null=True, blank=True,
+        help_text='None = MSP-wide policy applied to every client.',
+    )
+    name = models.CharField(max_length=200)
+    pattern = models.CharField(
+        max_length=200,
+        help_text='Case-insensitive substring matched against software name '
+                  '(e.g. "TeamViewer" matches "TeamViewer 15.x").',
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES,
+                                  default='medium')
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'software_policies'
+        ordering = ['-severity', 'name']
+        indexes = [
+            models.Index(fields=['organization', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f'{self.name} [{self.get_action_display()}/{self.severity}]'
+
+    def matches(self, software_name: str) -> bool:
+        """True when the policy's substring is found in `software_name`
+        (case-insensitive). Empty pattern matches nothing."""
+        if not self.pattern or not software_name:
+            return False
+        return self.pattern.lower() in software_name.lower()
+
+
 class AssetBaseline(BaseModel):
     """Phase 17 v1/v2 (v3.17.304): point-in-time snapshot of an asset's
     intelligence-relevant fields. Used by `Asset.detect_drift()` to
