@@ -359,7 +359,7 @@ Planned capabilities:
 - Topology visualization
 - Nested organization mapping (extends Phase 17 multi-location) *(shipped — Phase 18 v1, v3.17.240)*
 - Shared infrastructure relationships *(shipped — Phase 18 v3, v3.17.252 — `Asset.is_shared_with_descendants` + `visible_to_org()`)*
-- Automatic asset linking (heuristic — same subnet, same rack, etc.)
+- Automatic asset linking (heuristic — same subnet, same rack, etc.) *(shipped v3.17.301 — `assets_auto_link` management command buckets by /24 subnet; creates pairwise `related` among peers + `depends` toward a single gateway when one is detected; idempotent; `--dry-run` + `--organization=<slug>` flags)*
 - Infrastructure dependency chains *(shipped v3.17.300 — `Asset.dependency_chain(direction='downstream'|'upstream', max_depth=10)` BFS walker; cycle-safe)*
 - Rack relationship visualization *(partial — racks already shipped)*
 - Service relationship tracking ("Email service depends on Exchange Online + DNS X + Connector Y")

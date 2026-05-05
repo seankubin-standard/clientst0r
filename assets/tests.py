@@ -534,3 +534,99 @@ class DependencyChainTests(TestCase):
     def test_invalid_direction_raises(self):
         with self.assertRaises(ValueError):
             self.web.dependency_chain(direction='sideways')
+
+
+class AssetAutoLinkTests(TestCase):
+    """Phase 16 v6 (v3.17.301): heuristic auto-linker."""
+
+    def setUp(self):
+        from assets.models import Asset
+        self.org = Organization.objects.create(name='AlCo', slug='al-co')
+        self.fw = Asset.objects.create(
+            organization=self.org, name='fw1', asset_type='firewall',
+            ip_address='192.168.10.1',
+        )
+        self.srv1 = Asset.objects.create(
+            organization=self.org, name='srv1', asset_type='server',
+            ip_address='192.168.10.5',
+        )
+        self.srv2 = Asset.objects.create(
+            organization=self.org, name='srv2', asset_type='server',
+            ip_address='192.168.10.6',
+        )
+        # Different subnet — must NOT be linked
+        self.other = Asset.objects.create(
+            organization=self.org, name='other', asset_type='server',
+            ip_address='10.0.0.1',
+        )
+
+    def test_command_creates_related_between_subnet_peers(self):
+        from django.core.management import call_command
+        from assets.models import Relationship
+        call_command('assets_auto_link', verbosity=0)
+        # srv1 ↔ srv2 should be related (gateway is fw1, not them)
+        rel = Relationship.objects.filter(
+            organization=self.org,
+            source_type='asset', source_id=self.srv1.pk,
+            target_type='asset', target_id=self.srv2.pk,
+            relation_type='related',
+        ).first()
+        self.assertIsNotNone(rel)
+
+    def test_command_creates_depends_pointing_at_gateway(self):
+        from django.core.management import call_command
+        from assets.models import Relationship
+        call_command('assets_auto_link', verbosity=0)
+        # srv1 depends on fw1
+        rel = Relationship.objects.filter(
+            organization=self.org,
+            source_type='asset', source_id=self.srv1.pk,
+            target_type='asset', target_id=self.fw.pk,
+            relation_type='depends',
+        ).first()
+        self.assertIsNotNone(rel)
+
+    def test_different_subnet_not_linked(self):
+        from django.core.management import call_command
+        from assets.models import Relationship
+        call_command('assets_auto_link', verbosity=0)
+        cross = Relationship.objects.filter(
+            organization=self.org,
+            source_id__in=[self.fw.pk, self.srv1.pk, self.srv2.pk],
+            target_id=self.other.pk,
+        )
+        self.assertFalse(cross.exists())
+
+    def test_idempotent(self):
+        from django.core.management import call_command
+        from assets.models import Relationship
+        call_command('assets_auto_link', verbosity=0)
+        before = Relationship.objects.filter(organization=self.org).count()
+        call_command('assets_auto_link', verbosity=0)
+        after = Relationship.objects.filter(organization=self.org).count()
+        self.assertEqual(before, after)
+
+    def test_dry_run_creates_nothing(self):
+        from django.core.management import call_command
+        from assets.models import Relationship
+        call_command('assets_auto_link', '--dry-run', verbosity=0)
+        self.assertEqual(
+            Relationship.objects.filter(organization=self.org).count(), 0,
+        )
+
+    def test_two_gateways_means_no_depends(self):
+        """If there are 2+ gateway-type assets on the segment, the
+        heuristic doesn't pick one — leaves it to a human."""
+        from django.core.management import call_command
+        from assets.models import Asset, Relationship
+        Asset.objects.create(
+            organization=self.org, name='fw2', asset_type='firewall',
+            ip_address='192.168.10.2',
+        )
+        # Wipe any prior auto-links
+        Relationship.objects.filter(organization=self.org).delete()
+        call_command('assets_auto_link', verbosity=0)
+        depends = Relationship.objects.filter(
+            organization=self.org, relation_type='depends',
+        )
+        self.assertFalse(depends.exists())

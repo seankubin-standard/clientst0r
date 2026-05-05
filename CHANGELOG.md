@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.301] - 2026-05-05
+
+### Added — Phase 16 v6 — Heuristic asset auto-linker
+Closes the "Automatic asset linking (heuristic — same subnet, same rack, etc.)" sub-bullet of Phase 16. New management command scans assets per org and creates `Relationship` rows by IP-subnet heuristics — saves a tech from manually linking 30 servers on the same /24.
+
+- **New management command `assets_auto_link`** — for each org with active assets, buckets by /24 subnet (first three octets of `ip_address`) and:
+  - Creates pairwise `related` relationships among non-gateway peers on the same subnet.
+  - When exactly ONE asset on the segment has `asset_type` in (`firewall`, `router`, `gateway`), each other asset gets a `depends` relationship pointing at it (since they all go offline if the gateway does).
+  - When 2+ gateways on a segment, leaves to a human — no `depends` rows created.
+- **Idempotent** — `Relationship` model's `unique_together` plus `get_or_create` on retry means re-runs don't duplicate.
+- **Conservative** — IPv6 addresses skipped in this pass (the next iteration can extend); only handles IPv4 dotted-quad.
+- **`--dry-run` + `--organization=<slug>`** flags for safe testing / scoped runs.
+
+### Tests
+- 6 tests in `assets.tests.AssetAutoLinkTests` covering: pairwise `related` creation, gateway `depends` arrow, different-subnet assets stay unlinked, idempotent re-run, dry-run creates nothing, ambiguous 2+-gateway case skips depends.
+
+### Roadmap
+Phase 16 sub-bullet "Automatic asset linking (heuristic — same subnet, same rack, etc.)" annotated `*(shipped v3.17.301)*`.
+
 ## [3.17.300] - 2026-05-05
 
 ### Added — Phase 16 v1/v2/v4/v5/v7 — Asset relationship + dependency chain
