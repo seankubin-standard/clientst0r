@@ -681,3 +681,140 @@ class GLAccountMappingTests(TestCase):
                         if l['Description'] == 'Default line'), None)
         self.assertEqual(mapped['AccountCode'], '4100')
         self.assertNotIn('AccountCode', default)
+
+
+class BidirectionalPaymentSyncTests(TestCase):
+    """Phase 27 v8 (v3.17.280): pull payment status from QBO/Xero."""
+
+    def setUp(self):
+        from psa.models import Invoice
+        from .models import AccountingConnection
+        from datetime import date
+        from decimal import Decimal as _D
+        self.org = Organization.objects.create(name='SyncCo')
+        self.client_org = Organization.objects.create(name='SyncClient')
+        self.conn = AccountingConnection.objects.create(
+            organization=self.org, provider_type='quickbooks_online',
+            name='SyncQBO', is_active=True, sync_enabled=True,
+        )
+        # Invoice that's been pushed but local copy says unpaid
+        from psa.models import InvoiceLineItem
+        self.invoice = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Sync test', invoice_date=date.today(),
+            status='sent',
+            accounting_provider='quickbooks_online',
+            accounting_external_id='QBO-SYNC-1',
+            pushed_to_accounting_at=__import__('django.utils.timezone',
+                                                fromlist=['now']).now(),
+        )
+        InvoiceLineItem.objects.create(
+            invoice=self.invoice, description='Service',
+            quantity=1, unit_price=_D('500'),
+        )
+        self.invoice.recompute_totals()
+        # Reload — recompute saves but doesn't refresh in-memory total
+        self.invoice.refresh_from_db()
+
+    def test_qbo_poll_invoice_balance_paid(self):
+        from unittest import mock
+        from .providers.accounting.quickbooks_online import QuickBooksOnlineProvider
+        provider = QuickBooksOnlineProvider(self.conn)
+        with mock.patch.object(provider, '_api') as fake:
+            r = mock.MagicMock()
+            r.status_code = 200
+            r.json.return_value = {'Invoice': {'Id': 'QBO-SYNC-1', 'Balance': 0}}
+            fake.return_value = r
+            res = provider.poll_invoice_balance(self.invoice)
+        self.assertTrue(res['success'])
+        self.assertEqual(res['status'], 'paid')
+
+    def test_xero_poll_invoice_balance_open(self):
+        from unittest import mock
+        from .providers.accounting.xero import XeroProvider
+        from decimal import Decimal as _D
+        conn = self.conn
+        conn.provider_type = 'xero'
+        conn.save()
+        provider = XeroProvider(conn)
+        with mock.patch.object(provider, '_api') as fake:
+            r = mock.MagicMock()
+            r.status_code = 200
+            r.json.return_value = {'Invoices': [{'InvoiceID': 'X-1', 'AmountDue': '120.50'}]}
+            fake.return_value = r
+            res = provider.poll_invoice_balance(self.invoice)
+        self.assertTrue(res['success'])
+        self.assertEqual(res['status'], 'open')
+        self.assertEqual(res['balance'], _D('120.50'))
+
+    def test_management_command_closes_locally_unpaid_invoice(self):
+        from unittest import mock
+        from psa.models import Payment
+        from decimal import Decimal as _D
+        from django.core.management import call_command
+
+        # Patch the provider's poll method to claim "paid" for our invoice
+        def fake_get_provider(conn):
+            mp = mock.MagicMock()
+            mp.poll_invoice_balance.return_value = {
+                'success': True, 'balance': _D('0'),
+                'status': 'paid', 'error': None,
+            }
+            return mp
+
+        with mock.patch(
+            'integrations.management.commands.accounting_sync_payments.get_accounting_provider',
+            side_effect=fake_get_provider,
+        ):
+            call_command('accounting_sync_payments', verbosity=0)
+
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.amount_paid, _D('500'))
+        self.assertEqual(self.invoice.status, 'paid')
+        self.assertEqual(Payment.objects.filter(invoice=self.invoice).count(), 1)
+
+    def test_management_command_skips_when_provider_says_open(self):
+        from unittest import mock
+        from psa.models import Payment
+        from decimal import Decimal as _D
+        from django.core.management import call_command
+
+        def fake_get_provider(conn):
+            mp = mock.MagicMock()
+            mp.poll_invoice_balance.return_value = {
+                'success': True, 'balance': _D('500'),
+                'status': 'open', 'error': None,
+            }
+            return mp
+
+        with mock.patch(
+            'integrations.management.commands.accounting_sync_payments.get_accounting_provider',
+            side_effect=fake_get_provider,
+        ):
+            call_command('accounting_sync_payments', verbosity=0)
+
+        self.invoice.refresh_from_db()
+        self.assertEqual(Payment.objects.filter(invoice=self.invoice).count(), 0)
+        self.assertEqual(self.invoice.amount_paid, _D('0'))
+
+    def test_dry_run_creates_no_payments(self):
+        from unittest import mock
+        from psa.models import Payment
+        from decimal import Decimal as _D
+        from django.core.management import call_command
+
+        def fake_get_provider(conn):
+            mp = mock.MagicMock()
+            mp.poll_invoice_balance.return_value = {
+                'success': True, 'balance': _D('0'),
+                'status': 'paid', 'error': None,
+            }
+            return mp
+
+        with mock.patch(
+            'integrations.management.commands.accounting_sync_payments.get_accounting_provider',
+            side_effect=fake_get_provider,
+        ):
+            call_command('accounting_sync_payments', '--dry-run', verbosity=0)
+
+        self.assertEqual(Payment.objects.filter(invoice=self.invoice).count(), 0)

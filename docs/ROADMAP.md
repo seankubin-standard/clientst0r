@@ -573,7 +573,7 @@ Dependencies: Phase 3.5 (dashboards), Phase 3.6 (scheduled reports).
 **Roadmap item:** Deeper accounting integration than the basic invoice push that ships today (QBO + Xero — Phase shipped earlier). Adds true reconciliation between Client St0r's books and the accounting system.
 
 Planned capabilities:
-- Bidirectional payment sync — when a payment lands in QBO/Xero, mark the source Invoice as paid
+- Bidirectional payment sync — when a payment lands in QBO/Xero, mark the source Invoice as paid *(shipped v3.17.280 — `BaseAccountingProvider.poll_invoice_balance()` + QBO/Xero implementations + `accounting_sync_payments` daily cron that closes locally-unpaid invoices when the provider's balance is zero; idempotent + audit-logged)*
 - Invoice deduplication detection (catch double-pushes) *(shipped v3.17.255 — duplicate `(provider, accounting_external_id)` groups surfaced on `/reports/accounting-reconciliation/`)*
 - Unpaid-vs-pushed reconciliation report (what's invoiced here but missing in QBO?) *(shipped v3.17.255 — outstanding-pushed section + push-error section + CSV export)*
 - Per-invoice line-item mapping to GL accounts (revenue vs. cost-of-services-sold splits) *(shipped v3.17.278 — `InvoiceLineItem.gl_account_code` propagates to QBO `ItemRef.value` and Xero `AccountCode` on push; blank falls through to provider default; back-compat)*

@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.280] - 2026-05-05
+
+### Added — Phase 27 v8 Bidirectional Payment Sync
+Closes the "Bidirectional payment sync — when a payment lands in QBO/Xero, mark the source Invoice as paid" sub-bullet of Phase 27. Outbound invoice push has been in place for releases; this adds the inbound-poll counterpart so an MSP doesn't have to manually mark "paid in QBO" against local invoices.
+
+- **New `BaseAccountingProvider.poll_invoice_balance(invoice)`** abstract method — returns `{success, balance, status, error}` so callers can detect "paid in QBO but our copy still says outstanding."
+- **QBO implementation** — `GET /v3/company/<realm>/invoice/<id>` and pulls the `Balance` field. Balance=0 → `status='paid'`.
+- **Xero implementation** — `GET /api.xro/2.0/Invoices/<id>` and pulls `AmountDue`. Same logic.
+- **New management command `accounting_sync_payments`** — fans out across every active connection. For each pushed-but-locally-unpaid Invoice on that org, polls the provider; when provider says paid, creates a Payment row with `method='other'`, `reference='auto-sync from <provider>'` to close the local invoice. Existing `recompute_totals()` flips status to `paid`. `--dry-run` for safe testing; `--connection-id` to limit to one connection.
+- **Audit-logged via `log_accounting_call`** (action='poll_balance') so the reconciliation report and audit-log viewer surface the sync activity.
+- **Idempotent** — already-paid invoices are excluded by the SQL filter; running the cron twice in a row does nothing the second time.
+
+### Tests
+- 5 tests in `integrations.tests.BidirectionalPaymentSyncTests` covering the QBO + Xero `poll_invoice_balance` happy-path, the cron closing a locally-unpaid invoice when provider says paid, the cron skipping when the provider still shows balance, and the dry-run guarantee.
+
+### Roadmap
+Phase 27 sub-bullet "Bidirectional payment sync" annotated `*(shipped v3.17.280)*`.
+
 ## [3.17.279] - 2026-05-05
 
 ### Added — Phase 27 v7 Multi-Entity / Multi-Book Invoice Routing

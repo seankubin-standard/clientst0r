@@ -299,3 +299,30 @@ class XeroProvider(BaseAccountingProvider):
             response_summary='ok',
         )
         return {'success': True}
+
+    def poll_invoice_balance(self, invoice):
+        """Phase 27 v8 (v3.17.280): GET /Invoices/<id> and pull AmountDue."""
+        from decimal import Decimal as _D
+        if not invoice.accounting_external_id:
+            return {'success': False, 'error': 'invoice not pushed yet',
+                    'balance': None, 'status': None}
+        resp = self._api('GET', f'/Invoices/{invoice.accounting_external_id}')
+        if resp.status_code != 200:
+            return {'success': False,
+                    'error': f'HTTP {resp.status_code}: {resp.text[:200]}',
+                    'balance': None, 'status': None}
+        data = resp.json() or {}
+        invoices = data.get('Invoices') or []
+        if not invoices:
+            return {'success': False, 'error': 'no invoice in Xero response',
+                    'balance': None, 'status': None}
+        amount_due = invoices[0].get('AmountDue')
+        if amount_due is None:
+            return {'success': False, 'error': 'no AmountDue in Xero response',
+                    'balance': None, 'status': None}
+        return {
+            'success': True,
+            'balance': _D(str(amount_due)),
+            'status': 'paid' if _D(str(amount_due)) == 0 else 'open',
+            'error': None,
+        }

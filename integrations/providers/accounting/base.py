@@ -122,6 +122,22 @@ class BaseAccountingProvider:
         (when accounting_external_id is set)."""
         return {'skipped': True, 'reason': 'record_payment not supported'}
 
+    def poll_invoice_balance(self, invoice) -> Dict[str, Any]:
+        """Phase 27 v8 (v3.17.280): query the provider for the current
+        balance on a previously-pushed invoice. Used by the
+        `accounting_sync_payments` cron to detect "paid in QBO but our
+        copy still says unpaid" cases.
+
+        Returns a dict:
+          {success: bool, balance: Decimal | None, status: str | None,
+           error: str | None}
+
+        Subclasses must implement; default raises NotImplementedError so
+        a misconfigured provider doesn't silently no-op the sync.
+        """
+        raise NotImplementedError(
+            f'{self.provider_name} does not implement poll_invoice_balance')
+
 
 def log_accounting_call(*, connection, action, resource_type='', resource_id='',
                          external_id='', success=False, http_status=None,
