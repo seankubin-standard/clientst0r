@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.275] - 2026-05-05
+
+### Added — Phase 20 v7 Workflow Enforcement
+Closes the "Workflow enforcement (e.g., can't close ticket without manager sign-off)" sub-bullet of Phase 20. Block forward Quote transitions while an approval chain is still in flight.
+
+- **New `Quote.has_open_approvals` property** — True when any `PSAApproval` row tied to the quote is `pending` or `blocked`.
+- **`Quote.mark_accepted()`** raises `ValueError` if `has_open_approvals` is True. Model-level safety net regardless of caller (UI, API, signals).
+- **`quote_accept` view** checks the property before calling the model and surfaces a friendly error pointing to `/psa/approvals/`. The model `try/except` is also kept as a defense-in-depth.
+- **Pairs with the existing `Invoice` gate**: invoice push has been blocked while `requires_approval` is True since Phase 36 v2 — Quote acceptance now matches.
+
+### Tests
+- 5 tests in `psa.tests.test_phase3_5_features.WorkflowEnforcementTests` covering the property (`pending` and `blocked` both count as open), the model `ValueError`, the post-decision happy path, and the view redirect with status preserved.
+
+### Roadmap
+Phase 20 sub-bullet "Workflow enforcement" annotated `*(shipped v3.17.275)*`.
+
 ## [3.17.274] - 2026-05-05
 
 ### Added — Phase 20 v6 Approval Audit-Trail Completion

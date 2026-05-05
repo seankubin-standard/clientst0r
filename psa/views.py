@@ -2835,16 +2835,28 @@ def quote_accept(request, pk):
     if org is not None:
         qs = qs.filter(organization=org)
     item = get_object_or_404(qs, pk=pk)
+    # Phase 20 v7 (v3.17.275): block acceptance while approvals are open.
+    if item.has_open_approvals:
+        messages.error(
+            request,
+            f'Quote {item.quote_number} has open approvals — resolve the '
+            f'chain at /psa/approvals/ before accepting.',
+        )
+        return redirect('psa:quote_detail', pk=item.pk)
     create = request.POST.get('create_ticket') == 'on'
     create_proj = request.POST.get('create_project') == 'on'
     queue = Queue.objects.filter(is_active=True).first()
     priority = TicketPriority.objects.first()
     ttype = TicketType.objects.first()
     status = TicketStatus.objects.filter(slug='new').first()
-    item.mark_accepted(user=request.user, create_ticket=create,
-                       queue=queue, priority=priority,
-                       ticket_type=ttype, status=status,
-                       create_project=create_proj)
+    try:
+        item.mark_accepted(user=request.user, create_ticket=create,
+                           queue=queue, priority=priority,
+                           ticket_type=ttype, status=status,
+                           create_project=create_proj)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect('psa:quote_detail', pk=item.pk)
     AuditLog.log(
         user=request.user, action='update',
         organization=org or item.organization,

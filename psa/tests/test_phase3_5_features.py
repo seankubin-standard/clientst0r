@@ -2020,3 +2020,90 @@ class ApprovalAuditTrailTests(TestCase):
         self.assertGreaterEqual(len(history), 2)
         # Newest-first: most recent entry should be the decision
         self.assertIn('Approved', history[0].description)
+
+
+class WorkflowEnforcementTests(TestCase):
+    """Phase 20 v7 (v3.17.275): block forward transitions while an
+    approval chain is still open."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='WfeCo', slug='wfe-co')
+        self.client_org = Organization.objects.create(name='WfeClient',
+                                                       slug='wfe-client')
+        self.user = User.objects.create_user('wfe-user', 'wu@x.com', 'pw')
+
+    def _make_quote(self, total='1000'):
+        from psa.models import Quote
+        from decimal import Decimal as _D
+        return Quote.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Q', status='draft', total=_D(total),
+        )
+
+    def test_has_open_approvals_property(self):
+        from psa.models import PSAApproval
+        q = self._make_quote()
+        self.assertFalse(q.has_open_approvals)
+        PSAApproval.objects.create(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=q.pk, status='pending',
+        )
+        self.assertTrue(q.has_open_approvals)
+
+    def test_mark_accepted_refuses_when_open_approval(self):
+        from psa.models import PSAApproval
+        q = self._make_quote()
+        PSAApproval.objects.create(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=q.pk, status='pending',
+        )
+        with self.assertRaises(ValueError):
+            q.mark_accepted(user=self.user, create_ticket=False)
+
+    def test_mark_accepted_works_after_approval_decided(self):
+        from psa.models import PSAApproval
+        q = self._make_quote()
+        appr = PSAApproval.objects.create(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=q.pk, status='pending',
+        )
+        appr.decide(user=self.user, approved=True)
+        # Now should accept
+        q.mark_accepted(user=self.user, create_ticket=False)
+        q.refresh_from_db()
+        self.assertEqual(q.status, 'accepted')
+
+    def test_blocked_stage_also_counts_as_open(self):
+        from psa.models import PSAApproval
+        q = self._make_quote()
+        PSAApproval.objects.create(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=q.pk, status='blocked',
+        )
+        self.assertTrue(q.has_open_approvals)
+
+    def test_view_redirects_with_error_when_open(self):
+        from psa.models import PSAApproval, Quote
+        q = self._make_quote()
+        PSAApproval.objects.create(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=q.pk, status='pending',
+        )
+        ss = SystemSetting.get_settings()
+        ss.psa_enabled = True
+        ss.save()
+        Membership.objects.create(user=self.user, organization=self.org,
+                                   role=Role.OWNER, is_active=True)
+        c = Client()
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+        with override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False):
+            r = c.post(f'/psa/quotes/{q.pk}/accept/')
+        self.assertEqual(r.status_code, 302)
+        q.refresh_from_db()
+        # Quote must NOT have advanced
+        self.assertEqual(q.status, 'draft')

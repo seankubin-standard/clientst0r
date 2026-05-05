@@ -1632,6 +1632,15 @@ class Quote(models.Model):
     def mark_accepted(self, *, user=None, create_ticket: bool = True,
                       queue=None, priority=None, ticket_type=None,
                       status=None, create_project: bool = False):
+        # Phase 20 v7 (v3.17.275): refuse acceptance while any approval
+        # chain stage is still pending or blocked. The view should call
+        # `has_open_approvals` first and surface a friendly message;
+        # this is the model-level safety net.
+        if self.has_open_approvals:
+            raise ValueError(
+                f'Quote {self.quote_number} has open approvals — '
+                f'resolve the chain first.'
+            )
         self.status = 'accepted'
         self.accepted_at = timezone.now()
         if create_ticket and not self.converted_ticket and queue and priority and ticket_type and status:
@@ -1647,6 +1656,18 @@ class Quote(models.Model):
         if create_project and not self.converted_project:
             self.convert_to_project(user=user, save=False)
         self.save()
+
+    @property
+    def has_open_approvals(self) -> bool:
+        """Phase 20 v7 (v3.17.275): True when this quote has any
+        PSAApproval row in a non-terminal state (pending or blocked).
+        Used to gate `mark_accepted()` and other forward transitions
+        until every chain stage is decided."""
+        from .models import PSAApproval
+        return PSAApproval.objects.filter(
+            object_type='psa.Quote', object_id=self.pk,
+            status__in=['pending', 'blocked'],
+        ).exists()
 
     def send_for_approval(self, *, user=None, stages=None,
                            default_threshold_total=None):
