@@ -41,6 +41,9 @@ urlpatterns = [
     path('relationships/map/', relationship_views.relationship_map, name='relationship_map'),
     path('relationships/create/', relationship_views.relationship_create, name='relationship_create'),
     path('relationships/<int:pk>/delete/', relationship_views.relationship_delete, name='relationship_delete'),
+    # Phase 16 v3 (v3.17.303) — topology JSON for external viz tools
+    path('relationships/topology.json', relationship_views.topology_json,
+         name='topology_json'),
 
     # Phase 13 v4 (v3.17.261) — RMA tracking
     path('rma/', views.rma_list, name='rma_list'),

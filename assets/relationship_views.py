@@ -177,6 +177,65 @@ def relationship_delete(request, pk):
     })
 
 
+@login_required
+def topology_json(request):
+    """
+    Phase 16 v3 (v3.17.303): JSON topology endpoint. Returns nodes +
+    edges for the active org's full asset/service relationship graph,
+    suitable for external visualization tools (Cytoscape, vis-network,
+    D3 force layout). Capped at 1000 nodes / 2000 edges to keep
+    payload manageable.
+
+    Response shape:
+      {nodes: [{id, label, type, asset_type|status}, ...],
+       edges: [{source, target, type}, ...],
+       counts: {assets, services, edges}}
+    """
+    from .models import Service
+    org = get_request_organization(request)
+    if org is None:
+        return JsonResponse({'nodes': [], 'edges': [],
+                              'counts': {'assets': 0, 'services': 0,
+                                         'edges': 0}})
+    nodes = []
+    for a in Asset.objects.for_organization(org)[:800]:
+        nodes.append({
+            'id': f'asset-{a.pk}',
+            'label': a.name,
+            'type': 'asset',
+            'asset_type': a.asset_type,
+        })
+    for s in Service.objects.for_organization(org)[:200]:
+        nodes.append({
+            'id': f'service-{s.pk}',
+            'label': s.name,
+            'type': 'service',
+            'status': s.status,
+            'criticality': s.criticality,
+        })
+    edges = []
+    rels = Relationship.objects.filter(
+        organization=org,
+        source_type__in=['asset', 'service'],
+        target_type__in=['asset', 'service'],
+    )[:2000]
+    for r in rels:
+        edges.append({
+            'source': f'{r.source_type}-{r.source_id}',
+            'target': f'{r.target_type}-{r.target_id}',
+            'type': r.relation_type,
+        })
+    return JsonResponse({
+        'nodes': nodes,
+        'edges': edges,
+        'counts': {
+            'assets': sum(1 for n in nodes if n['type'] == 'asset'),
+            'services': sum(1 for n in nodes if n['type'] == 'service'),
+            'edges': len(edges),
+        },
+    })
+
+
 def get_node_data(org, object_type, object_id):
     """
     Get node data for visualization.

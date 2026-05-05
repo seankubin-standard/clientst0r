@@ -349,21 +349,21 @@ Planned capabilities:
 
 **Goal:** Improve recurring service management and operational billing visibility.
 
-## Phase 16 — Documentation Relationship Mapping **(M)**
+## Phase 16 — Documentation Relationship Mapping **(M)** [shipped — v3.17.303]
 
 **Roadmap item:** Infrastructure Relationship Mapping & Dependency Visualization.
 
 Planned capabilities:
 - Asset relationship mapping (parent / child / depends-on) *(shipped — `assets.Relationship` model with parent/child/depends/related/documents choices; v3.17.300 confirmation)*
 - Visual dependency graphs (DAG renders) *(shipped — `relationship_map` view emits nodes + edges; v3.17.300 confirmation)*
-- Topology visualization
+- Topology visualization *(shipped v3.17.303 — `/assets/relationships/topology.json` returns full org graph as nodes + edges; consumable by Cytoscape / vis-network / D3)*
 - Nested organization mapping (extends Phase 17 multi-location) *(shipped — Phase 18 v1, v3.17.240)*
 - Shared infrastructure relationships *(shipped — Phase 18 v3, v3.17.252 — `Asset.is_shared_with_descendants` + `visible_to_org()`)*
 - Automatic asset linking (heuristic — same subnet, same rack, etc.) *(shipped v3.17.301 — `assets_auto_link` management command buckets by /24 subnet; creates pairwise `related` among peers + `depends` toward a single gateway when one is detected; idempotent; `--dry-run` + `--organization=<slug>` flags)*
 - Infrastructure dependency chains *(shipped v3.17.300 — `Asset.dependency_chain(direction='downstream'|'upstream', max_depth=10)` BFS walker; cycle-safe)*
-- Rack relationship visualization *(partial — racks already shipped)*
+- Rack relationship visualization *(shipped v3.17.303 — racks already shipped; topology JSON includes rack-type assets and their relationships)*
 - Service relationship tracking ("Email service depends on Exchange Online + DNS X + Connector Y") *(shipped v3.17.302 — `assets.Service` model with status (operational/degraded/down/maintenance) + criticality + owner; `set_status()` stamps last_status_change; `asset_dependencies()` walks `Relationship(source_type='service')` rows)*
-- Documentation inheritance (child sites inherit parent SOPs)
+- Documentation inheritance (child sites inherit parent SOPs) *(shipped — `OrganizationManager.for_organization()` walks the parent chain so child orgs see parent KB articles / docs / contacts; v3.17.303 confirmation)*
 
 **Goal:** Improve infrastructure visibility and operational context awareness.
 

@@ -688,3 +688,64 @@ class ServiceModelTests(TestCase):
         from assets.models import Service
         with self.assertRaises(IntegrityError):
             Service.objects.create(organization=self.org, name='Email')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class TopologyJSONTests(TestCase):
+    """Phase 16 v3 (v3.17.303): /assets/relationships/topology.json
+    returns nodes + edges for the active org."""
+
+    def setUp(self):
+        from assets.models import Service, Relationship
+        self.org = Organization.objects.create(name='TopoCo', slug='topo-co')
+        self.user = User.objects.create_user('topo-user', 'tu@x.com', 'pw')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        self.a1 = Asset.objects.create(
+            organization=self.org, name='a1', asset_type='server',
+        )
+        self.a2 = Asset.objects.create(
+            organization=self.org, name='a2', asset_type='server',
+        )
+        self.svc = Service.objects.create(
+            organization=self.org, name='Email', status='operational',
+        )
+        Relationship.objects.create(
+            organization=self.org,
+            source_type='asset', source_id=self.a1.pk,
+            target_type='asset', target_id=self.a2.pk,
+            relation_type='depends',
+        )
+        Relationship.objects.create(
+            organization=self.org,
+            source_type='service', source_id=self.svc.pk,
+            target_type='asset', target_id=self.a1.pk,
+            relation_type='depends',
+        )
+        self.client = Client()
+        _login_in_org(self.client, self.user, self.org)
+
+    def test_returns_nodes_and_edges(self):
+        resp = self.client.get('/assets/relationships/topology.json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data['counts']['assets'], 2)
+        self.assertEqual(data['counts']['services'], 1)
+        self.assertEqual(data['counts']['edges'], 2)
+
+    def test_nodes_include_asset_and_service_metadata(self):
+        resp = self.client.get('/assets/relationships/topology.json')
+        nodes = {n['id']: n for n in resp.json()['nodes']}
+        a_node = nodes[f'asset-{self.a1.pk}']
+        self.assertEqual(a_node['type'], 'asset')
+        self.assertEqual(a_node['asset_type'], 'server')
+        s_node = nodes[f'service-{self.svc.pk}']
+        self.assertEqual(s_node['type'], 'service')
+        self.assertEqual(s_node['status'], 'operational')
+
+    def test_edges_are_typed(self):
+        resp = self.client.get('/assets/relationships/topology.json')
+        edges = resp.json()['edges']
+        types = {e['type'] for e in edges}
+        self.assertIn('depends', types)

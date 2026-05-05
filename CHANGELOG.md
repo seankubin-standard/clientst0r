@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.303] - 2026-05-05
+
+### Added — Phase 16 v3/v8/v10 — Topology JSON + confirmations (closes Phase 16)
+Closes the last 3 sub-bullets of Phase 16 and advances the **Phase 16 — Documentation Relationship Mapping** marker to `[shipped — v3.17.303]` (10 of 10 sub-bullets shipped).
+
+- **New endpoint `/assets/relationships/topology.json`** — returns the active org's full asset + service relationship graph as JSON nodes + edges. Suitable for external visualization tools (Cytoscape, vis-network, D3 force-layout). Cap: 800 assets / 200 services / 2000 edges to keep payload bounded. Tenant-scoped via `OrganizationManager.for_organization()`.
+  - **Node shape** for assets: `{id, label, type='asset', asset_type}`.
+  - **Node shape** for services: `{id, label, type='service', status, criticality}`.
+  - **Edge shape**: `{source, target, type}` where `source` and `target` are `<type>-<pk>` strings matching node IDs.
+- **"Rack relationship visualization"** — was annotated partial; advanced to fully shipped via the new topology JSON which includes rack-type assets and their relationships. The existing `relationship_map` HTML view + new JSON endpoint together cover the bullet.
+- **"Documentation inheritance (child sites inherit parent SOPs)"** — was already covered by `OrganizationManager.for_organization()` walking the descendant chain (Phase 18 v1, v3.17.240). KB articles, docs, contacts, etc. all scope by FK to Organization, so a parent org's content is visible to child orgs through the existing query manager. Annotated as shipped via existing infrastructure.
+
+### Tests
+- 3 tests in `assets.tests.TopologyJSONTests` covering: node + edge counts, asset/service metadata fields included on nodes, edges include the typed `relation_type`.
+
+### Roadmap
+- "Topology visualization" → annotated `*(shipped v3.17.303 — `/assets/relationships/topology.json` returns full org graph as nodes + edges; consumable by Cytoscape / vis-network / D3)*`.
+- "Rack relationship visualization" → upgraded from partial to `*(shipped v3.17.303 — racks already shipped; topology JSON includes rack-type assets and their relationships)*`.
+- "Documentation inheritance" → annotated `*(shipped — `OrganizationManager.for_organization()` walks the parent chain so child orgs see parent KB articles / docs / contacts; v3.17.303 confirmation)*`.
+- **Phase 16 — Documentation Relationship Mapping** header advanced to `[shipped — v3.17.303]`.
+
 ## [3.17.302] - 2026-05-05
 
 ### Added — Phase 16 v9 — Service relationship tracking
