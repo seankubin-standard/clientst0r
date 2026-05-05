@@ -53,6 +53,14 @@ def organization_context(request):
         'DJANGO_VERSION': f"{'.'.join(map(str, django.VERSION[:3]))}",
         'PYTHON_VERSION': f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         'system_settings': system_settings,  # Add system settings for whitelabeling
+        # v3.17.314 — surface `require_organization_context` warning
+        # state so templates that include `org_selector_warning.html`
+        # render the org-picker banner correctly even when the view
+        # uses `render()` (not TemplateResponse).
+        'show_org_selector_warning': getattr(
+            request, '_show_org_selector_warning', False),
+        'available_organizations': getattr(
+            request, '_available_organizations', []),
         **feature_toggles,  # Add feature toggles to context
     }
 

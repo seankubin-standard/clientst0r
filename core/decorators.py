@@ -167,13 +167,22 @@ def require_organization_context(view_func):
             # and raise IntegrityError.
             return redirect(request.path)
 
-        # GET request with no org — show form with warning banner
+        # GET request with no org — show form with warning banner.
+        # Stash the warning state on `request` so the
+        # `core.context_processors.organization_context` processor can
+        # surface it to every template (the historic
+        # `response.context_data` injection only worked for
+        # TemplateResponse, which most views don't use — bug fixed
+        # in v3.17.314).
         organizations = Organization.objects.filter(is_active=True).order_by('name')
+        request._show_org_selector_warning = True
+        request._available_organizations = list(organizations)
 
         # Call the view to render the empty form
         response = view_func(request, *args, **kwargs)
 
-        # Inject context for warning banner (if response has context_data)
+        # Best-effort context_data injection for legacy TemplateResponse
+        # callers; harmless if response.context_data doesn't exist.
         if hasattr(response, 'context_data'):
             response.context_data['show_org_selector_warning'] = True
             response.context_data['available_organizations'] = organizations

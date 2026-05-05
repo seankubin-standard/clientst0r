@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.314] - 2026-05-05
+
+### Fixed — Org-selector warning never rendered, blocking creation in global view
+Reported by user: "I tried to create a website monitor — got 'Please select an organization before creating this resource' but no way to pick one." Repro: superuser in global-view (no current org) → `/monitoring/website-monitors/create/` → message shown, no banner, no selector.
+
+Root cause: `require_organization_context` injected `show_org_selector_warning` + `available_organizations` into `response.context_data` — which only exists on `TemplateResponse` instances, not on `HttpResponse`. The website-monitor view (and most others) uses `render(...)` which returns a plain `HttpResponse`, so the injection silently no-op'd and the org-picker banner never rendered. POST without `_selected_organization_id` then triggered the error message with no remediation path.
+
+- **Decorator fix**: `require_organization_context` now stashes `_show_org_selector_warning` + `_available_organizations` on `request` (both before and instead of the old `response.context_data` injection — kept for back-compat with any TemplateResponse callers).
+- **Context processor fix**: `core.context_processors.organization_context` reads the request attributes and surfaces them to every template via `show_org_selector_warning` + `available_organizations`. Defaults to False / empty list when the decorator hasn't run.
+- **`org_selector_warning.html` partial unchanged** — it already reads `show_org_selector_warning` and renders the org `<select>` plus the JS that copies the value into a hidden `_selected_organization_id` input on form submit.
+- **Net effect**: any view with `@require_organization_context` (website monitors, plus every other org-tied create view) now correctly shows the org-picker banner when a global-view user lands on the form. Picking an org and submitting switches context and creates the resource in one click.
+
+### Tests
+- 4 tests in `core.tests.test_org_selector_warning.OrgSelectorWarningContextTests` covering: decorator stashes flags on global-view request, decorator skips when org context exists, context processor surfaces request flags, context processor defaults False / empty when flags aren't set.
+
 ## [3.17.313] - 2026-05-05
 
 ### Added — Phase 21 v9 — Web Push notifications (scaffold)
