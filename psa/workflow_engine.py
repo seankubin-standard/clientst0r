@@ -170,6 +170,77 @@ def run_action(ticket, action: Dict[str, Any]) -> None:
                 ticket.tags = tags
                 ticket.save(update_fields=['tags', 'updated_at'])
 
+    elif atype == 'assign_round_robin':
+        # Phase 14 v8 (v3.17.287): pick the active staff user with the
+        # oldest "last assigned ticket" (= who hasn't been assigned in
+        # the longest). When no one has ever been assigned, falls back
+        # to the lowest-pk active staffer for stable behavior.
+        from .models import Ticket as _T
+        from django.db.models import Max
+        candidates = User.objects.filter(is_active=True, is_staff=True)
+        # Optional `group` filter: e.g. {"type": "...", "group": "techs"}
+        grp = action.get('group')
+        if grp:
+            candidates = candidates.filter(groups__name=grp)
+        if not candidates.exists():
+            return
+        last_assigned = (_T.objects
+                         .filter(assigned_to__in=candidates)
+                         .values('assigned_to_id')
+                         .annotate(latest=Max('updated_at')))
+        latest_by_user = {r['assigned_to_id']: r['latest'] for r in last_assigned}
+        chosen = sorted(
+            candidates,
+            key=lambda u: (
+                latest_by_user.get(u.id) is not None,
+                latest_by_user.get(u.id),
+                u.id,
+            ),
+        )[0]
+        ticket.assigned_to = chosen
+        ticket.save(update_fields=['assigned_to', 'updated_at'])
+
+    elif atype == 'assign_skill_match':
+        # Phase 14 v8 (v3.17.287): assign to a user whose Group
+        # membership matches the action's `skill_group`. When multiple
+        # users match, falls through to load-balanced selection
+        # (lowest open-ticket count).
+        from .models import Ticket as _T
+        from django.db.models import Count, Q as _Q
+        skill = (action.get('skill_group') or '').strip()
+        if not skill:
+            raise ValueError('assign_skill_match requires "skill_group"')
+        candidates = User.objects.filter(
+            is_active=True, is_staff=True,
+            groups__name=skill,
+        )
+        if not candidates.exists():
+            return
+        # Tie-break by current open-ticket count (low first)
+        ranked = candidates.annotate(
+            open_count=Count('psa_assigned_tickets',
+                              filter=~_Q(psa_assigned_tickets__status__is_terminal=True)),
+        ).order_by('open_count', 'id')
+        ticket.assigned_to = ranked.first()
+        ticket.save(update_fields=['assigned_to', 'updated_at'])
+
+    elif atype == 'assign_load_balanced':
+        # Phase 14 v8 (v3.17.287): pick the active staff user with the
+        # fewest currently-open assigned tickets.
+        from django.db.models import Count, Q as _Q
+        candidates = User.objects.filter(is_active=True, is_staff=True)
+        grp = action.get('group')
+        if grp:
+            candidates = candidates.filter(groups__name=grp)
+        if not candidates.exists():
+            return
+        ranked = candidates.annotate(
+            open_count=Count('psa_assigned_tickets',
+                              filter=~_Q(psa_assigned_tickets__status__is_terminal=True)),
+        ).order_by('open_count', 'id')
+        ticket.assigned_to = ranked.first()
+        ticket.save(update_fields=['assigned_to', 'updated_at'])
+
     elif atype == 'fire_rule':
         # Phase 14 v4 (v3.17.285): multi-step orchestration. Chain
         # to another WorkflowRule by name within the same org.

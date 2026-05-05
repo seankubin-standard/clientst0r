@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.287] - 2026-05-05
+
+### Added — Phase 14 v8 — Dynamic technician assignment
+Closes the "Dynamic technician assignment (round-robin, skill-match, load-balanced)" sub-bullet of Phase 14. Three new workflow action types pick a tech automatically, no manual click.
+
+- **`assign_round_robin`** — picks the active staff user with the oldest "last assigned ticket" timestamp (= who hasn't been assigned in the longest). Never-assigned techs rank first. Optional `group` filter scopes the pool.
+- **`assign_skill_match`** — picks an active staff user belonging to the named `skill_group` (Django `auth.Group`). Multiple matches tie-break by load (lowest currently-open ticket count).
+- **`assign_load_balanced`** — picks the active staff user with the fewest currently-open assigned tickets. Optional `group` filter scopes the pool.
+- **All three skip inactive users** — `is_active=False` is excluded from candidate selection at the queryset level.
+
+Use cases: Tier-1 round-robin, dispatch-by-specialty (network → network-team), overflow-balancing during high-volume bursts.
+
+### Tests
+- 5 tests in `psa.tests.test_workflow_kb_contracts.WorkflowDynamicAssignmentTests` covering: skill-match picks the group member, unknown group is a no-op, load-balanced picks the lowest-load tech, round-robin picks never-assigned over recently-assigned, inactive users never chosen.
+
+### Roadmap
+Phase 14 sub-bullet "Dynamic technician assignment (round-robin, skill-match, load-balanced)" annotated `*(shipped v3.17.287)*`.
+
 ## [3.17.286] - 2026-05-05
 
 ### Added — Phase 14 v3 — SLA-driven workflow automation

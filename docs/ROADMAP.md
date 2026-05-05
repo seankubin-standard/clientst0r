@@ -321,7 +321,7 @@ Planned capabilities:
 - Escalation logic (auto-escalate after N hours unanswered)
 - Scheduled automations
 - State-based workflows
-- Dynamic technician assignment (round-robin, skill-match, load-balanced)
+- Dynamic technician assignment (round-robin, skill-match, load-balanced) *(shipped v3.17.287 — 3 new action types: `assign_round_robin` (oldest-assigned wins), `assign_skill_match` (Django Group lookup, load-tiebreak), `assign_load_balanced` (lowest open-ticket count); all skip inactive users)*
 - Workflow templates
 - Cross-module workflow integration (PSA ↔ procurement ↔ CRM)
 - AI-assisted workflow suggestions (**OPTIONAL AI**)

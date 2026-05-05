@@ -526,6 +526,172 @@ class WorkflowSLAThresholdTests(TestCase):
         self.assertNotIn('should-not-fire', t_closed.tags or [])
 
 
+class WorkflowDynamicAssignmentTests(TestCase):
+    """Phase 14 v8 (v3.17.287): assign_round_robin / assign_skill_match /
+    assign_load_balanced action types."""
+
+    def setUp(self):
+        from django.contrib.auth.models import Group
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='AssignCo', slug='assign-co')
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status_open = TicketStatus.objects.filter(slug='new').first() \
+                           or TicketStatus.objects.first()
+        # Three active staff techs
+        self.alice = User.objects.create_user('alice', 'a@x.com', 'pw',
+                                                is_staff=True)
+        self.bob = User.objects.create_user('bob', 'b@x.com', 'pw',
+                                              is_staff=True)
+        self.carol = User.objects.create_user('carol', 'c@x.com', 'pw',
+                                                is_staff=True)
+        # An inactive user — must never be picked.
+        self.zach = User.objects.create_user('zach', 'z@x.com', 'pw',
+                                               is_staff=True, is_active=False)
+        # Skill group on Alice
+        self.linux = Group.objects.create(name='linux-experts')
+        self.alice.groups.add(self.linux)
+
+    def _make_ticket(self):
+        from psa.models import Ticket
+        return Ticket.objects.create(
+            organization=self.org, subject='T',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_open,
+        )
+
+    def test_assign_skill_match_picks_skilled_user(self):
+        from psa.models import WorkflowRule
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Linux skill route',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'assign_skill_match',
+                      'skill_group': 'linux-experts'}],
+            is_active=True,
+        )
+        t = self._make_ticket()
+        t.refresh_from_db()
+        self.assertEqual(t.assigned_to, self.alice)
+
+    def test_assign_skill_match_unknown_group_noop(self):
+        from psa.models import WorkflowRule
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Phantom skill route',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'assign_skill_match',
+                      'skill_group': 'wizard-class'}],
+            is_active=True,
+        )
+        t = self._make_ticket()
+        t.refresh_from_db()
+        self.assertIsNone(t.assigned_to)
+
+    def test_assign_load_balanced_picks_user_with_fewest_open(self):
+        from psa.models import Ticket, WorkflowRule
+        # Give Bob 3 open tickets, Alice 1, Carol 0.
+        for _ in range(3):
+            Ticket.objects.create(
+                organization=self.org, subject='B-tic',
+                queue=self.queue, priority=self.priority,
+                ticket_type=self.ttype, status=self.status_open,
+                assigned_to=self.bob,
+            )
+        Ticket.objects.create(
+            organization=self.org, subject='A-tic',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_open,
+            assigned_to=self.alice,
+        )
+        # Now create a rule + new ticket
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Load balance',
+            trigger='ticket_created',
+            conditions={'subject_contains': 'route-me'},
+            actions=[{'type': 'assign_load_balanced'}],
+            is_active=True,
+        )
+        from psa.models import Ticket as _T
+        new_t = _T.objects.create(
+            organization=self.org, subject='please route-me',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_open,
+        )
+        new_t.refresh_from_db()
+        # Carol has 0 open → should be chosen
+        self.assertEqual(new_t.assigned_to, self.carol)
+
+    def test_assign_round_robin_picks_oldest_assigned(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from psa.models import Ticket, WorkflowRule
+        # Give each tech a "previous" ticket assigned at a known time
+        now = timezone.now()
+        old = Ticket.objects.create(
+            organization=self.org, subject='old',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_open,
+            assigned_to=self.bob,
+        )
+        Ticket.objects.filter(pk=old.pk).update(
+            updated_at=now - timedelta(days=10),
+        )
+        recent = Ticket.objects.create(
+            organization=self.org, subject='recent',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_open,
+            assigned_to=self.alice,
+        )
+        Ticket.objects.filter(pk=recent.pk).update(
+            updated_at=now - timedelta(hours=1),
+        )
+        # Carol has never been assigned → should rank first by the
+        # "never-been-assigned" tier.
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Round robin',
+            trigger='ticket_created',
+            conditions={'subject_contains': 'round-me'},
+            actions=[{'type': 'assign_round_robin'}],
+            is_active=True,
+        )
+        new_t = Ticket.objects.create(
+            organization=self.org, subject='please round-me',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_open,
+        )
+        new_t.refresh_from_db()
+        # Carol (no prior assignment) should be picked
+        self.assertEqual(new_t.assigned_to, self.carol)
+
+    def test_inactive_user_never_chosen(self):
+        from psa.models import WorkflowRule
+        # Make inactive Zach the only group member
+        zach_only = self.linux  # currently has Alice
+        zach_only.user_set.clear()
+        self.zach.groups.add(zach_only)
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Skill (inactive only)',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'assign_skill_match',
+                      'skill_group': 'linux-experts'}],
+            is_active=True,
+        )
+        t = self._make_ticket()
+        t.refresh_from_db()
+        # Zach is inactive → no candidate → ticket stays unassigned
+        self.assertIsNone(t.assigned_to)
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 
