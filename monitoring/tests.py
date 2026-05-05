@@ -269,3 +269,85 @@ class VLANModelTests(TestCase):
         s = str(v)
         self.assertIn('200', s)
         self.assertIn('Guest', s)
+
+
+from django.conf import settings as _django_settings
+from django.test import Client, override_settings
+
+from accounts.models import Membership, Role
+from core.models import Organization
+from monitoring.models import WebsiteMonitor
+
+_TEST_MIDDLEWARE = [
+    m for m in _django_settings.MIDDLEWARE
+    if 'Enforce2FAMiddleware' not in m and 'AxesMiddleware' not in m
+]
+
+
+@override_settings(MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WebsiteMonitorDeleteGlobalViewTests(TestCase):
+    """v3.17.316 — privileged users in global view can delete monitors.
+    Previously the delete view forced `organization=org` even when org
+    was None, so every lookup 404'd in global view."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='DelCo', slug='delco')
+        self.staff = User.objects.create_user(
+            'staffer', 'staff@x.com', 'pw',
+            is_staff=True, is_superuser=True,
+        )
+        self.member = User.objects.create_user(
+            'member', 'm@x.com', 'pw',
+        )
+        Membership.objects.create(
+            user=self.member, organization=self.org,
+            role=Role.OWNER, is_active=True,
+        )
+        self.monitor = WebsiteMonitor.objects.create(
+            organization=self.org, name='Test', url='https://example.com/',
+        )
+        self.client = Client()
+
+    def _login(self, user, org=None):
+        self.client.force_login(user)
+        s = self.client.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_staff_in_global_view_can_delete(self):
+        # Login as staff WITHOUT pinning an org — global view
+        self._login(self.staff)
+        # Set is_staff_user header indirectly via a request middleware hook
+        # is set when the user is in global view; for the test we just
+        # rely on the user being is_superuser=True which the view checks.
+        resp = self.client.post(
+            f'/monitoring/websites/{self.monitor.pk}/delete/'
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(WebsiteMonitor.objects.filter(pk=self.monitor.pk).exists())
+
+    def test_org_member_can_delete_their_orgs_monitor(self):
+        self._login(self.member, self.org)
+        resp = self.client.post(
+            f'/monitoring/websites/{self.monitor.pk}/delete/'
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(WebsiteMonitor.objects.filter(pk=self.monitor.pk).exists())
+
+    def test_org_member_cannot_delete_other_orgs_monitor(self):
+        other_org = Organization.objects.create(name='Other', slug='other-org')
+        # Login as the member (scoped to self.org), give them session for self.org
+        self._login(self.member, self.org)
+        # Create a monitor in OTHER org
+        other_mon = WebsiteMonitor.objects.create(
+            organization=other_org, name='Other', url='https://other.com/',
+        )
+        resp = self.client.post(
+            f'/monitoring/websites/{other_mon.pk}/delete/'
+        )
+        # Org-scoped lookup should 404 because monitor belongs to other_org
+        self.assertEqual(resp.status_code, 404)
+        # And the monitor should still exist
+        self.assertTrue(WebsiteMonitor.objects.filter(pk=other_mon.pk).exists())

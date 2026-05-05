@@ -450,7 +450,16 @@ class TicketComment(models.Model):
     author_name = models.CharField(max_length=200, blank=True)
     author_email = models.EmailField(blank=True)
     source = models.CharField(max_length=20, default='manual',
-        help_text='manual | email | portal | api')
+        help_text='manual | email | portal | api | voice | workflow')
+
+    # Phase 21 v10 (v3.17.315): voice-to-ticket — when a tech dictates
+    # via the PWA Web Speech API, the transcript lands as a comment
+    # with `source='voice'` and the original audio confidence /
+    # language tag in `voice_meta`.
+    voice_meta = models.JSONField(
+        default=dict, blank=True,
+        help_text='When source=voice: {confidence, language, duration_s}',
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -618,6 +627,18 @@ class TicketTimeEntry(models.Model):
         help_text='Computed on save when ended_at is set')
     is_billable = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
+
+    # Phase 21 v6 (v3.17.315): GPS time tracking — coords captured by
+    # the PWA at start/stop. Lets the dispatcher see "tech started this
+    # at the customer's address, ended back at the office."
+    start_lat = models.DecimalField(max_digits=10, decimal_places=7,
+                                      null=True, blank=True)
+    start_lng = models.DecimalField(max_digits=11, decimal_places=7,
+                                      null=True, blank=True)
+    end_lat = models.DecimalField(max_digits=10, decimal_places=7,
+                                    null=True, blank=True)
+    end_lng = models.DecimalField(max_digits=11, decimal_places=7,
+                                    null=True, blank=True)
 
     # Phase 25 (v3.17.242): batch approval. When a TimesheetSubmission is
     # created, all of the tech's time entries in that period get the

@@ -5,6 +5,33 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.316] - 2026-05-05
+
+### Fixed — Website monitor create/delete in global view
+Two related reports from the same user testing v3.17.314:
+
+1. **"Won't add monitor, even after I select org"** — the org-selector banner's JS depended on jQuery + Select2 (`typeof $.fn.select2`). When neither was loaded, the script crashed at the first reference and the form `submit` listener never registered, so the hidden `_selected_organization_id` field never got injected and POSTs failed with the original error. Rewrote the partial JS as defensive vanilla JavaScript: pre-injects the hidden input on page load, syncs it on every `change`, validates on submit. No external dependency.
+2. **"Can't delete monitors"** — `website_monitor_delete` did `get_object_or_404(WebsiteMonitor, pk=pk, organization=org)` which forced `organization=org` even when org was None (global view). Every monitor has an organization, so the lookup always 404'd in global view. Added the privileged-user branch that mirrors the existing `website_monitor_detail` / `website_monitor_check` pattern: superuser/staff can delete in global view; org members stay scoped to their org.
+
+### Changed — Org-selector banner styling
+Reported by user: orange `alert-warning` looks too alarming. Switched the partial to `alert-info` (light-blue) + `info-circle` icon — same prominence, less "something is broken" energy.
+
+### Tests
+- 3 tests in `monitoring.tests.WebsiteMonitorDeleteGlobalViewTests` covering: staff in global view can delete, org member can delete their org's monitor, org member can't delete a different org's monitor (404).
+
+## [3.17.315] - 2026-05-05
+
+### Added — Phase 21 v6 + v10 — GPS time tracking + voice-to-ticket marker
+- **GPS time tracking** (Phase 21 v6): 4 new fields on `TicketTimeEntry` (migration `psa.0056`) — `start_lat`, `start_lng`, `end_lat`, `end_lng` (all DecimalField, nullable). The PWA captures coords at timer start/stop; dispatchers can reconcile "tech started this at the customer's address, ended back at the office."
+- **Voice-to-ticket marker** (Phase 21 v10): `TicketComment.source` help-text now lists `voice` and `workflow` as valid values; added `voice_meta` JSONField (default `{}`) for storing `{confidence, language, duration_s}` from the Web Speech API transcript. The PWA's voice recorder POSTs the transcript through the existing comment-create API with `source='voice'`; no new endpoint needed.
+
+### Fixed — Org-selector warning banner color
+Reported by user: orange `alert-warning` on the org-picker banner looks too alarming. Changed the partial in `templates/includes/org_selector_warning.html` to `alert-info` (light-blue) — same prominence, less "something is wrong" energy. Icon swapped from `exclamation-triangle` to `info-circle` to match.
+
+### Roadmap
+- Phase 21 sub-bullet "GPS time tracking" upgraded from `*(planned — Phase 8.2)*` to `*(shipped v3.17.315 — `TicketTimeEntry.start_lat/lng` + `end_lat/lng` fields)*`.
+- Phase 21 sub-bullet "Voice-to-ticket workflows" annotated `*(shipped v3.17.315 — `TicketComment.source='voice'` + `voice_meta` JSONField; PWA Web Speech API → existing comment-create endpoint)*`.
+
 ## [3.17.314] - 2026-05-05
 
 ### Fixed — Org-selector warning never rendered, blocking creation in global view

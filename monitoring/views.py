@@ -142,9 +142,21 @@ def website_monitor_edit(request, pk):
 @login_required
 @require_write
 def website_monitor_delete(request, pk):
-    """Delete website monitor."""
+    """Delete website monitor.
+
+    v3.17.316: privileged users (superuser / staff) can delete monitors
+    in global view too. Previously the view forced
+    `organization=org` even when `org` was None — every monitor has
+    an organization, so the lookup always 404'd in global view.
+    """
     org = get_request_organization(request)
-    monitor = get_object_or_404(WebsiteMonitor, pk=pk, organization=org)
+    is_staff = getattr(request, 'is_staff_user', False)
+    is_privileged = request.user.is_superuser or is_staff
+
+    if is_privileged:
+        monitor = get_object_or_404(WebsiteMonitor, pk=pk)
+    else:
+        monitor = _org_get_or_404(WebsiteMonitor, org, pk=pk)
 
     if request.method == 'POST':
         url = monitor.url
