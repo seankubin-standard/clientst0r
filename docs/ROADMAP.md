@@ -376,7 +376,7 @@ Planned capabilities:
 - Baseline comparison *(shipped v3.17.304 — `AssetBaseline` model with JSONField snapshot + `Asset.capture_baseline()` method; `is_current` flag tracks the active baseline; old ones kept for history)*
 - Software compliance auditing *(shipped v3.17.305 — `SoftwarePolicy` model with deny/require actions + severity; `/reports/software-compliance/` joins policies against `RMMSoftware` inventory and surfaces deny violations + require gaps)*
 - Hardware lifecycle scoring (composite — see Phase 13)
-- Warranty lookups (vendor API integrations)
+- Warranty lookups (vendor API integrations) *(shipped v3.17.309 — `WarrantyConnection` model + `BaseWarrantyProvider` interface + Dell / HPE / Lenovo adapter stubs; live `lookup_warranty()` lands when an MSP connects a real account)*
 - Patch correlation (this CVE matches these N assets) *(shipped v3.17.306 — `Vulnerability` model with cve_id + cvss_score + affected_pattern; `affected_assets()` walks `RMMSoftware → RMMDevice → Asset` (by name) to surface affected endpoints)*
 - Smart asset grouping (auto-cohort by role/version/location) *(shipped v3.17.307 — `AssetGroup` model with JSON criteria + computed `members()`; supports `asset_type` / `manufacturer__icontains` / `model__icontains` / `os_version__icontains` / `tags__contains`)*
 - Vulnerability-to-ticket linking *(shipped v3.17.307 — `Vulnerability.create_remediation_ticket()` spawns a PSA Ticket with severity-mapped priority (critical→P1) and an affected-asset list)*

@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.309] - 2026-05-05
+
+### Added — Phase 17 v5 — Vendor warranty lookup scaffolding (Dell + HPE + Lenovo)
+Closes the "Warranty lookups (vendor API integrations)" sub-bullet of Phase 17. Same scaffold-now / live-API-later pattern as the payment + tax adapters from Phase 15.
+
+- **New `integrations.WarrantyConnection` model** (migration `integrations.0027`) — per-org row with provider type (`dell` / `hpe` / `lenovo` / `manual`), name, base_url, encrypted_credentials, last_lookup_at, last_error.
+- **New `integrations/providers/warranty/` package** — `BaseWarrantyProvider` interface plus Dell + HPE + Lenovo stubs.
+  - `lookup_warranty(serial_number)` returns `{success, expires_on, service_level, error}`. Stubs return clear "not yet implemented" markers with credential checks.
+- **`PROVIDER_REGISTRY` + `get_warranty_provider(connection)`** lookup helper.
+
+### Tests
+- 6 tests in `integrations.tests.WarrantyConnectionScaffoldTests` covering: encrypted credential round-trip, Dell/HPE/Lenovo provider resolution, `lookup_warranty()` returns unimplemented marker with creds present, returns missing-credentials error without.
+
+### Roadmap
+Phase 17 sub-bullet "Warranty lookups (vendor API integrations)" annotated `*(shipped v3.17.309 — `WarrantyConnection` model + `BaseWarrantyProvider` interface + Dell / HPE / Lenovo adapter stubs; live `lookup_warranty()` lands when an MSP connects a real account)*`.
+
 ## [3.17.308] - 2026-05-05
 
 ### Added — Phase 17 v9+v10 — Configuration monitoring + operational health score

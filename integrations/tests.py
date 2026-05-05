@@ -964,3 +964,78 @@ class TaxConnectionScaffoldTests(TestCase):
         result = p.compute_tax(invoice=None)
         self.assertFalse(result['success'])
         self.assertIn('not configured', result['error'])
+
+
+class WarrantyConnectionScaffoldTests(TestCase):
+    """Phase 17 v5 (v3.17.309): vendor warranty lookup adapter stubs."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='WrCo')
+
+    def test_credential_round_trip(self):
+        from .models import WarrantyConnection
+        conn = WarrantyConnection.objects.create(
+            organization=self.org, provider_type='dell',
+            name='Dell-prod',
+        )
+        conn.set_credentials({'client_id': 'abc', 'client_secret': 'xyz'})
+        conn.save()
+        creds = conn.get_credentials()
+        self.assertEqual(creds['client_id'], 'abc')
+        self.assertEqual(creds['client_secret'], 'xyz')
+        self.assertNotIn('xyz', conn.encrypted_credentials)
+
+    def test_dell_resolution(self):
+        from .models import WarrantyConnection
+        from .providers.warranty import get_warranty_provider
+        from .providers.warranty.dell import DellWarrantyProvider
+        conn = WarrantyConnection.objects.create(
+            organization=self.org, provider_type='dell',
+            name='Dell-test',
+        )
+        p = get_warranty_provider(conn)
+        self.assertIsInstance(p, DellWarrantyProvider)
+        self.assertEqual(p.connection.base_url,
+                          'https://apigtwb2c.us.dell.com')
+
+    def test_hpe_resolution(self):
+        from .models import WarrantyConnection
+        from .providers.warranty import get_warranty_provider
+        from .providers.warranty.hpe import HPEWarrantyProvider
+        conn = WarrantyConnection.objects.create(
+            organization=self.org, provider_type='hpe', name='HPE-test',
+        )
+        self.assertIsInstance(get_warranty_provider(conn), HPEWarrantyProvider)
+
+    def test_lenovo_resolution(self):
+        from .models import WarrantyConnection
+        from .providers.warranty import get_warranty_provider
+        from .providers.warranty.lenovo import LenovoWarrantyProvider
+        conn = WarrantyConnection.objects.create(
+            organization=self.org, provider_type='lenovo', name='Lenovo-test',
+        )
+        self.assertIsInstance(get_warranty_provider(conn), LenovoWarrantyProvider)
+
+    def test_lookup_returns_unimplemented_marker(self):
+        from .models import WarrantyConnection
+        from .providers.warranty import get_warranty_provider
+        conn = WarrantyConnection.objects.create(
+            organization=self.org, provider_type='dell', name='Stub-dell',
+        )
+        conn.set_credentials({'client_id': 'a', 'client_secret': 'b'})
+        conn.save()
+        p = get_warranty_provider(conn)
+        result = p.lookup_warranty('SN12345')
+        self.assertFalse(result['success'])
+        self.assertIn('not yet implemented', result['error'])
+
+    def test_lookup_complains_without_creds(self):
+        from .models import WarrantyConnection
+        from .providers.warranty import get_warranty_provider
+        conn = WarrantyConnection.objects.create(
+            organization=self.org, provider_type='hpe', name='No-key',
+        )
+        p = get_warranty_provider(conn)
+        result = p.lookup_warranty('SN12345')
+        self.assertFalse(result['success'])
+        self.assertIn('missing', result['error'])
