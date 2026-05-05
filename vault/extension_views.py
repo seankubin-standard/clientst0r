@@ -8,6 +8,7 @@ which require the user's Django session (the extension can only get a
 token by being signed in to the app first).
 """
 import json
+from urllib.parse import urlparse
 
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -17,7 +18,8 @@ from django.views.decorators.http import require_http_methods
 
 from audit.models import AuditLog
 from core.middleware import get_request_organization
-from .models import WebExtensionAuthToken
+from .extension_auth import extension_auth_required
+from .models import Password, WebExtensionAuthToken
 
 
 # ---------------------------------------------------------------------------
@@ -164,3 +166,202 @@ def _user_has_org_access(user, organization):
     if hasattr(user, 'profile') and getattr(user.profile, 'is_staff_user', lambda: False)():
         return True
     return user.memberships.filter(organization=organization, is_active=True).exists()
+
+
+def _has_extension_permission(user, organization, attr_name):
+    """
+    Check whether `user` has the given extension permission within `organization`.
+
+    Superusers and staff-flagged users always pass. Otherwise the user's
+    Membership in `organization` must resolve to a RoleTemplate (or simple
+    role fallback) where `attr_name` is True.
+
+    Permission attrs are: 'vault_extension_use', 'vault_extension_offline_cache'.
+    """
+    if user.is_superuser:
+        return True
+    if hasattr(user, 'profile') and getattr(user.profile, 'is_staff_user', lambda: False)():
+        return True
+    if organization is None:
+        return False
+    membership = user.memberships.filter(
+        organization=organization, is_active=True,
+    ).select_related('role_template').first()
+    if membership is None:
+        return False
+    perms = membership.get_permissions()
+    return bool(getattr(perms, attr_name, False))
+
+
+def _visible_password_qs(user, organization):
+    """
+    QuerySet of Password rows visible to `user` in `organization`. The
+    extension never sees personal-vault entries; those are session-scoped
+    only. When organization is None the caller is in global view.
+    """
+    if organization is None:
+        if user.is_superuser:
+            return Password.objects.filter(is_personal=False)
+        # Staff users without a chosen org -> all orgs they can see
+        if hasattr(user, 'profile') and getattr(user.profile, 'is_staff_user', lambda: False)():
+            return Password.objects.filter(is_personal=False)
+        # Org users without an org pinned -> nothing
+        return Password.objects.none()
+    return Password.objects.filter(
+        organization=organization, is_personal=False,
+    )
+
+
+def _host_from_url(value):
+    """Lower-cased host (sans port) from a URL string. None on failure."""
+    if not value:
+        return None
+    try:
+        parsed = urlparse(value if '://' in value else 'http://' + value)
+    except Exception:
+        return None
+    host = (parsed.hostname or '').lower()
+    return host or None
+
+
+# ---------------------------------------------------------------------------
+# Bearer-authed extension endpoints — Phase 28 v3.17.328
+# ---------------------------------------------------------------------------
+
+
+@csrf_exempt
+@require_http_methods(['GET'])
+@extension_auth_required
+def autofill(request):
+    """
+    Autofill match endpoint.
+
+    GET /vault/api/extension/autofill?url=https://example.com/login
+
+    Returns minimal payload — title, username, totp_available — and
+    excludes encrypted blobs / secrets. Audit-logs every call as
+    `vault_autofill` regardless of match count (so a tech who hits a
+    page where no credential exists still leaves a trail).
+
+    Gated by RoleTemplate.vault_extension_use.
+    """
+    organization = request.current_organization
+    if not _has_extension_permission(request.user, organization, 'vault_extension_use'):
+        return JsonResponse({'error': 'Extension use permission required.'}, status=403)
+
+    url = request.GET.get('url', '').strip()
+    if not url:
+        return JsonResponse({'error': 'url parameter required.'}, status=400)
+    target_host = _host_from_url(url)
+    if not target_host:
+        return JsonResponse({'error': 'Could not parse url.'}, status=400)
+
+    qs = _visible_password_qs(request.user, organization)
+    matches = []
+    # Match by host suffix — exact host or any subdomain match.
+    for pw in qs.exclude(url='')[:500]:
+        pw_host = _host_from_url(pw.url)
+        if not pw_host:
+            continue
+        if pw_host == target_host or target_host.endswith('.' + pw_host) \
+                or pw_host.endswith('.' + target_host):
+            matches.append({
+                'id': pw.pk,
+                'title': pw.title,
+                'username': pw.username,
+                'totp_available': bool(pw.otp_secret),
+                'url': pw.url,
+            })
+        if len(matches) >= 50:
+            break
+
+    AuditLog.log(
+        user=request.user,
+        action='read',
+        organization=organization,
+        object_type='vault.Password',
+        object_id=None,
+        description=f'vault_autofill — host={target_host} matches={len(matches)}',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+        extra_data={'event': 'vault_autofill', 'host': target_host,
+                    'match_count': len(matches)},
+    )
+
+    return JsonResponse({
+        'host': target_host,
+        'matches': matches,
+        'count': len(matches),
+    })
+
+
+@csrf_exempt
+@require_http_methods(['GET'])
+@extension_auth_required
+def bulk_sync(request):
+    """
+    Bulk-sync the user's visible passwords as encrypted blobs for offline cache.
+
+    GET /vault/api/extension/sync?cursor=<id>&limit=<n>
+
+    Each row carries the **encrypted** ciphertext blob — the extension
+    decrypts client-side using the master-derived key. Server never
+    transmits plaintext on this endpoint.
+
+    Gated by RoleTemplate.vault_extension_offline_cache.
+    """
+    organization = request.current_organization
+    if not _has_extension_permission(request.user, organization,
+                                      'vault_extension_offline_cache'):
+        return JsonResponse(
+            {'error': 'Offline cache permission required.'}, status=403,
+        )
+
+    try:
+        limit = max(1, min(int(request.GET.get('limit', 100)), 500))
+    except (TypeError, ValueError):
+        limit = 100
+    cursor = request.GET.get('cursor')
+    qs = _visible_password_qs(request.user, organization).order_by('id')
+    if cursor:
+        try:
+            qs = qs.filter(id__gt=int(cursor))
+        except (TypeError, ValueError):
+            return JsonResponse({'error': 'Invalid cursor.'}, status=400)
+
+    rows = list(qs[:limit + 1])
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = rows[-1].pk if rows and has_more else None
+
+    AuditLog.log(
+        user=request.user,
+        action='read',
+        organization=organization,
+        object_type='vault.Password',
+        object_id=None,
+        description=f'vault_extension_sync — count={len(rows)}',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+        extra_data={'event': 'vault_extension_sync', 'count': len(rows)},
+    )
+
+    return JsonResponse({
+        'count': len(rows),
+        'next_cursor': next_cursor,
+        'has_more': has_more,
+        'passwords': [
+            {
+                'id': pw.pk,
+                'title': pw.title,
+                'username': pw.username,
+                'url': pw.url,
+                'organization_id': pw.organization_id,
+                'encrypted_password': pw.encrypted_password,
+                'password_type': pw.password_type,
+                'totp_available': bool(pw.otp_secret),
+                'updated_at': pw.updated_at.isoformat() if pw.updated_at else None,
+            }
+            for pw in rows
+        ],
+    })

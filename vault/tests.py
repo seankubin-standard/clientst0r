@@ -737,3 +737,191 @@ class ExtensionTokenLifecycleEndpointTests(TestCase):
         c2.force_login(intruder)
         r2 = c2.delete(f'/vault/api/extension/tokens/{token_id}/revoke/')
         self.assertEqual(r2.status_code, 403)
+
+
+# ===========================================================================
+# Phase 28 v3.17.328 — autofill match + bulk sync + RoleTemplate perms
+# ===========================================================================
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ExtensionAutofillEndpointTests(TestCase):
+    """v3.17.328 — autofill match endpoint."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='AutofillCo', slug='af-co')
+        cls.user = User.objects.create_user('af_user', 'af@x.com', 'pw')
+        from accounts.models import Membership, Role
+        Membership.objects.create(
+            user=cls.user, organization=cls.org,
+            role=Role.OWNER, is_active=True,
+        )
+        cls.match_pw = Password.objects.create(
+            organization=cls.org, title='Example login',
+            url='https://example.com/login', username='alice',
+            encrypted_password='dummy',
+        )
+        cls.other_pw = Password.objects.create(
+            organization=cls.org, title='Other site',
+            url='https://other.test/', username='bob',
+            encrypted_password='dummy',
+        )
+
+    def setUp(self):
+        from vault.models import WebExtensionAuthToken
+        self.secret, self.row = WebExtensionAuthToken.issue(
+            user=self.user, organization=self.org,
+        )
+        self.c = Client()
+
+    def _hdrs(self):
+        return {'HTTP_AUTHORIZATION': f'Bearer {self.secret}'}
+
+    def test_autofill_returns_match(self):
+        r = self.c.get(
+            '/vault/api/extension/autofill/?url=https://example.com/admin',
+            **self._hdrs(),
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data['count'], 1)
+        self.assertEqual(data['matches'][0]['title'], 'Example login')
+        self.assertNotIn('encrypted_password', data['matches'][0])
+
+    def test_autofill_no_match(self):
+        r = self.c.get(
+            '/vault/api/extension/autofill/?url=https://nope.invalid/',
+            **self._hdrs(),
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['count'], 0)
+
+    def test_autofill_emits_audit_log(self):
+        from audit.models import AuditLog
+        before = AuditLog.objects.filter(extra_data__event='vault_autofill').count()
+        self.c.get(
+            '/vault/api/extension/autofill/?url=https://example.com/login',
+            **self._hdrs(),
+        )
+        after = AuditLog.objects.filter(extra_data__event='vault_autofill').count()
+        self.assertEqual(after - before, 1)
+
+    def test_autofill_requires_url_param(self):
+        r = self.c.get('/vault/api/extension/autofill/', **self._hdrs())
+        self.assertEqual(r.status_code, 400)
+
+    def test_autofill_blocked_for_user_without_extension_use_perm(self):
+        from accounts.models import Membership, Role
+        ro_user = User.objects.create_user('ro', 'ro@x.com', 'pw')
+        Membership.objects.create(
+            user=ro_user, organization=self.org,
+            role=Role.READONLY, is_active=True,
+        )
+        from vault.models import WebExtensionAuthToken
+        secret, _ = WebExtensionAuthToken.issue(
+            user=ro_user, organization=self.org,
+        )
+        r = self.c.get(
+            '/vault/api/extension/autofill/?url=https://example.com/',
+            HTTP_AUTHORIZATION=f'Bearer {secret}',
+        )
+        self.assertEqual(r.status_code, 403)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ExtensionBulkSyncEndpointTests(TestCase):
+    """v3.17.328 — bulk-sync endpoint with offline-cache permission gate."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='SyncCo', slug='sync-co')
+        cls.user = User.objects.create_user('sync_user', 's@x.com', 'pw')
+        from accounts.models import Membership, Role
+        Membership.objects.create(
+            user=cls.user, organization=cls.org,
+            role=Role.OWNER, is_active=True,
+        )
+        for i in range(3):
+            Password.objects.create(
+                organization=cls.org, title=f'Pw {i}',
+                url=f'https://x{i}.test/', username='u',
+                encrypted_password=f'cipher{i}',
+            )
+
+    def setUp(self):
+        from vault.models import WebExtensionAuthToken
+        self.secret, _ = WebExtensionAuthToken.issue(
+            user=self.user, organization=self.org,
+        )
+        self.c = Client()
+
+    def test_sync_returns_encrypted_blobs_only(self):
+        r = self.c.get(
+            '/vault/api/extension/sync/',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data['count'], 3)
+        for row in data['passwords']:
+            self.assertIn('encrypted_password', row)
+            self.assertNotIn('password', row)
+
+    def test_sync_pagination(self):
+        r = self.c.get(
+            '/vault/api/extension/sync/?limit=2',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data['count'], 2)
+        self.assertTrue(data['has_more'])
+        self.assertIsNotNone(data['next_cursor'])
+        r2 = self.c.get(
+            f'/vault/api/extension/sync/?limit=2&cursor={data["next_cursor"]}',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        data2 = r2.json()
+        self.assertEqual(data2['count'], 1)
+        self.assertFalse(data2['has_more'])
+
+    def test_sync_blocked_without_offline_cache_perm(self):
+        from accounts.models import Membership, Role
+        ed_user = User.objects.create_user('ed', 'ed@x.com', 'pw')
+        Membership.objects.create(
+            user=ed_user, organization=self.org,
+            role=Role.EDITOR, is_active=True,
+        )
+        from vault.models import WebExtensionAuthToken
+        secret, _ = WebExtensionAuthToken.issue(
+            user=ed_user, organization=self.org,
+        )
+        r = self.c.get(
+            '/vault/api/extension/sync/',
+            HTTP_AUTHORIZATION=f'Bearer {secret}',
+        )
+        self.assertEqual(r.status_code, 403)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class RoleTemplateExtensionPermissionFieldTests(TestCase):
+    """v3.17.328 — RoleTemplate has the two new boolean fields."""
+
+    def test_fields_default_false_on_new_template(self):
+        from accounts.models import RoleTemplate
+        org = Organization.objects.create(name='X', slug='rt-x')
+        rt = RoleTemplate.objects.create(organization=org, name='Tester')
+        self.assertFalse(rt.vault_extension_use)
+        self.assertFalse(rt.vault_extension_offline_cache)
+
+    def test_simple_role_owner_grants_extension_use(self):
+        from accounts.models import Membership, Role
+        org = Organization.objects.create(name='Y', slug='rt-y')
+        user = User.objects.create_user('rt_user', 'rt@x.com', 'pw')
+        m = Membership.objects.create(
+            user=user, organization=org, role=Role.OWNER, is_active=True,
+        )
+        perms = m.get_permissions()
+        self.assertTrue(perms.vault_extension_use)
+        self.assertTrue(perms.vault_extension_offline_cache)

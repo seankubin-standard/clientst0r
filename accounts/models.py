@@ -88,6 +88,7 @@ class Membership(BaseModel):
                 vault_view=True, vault_create=True, vault_edit=True, vault_delete=True,
                 vault_export=True, vault_view_password=True,
                 vault_manage_access_rules=True,
+                vault_extension_use=True, vault_extension_offline_cache=True,
                 assets_view=True, assets_create=True, assets_edit=True, assets_delete=True,
                 docs_view=True, docs_create=True, docs_edit=True, docs_delete=True, docs_publish=True,
                 files_view=True, files_upload=True, files_delete=True,
@@ -132,6 +133,7 @@ class Membership(BaseModel):
                 vault_view=True, vault_create=True, vault_edit=True, vault_delete=True,
                 vault_export=True, vault_view_password=True,
                 vault_manage_access_rules=True,
+                vault_extension_use=True, vault_extension_offline_cache=True,
                 assets_view=True, assets_create=True, assets_edit=True, assets_delete=True,
                 docs_view=True, docs_create=True, docs_edit=True, docs_delete=True, docs_publish=True,
                 files_view=True, files_upload=True, files_delete=True,
@@ -177,6 +179,7 @@ class Membership(BaseModel):
                 vault_view=True, vault_create=True, vault_edit=True, vault_delete=False,
                 vault_export=False, vault_view_password=True,
                 vault_manage_access_rules=False,
+                vault_extension_use=True, vault_extension_offline_cache=False,
                 assets_view=True, assets_create=True, assets_edit=True, assets_delete=False,
                 docs_view=True, docs_create=True, docs_edit=True, docs_delete=False, docs_publish=False,
                 files_view=True, files_upload=True, files_delete=False,
@@ -224,6 +227,7 @@ class Membership(BaseModel):
                 vault_view=True, vault_create=False, vault_edit=False, vault_delete=False,
                 vault_export=False, vault_view_password=False,
                 vault_manage_access_rules=False,
+                vault_extension_use=False, vault_extension_offline_cache=False,
                 assets_view=True, assets_create=False, assets_edit=False, assets_delete=False,
                 docs_view=True, docs_create=False, docs_edit=False, docs_delete=False, docs_publish=False,
                 files_view=True, files_upload=False, files_delete=False,
@@ -652,6 +656,17 @@ class RoleTemplate(BaseModel):
     vault_manage_access_rules = models.BooleanField(
         default=False,
         help_text='Create / edit / delete vault GeoIP / IP / time access rules.',
+    )
+    # Phase 28 (v3.17.328) — browser-extension permissions
+    vault_extension_use = models.BooleanField(
+        default=False,
+        help_text='Use the browser extension (autofill / TOTP / reveal '
+                  'via Authorization: Bearer token).',
+    )
+    vault_extension_offline_cache = models.BooleanField(
+        default=False,
+        help_text='Allow the browser extension to bulk-sync the visible '
+                  'vault as encrypted blobs for offline access.',
     )
 
     # Assets Permissions

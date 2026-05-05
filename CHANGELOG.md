@@ -5,6 +5,42 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.328] - 2026-05-05
+
+### Added — Phase 28 v2: Autofill match + bulk sync + RoleTemplate extension perms
+Closes 3 sub-bullets of Phase 28. Adds the two new RoleTemplate permission fields the extension API gates against, plus the autofill-match endpoint and the offline-cache bulk-sync endpoint.
+
+- **RoleTemplate fields** (`accounts.RoleTemplate`):
+  - `vault_extension_use` — boolean, default False. Required to call any bearer-authed extension data endpoint.
+  - `vault_extension_offline_cache` — boolean, default False. Required to call the bulk-sync endpoint that returns encrypted blobs.
+  - Migration `accounts/migrations/0032_roletemplate_vault_extension_offline_cache_and_more.py`.
+  - Simple-role fallback (`Membership.get_permissions()`): Owner+Admin grant both perms; Editor grants `vault_extension_use` only; Read-Only grants neither.
+- **Autofill endpoint** `GET /vault/api/extension/autofill/?url=<page-url>`:
+  - Bearer-token-authed via `extension_auth_required`.
+  - Parses the host (sans port, lowercased) and matches against `Password.url` in the calling user's visible queryset (org-scoped).
+  - Match logic: exact host equality OR target host is subdomain of stored host OR vice-versa. Capped at 50 returned rows / 500 inspected.
+  - Returns `{host, count, matches: [{id, title, username, totp_available, url}, ...]}` — minimal payload, never the encrypted blob.
+  - Audit-logs every call with `extra_data.event = 'vault_autofill'`, captures host + match count.
+  - Gated by `vault_extension_use`; 403 when missing.
+- **Bulk-sync endpoint** `GET /vault/api/extension/sync/?cursor=<id>&limit=<n>`:
+  - Bearer-token-authed.
+  - Returns the visible passwords as **encrypted blobs**. Server never decrypts on this path.
+  - Cursor-based pagination over `id`, default limit 100, max 500.
+  - Emits one audit-log row per call (`extra_data.event = 'vault_extension_sync'`).
+  - Gated by `vault_extension_offline_cache`; 403 when missing.
+- **Personal-vault entries excluded** from both endpoints — those are user-private, never extension-cacheable.
+
+### Tests
+- 10 tests across 3 classes:
+  - `ExtensionAutofillEndpointTests` (5): match path, no-match, audit row emitted, missing-url-param 400, perm-required 403.
+  - `ExtensionBulkSyncEndpointTests` (3): encrypted-only payload, cursor pagination across two pages, perm gate 403 for Editor role.
+  - `RoleTemplateExtensionPermissionFieldTests` (2): new field defaults to False, Owner simple-role fallback grants both.
+
+### Roadmap
+- Phase 28 sub-bullet "One-click autofill" annotated `*(shipped v3.17.328 — `/vault/api/extension/autofill/?url=...` returns matches by host suffix; per-call audit log)*`.
+- Phase 28 sub-bullet "Offline-encrypted vault cache" annotated `*(shipped v3.17.328 — `/vault/api/extension/sync/` cursor-paginated; encrypted blobs only; gated by `vault_extension_offline_cache` perm)*`.
+- Phase 28 sub-bullet "Browser-extension specific permissions on RoleTemplate" annotated `*(shipped v3.17.328 — `vault_extension_use` + `vault_extension_offline_cache` boolean fields with simple-role fallback)*`.
+
 ## [3.17.327] - 2026-05-05
 
 ### Added — Phase 28 server-side scaffolding kickoff: WebExtensionAuthToken

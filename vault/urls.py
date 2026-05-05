@@ -12,6 +12,9 @@ urlpatterns = [
     path('api/extension/tokens/', extension_views.token_list, name='extension_token_list'),
     path('api/extension/tokens/issue/', extension_views.token_issue, name='extension_token_issue'),
     path('api/extension/tokens/<int:pk>/revoke/', extension_views.token_revoke, name='extension_token_revoke'),
+    # Bearer-authed extension data endpoints (Phase 28 v3.17.328)
+    path('api/extension/autofill/', extension_views.autofill, name='extension_autofill'),
+    path('api/extension/sync/', extension_views.bulk_sync, name='extension_sync'),
     path('', views.password_list, name='password_list'),
     path('datatables/', views.password_list_datatables, name='password_list_datatables'),
     path('create/', views.password_create, name='password_create'),
