@@ -623,3 +623,77 @@ def verify_master(request):
     if not ok:
         return JsonResponse({'error': 'HMAC mismatch.'}, status=401)
     return JsonResponse({'verified': True})
+
+
+# ---------------------------------------------------------------------------
+# Strong-password generator (Phase 28 v3.17.330)
+# ---------------------------------------------------------------------------
+
+
+@csrf_exempt
+@require_http_methods(['GET'])
+@extension_auth_required
+def generate(request):
+    """
+    Generate a strong password for the extension's "fill new credential" UI.
+
+    GET /vault/api/extension/generate?length=24&symbols=1&numbers=1&uppercase=1&lowercase=1
+
+    Returns `{password, length, charset_size, entropy_bits}`. Uses the
+    same generator as the in-app `/vault/api/generate/` endpoint so the
+    output distribution is identical.
+
+    Gated by vault_extension_use.
+    """
+    import math
+    from .utils import generate_password
+
+    organization = request.current_organization
+    if not _has_extension_permission(request.user, organization, 'vault_extension_use'):
+        return JsonResponse({'error': 'Extension use permission required.'}, status=403)
+
+    try:
+        length = int(request.GET.get('length', 24))
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'Invalid length.'}, status=400)
+    length = max(8, min(length, 128))
+
+    def _bool(name, default):
+        v = request.GET.get(name)
+        if v is None:
+            return default
+        return str(v).strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+
+    use_uppercase = _bool('uppercase', True)
+    use_lowercase = _bool('lowercase', True)
+    use_digits    = _bool('numbers', _bool('digits', True))
+    use_symbols   = _bool('symbols', True)
+
+    if not any([use_uppercase, use_lowercase, use_digits, use_symbols]):
+        return JsonResponse(
+            {'error': 'At least one character class must be selected.'},
+            status=400,
+        )
+
+    pw = generate_password(
+        length=length,
+        use_uppercase=use_uppercase,
+        use_lowercase=use_lowercase,
+        use_digits=use_digits,
+        use_symbols=use_symbols,
+    )
+
+    charset_size = (
+        (26 if use_uppercase else 0)
+        + (26 if use_lowercase else 0)
+        + (10 if use_digits else 0)
+        + (26 if use_symbols else 0)  # we use 26 symbols in vault.utils.generate_password
+    )
+    entropy_bits = round(length * math.log2(charset_size), 2) if charset_size else 0.0
+
+    return JsonResponse({
+        'password': pw,
+        'length': length,
+        'charset_size': charset_size,
+        'entropy_bits': entropy_bits,
+    })

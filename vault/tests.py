@@ -1111,3 +1111,148 @@ class ExtensionVerifyMasterTests(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {self.secret}',
         )
         self.assertEqual(r.status_code, 401)
+
+
+# ===========================================================================
+# Phase 28 v3.17.330 — Strong password generator + per-org isolation
+# ===========================================================================
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ExtensionGeneratorEndpointTests(TestCase):
+    """v3.17.330 — strong password generator endpoint."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='GenCo', slug='gen-co')
+        cls.user = User.objects.create_user('gen_user', 'g@x.com', 'pw')
+        from accounts.models import Membership, Role
+        Membership.objects.create(
+            user=cls.user, organization=cls.org,
+            role=Role.OWNER, is_active=True,
+        )
+
+    def setUp(self):
+        from vault.models import WebExtensionAuthToken
+        self.secret, _ = WebExtensionAuthToken.issue(
+            user=self.user, organization=self.org,
+        )
+        self.c = Client()
+
+    def test_generator_default_length_24(self):
+        r = self.c.get(
+            '/vault/api/extension/generate/',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(len(data['password']), 24)
+        self.assertEqual(data['length'], 24)
+        self.assertGreater(data['entropy_bits'], 100)
+
+    def test_generator_respects_length_parameter(self):
+        r = self.c.get(
+            '/vault/api/extension/generate/?length=32',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(len(r.json()['password']), 32)
+
+    def test_generator_excludes_symbols_when_requested(self):
+        r = self.c.get(
+            '/vault/api/extension/generate/?length=40&symbols=0',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        pw = r.json()['password']
+        symbols = set('!@#$%^&*()_+-=[]{}|;:,.<>?')
+        self.assertFalse(any(c in symbols for c in pw),
+                         f'expected no symbols, got {pw}')
+
+    def test_generator_no_classes_400(self):
+        r = self.c.get(
+            '/vault/api/extension/generate/'
+            '?uppercase=0&lowercase=0&numbers=0&symbols=0',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_generator_entropy_calculation_matches(self):
+        r = self.c.get(
+            '/vault/api/extension/generate/'
+            '?length=24&uppercase=1&lowercase=1&numbers=1&symbols=0',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        data = r.json()
+        # 26 + 26 + 10 = 62 charset
+        self.assertEqual(data['charset_size'], 62)
+        import math
+        expected = round(24 * math.log2(62), 2)
+        self.assertEqual(data['entropy_bits'], expected)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ExtensionPerOrgIsolationTests(TestCase):
+    """v3.17.330 — confirm X-Organization-Id header is honoured + cross-org isolation."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org_a = Organization.objects.create(name='OrgA', slug='iso-a')
+        cls.org_b = Organization.objects.create(name='OrgB', slug='iso-b')
+        cls.user = User.objects.create_user('iso_user', 'iso@x.com', 'pw')
+        from accounts.models import Membership, Role
+        Membership.objects.create(
+            user=cls.user, organization=cls.org_a, role=Role.OWNER, is_active=True,
+        )
+        Membership.objects.create(
+            user=cls.user, organization=cls.org_b, role=Role.OWNER, is_active=True,
+        )
+        # One password in each org with the same URL
+        for org in (cls.org_a, cls.org_b):
+            Password.objects.create(
+                organization=org, title=f'Same site — {org.slug}',
+                url='https://shared.test/login', username=f'u-{org.slug}',
+                encrypted_password='dummy',
+            )
+
+    def setUp(self):
+        from vault.models import WebExtensionAuthToken
+        # Token NOT pinned to any org -- header decides per-call.
+        self.secret, _ = WebExtensionAuthToken.issue(
+            user=self.user, organization=None,
+        )
+        self.c = Client()
+
+    def test_autofill_in_org_a_returns_only_org_a_match(self):
+        r = self.c.get(
+            '/vault/api/extension/autofill/?url=https://shared.test/login',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+            HTTP_X_ORGANIZATION_ID=str(self.org_a.id),
+        )
+        self.assertEqual(r.status_code, 200)
+        matches = r.json()['matches']
+        self.assertEqual(len(matches), 1)
+        self.assertIn(self.org_a.slug, matches[0]['title'])
+
+    def test_autofill_in_org_b_returns_only_org_b_match(self):
+        r = self.c.get(
+            '/vault/api/extension/autofill/?url=https://shared.test/login',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+            HTTP_X_ORGANIZATION_ID=str(self.org_b.id),
+        )
+        matches = r.json()['matches']
+        self.assertEqual(len(matches), 1)
+        self.assertIn(self.org_b.slug, matches[0]['title'])
+
+    def test_token_pinned_to_org_a_ignores_b(self):
+        # Issue a new token pinned to org_a; even without an X-Organization-Id
+        # header, requests resolve to org_a.
+        from vault.models import WebExtensionAuthToken
+        secret_a, _ = WebExtensionAuthToken.issue(
+            user=self.user, organization=self.org_a,
+        )
+        r = self.c.get(
+            '/vault/api/extension/autofill/?url=https://shared.test/login',
+            HTTP_AUTHORIZATION=f'Bearer {secret_a}',
+        )
+        matches = r.json()['matches']
+        self.assertEqual(len(matches), 1)
+        self.assertIn(self.org_a.slug, matches[0]['title'])

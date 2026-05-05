@@ -20,6 +20,8 @@ urlpatterns = [
     path('api/extension/<int:pk>/reveal/', extension_views.reveal, name='extension_reveal'),
     path('api/extension/verify-master/nonce/', extension_views.verify_master_nonce, name='extension_verify_master_nonce'),
     path('api/extension/verify-master/', extension_views.verify_master, name='extension_verify_master'),
+    # Strong-password generator (Phase 28 v3.17.330)
+    path('api/extension/generate/', extension_views.generate, name='extension_generate'),
     path('', views.password_list, name='password_list'),
     path('datatables/', views.password_list_datatables, name='password_list_datatables'),
     path('create/', views.password_create, name='password_create'),

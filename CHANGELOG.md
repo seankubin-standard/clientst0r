@@ -5,6 +5,31 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.330] - 2026-05-05
+
+### Added — Phase 28 v4: Strong-password generator + per-org isolation tests
+Closes 2 sub-bullets of Phase 28: the strong-password helper for the extension's "fill new credential" flow, and the per-organization isolation confirmation.
+
+- **Generator** `GET /vault/api/extension/generate/?length=24&symbols=1&numbers=1&uppercase=1&lowercase=1`:
+  - Bearer-token-authed; gated by `vault_extension_use`.
+  - Reuses `vault.utils.generate_password()` so the output distribution is identical to the in-app `/vault/api/generate/` endpoint.
+  - Returns `{password, length, charset_size, entropy_bits}` — the entropy is `length * log2(charset_size)` rounded to two decimals so the extension can show a strength meter without a second roundtrip.
+  - Length clamped to 8 ≤ length ≤ 128. Refuses 400 if no character class is selected.
+  - Accepts both `numbers=` and `digits=` for the digits class.
+- **Per-org isolation** — confirmed via tests against the existing `extension_auth_required` decorator:
+  - When the token is unpinned, `X-Organization-Id` header switches the request's organization context per call.
+  - When the token is pinned, the pinned organization wins (no header needed).
+  - Cross-org leakage is impossible: the autofill endpoint's queryset is org-scoped through `_visible_password_qs`, so a token + header that resolves to org A only ever sees org A's passwords even when org B has a matching URL.
+
+### Tests
+- 8 tests across 2 classes:
+  - `ExtensionGeneratorEndpointTests` (5): default length 24, length parameter respected, symbols excluded when requested, no-classes 400, entropy calculation matches `length * log2(charset_size)`.
+  - `ExtensionPerOrgIsolationTests` (3): X-Organization-Id resolves to org A, switches to org B, token pinning wins without header.
+
+### Roadmap
+- Phase 28 sub-bullet "Generate-strong-password helper" annotated `*(shipped v3.17.330 — `/vault/api/extension/generate/` reuses in-app generator; returns entropy_bits for client-side strength meter)*`.
+- Phase 28 sub-bullet "Per-organization isolation" annotated `*(shipped v3.17.330 — `extension_auth_required` honours `X-Organization-Id` header per call when token is unpinned, falls back to token's pinned org otherwise; queryset is org-scoped through `_visible_password_qs`)*`.
+
 ## [3.17.329] - 2026-05-05
 
 ### Added — Phase 28 v3: TOTP + reveal + master-password verify
