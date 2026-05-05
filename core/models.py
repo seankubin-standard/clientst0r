@@ -754,6 +754,19 @@ class SystemSetting(models.Model):
                   '>= this dollar amount. 0 = disabled.',
     )
 
+    # Phase 15 v7 (v3.17.294) — late fee automation. When both knobs
+    # are non-zero, the `psa_apply_late_fees` cron applies a fee Charge
+    # to every overdue invoice once per overdue period.
+    late_fee_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text='Late fee percent of overdue balance (e.g. 1.5 = 1.5%%). '
+                  '0 = disabled.',
+    )
+    late_fee_min_days_overdue = models.PositiveIntegerField(
+        default=15,
+        help_text='Days past due_date before a late fee is applied.',
+    )
+
     # Billing defaults — used by the quote and invoice forms when the
     # specific row doesn't override.
     psa_default_tax_rate = models.DecimalField(

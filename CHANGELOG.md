@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.294] - 2026-05-05
+
+### Added — Phase 15 v7 — Late fee automation
+Closes the "Late fee automation" sub-bullet of Phase 15. Daily cron applies a percentage-based fee to overdue invoices.
+
+- **2 new SystemSetting fields** (migration `core.0058`):
+  - `late_fee_pct` (Decimal) — fee percentage of outstanding balance (e.g. 1.5 = 1.5%). 0 disables.
+  - `late_fee_min_days_overdue` (PositiveInt, default 15) — grace period before a fee is applied.
+- **New management command `psa_apply_late_fees`** — daily timer; for each invoice past `due_date` by ≥ `min_days_overdue` and not paid/void, creates a `Charge` row with `amount = balance * pct / 100` and a description that ties it to the source invoice. Idempotent — re-runs skip invoices that already have a "Late fee for INV-..." charge. `--dry-run` for preview.
+- **Skips when disabled** — pct=0 or min_days=0 → no-op with friendly warning.
+
+### Tests
+- 6 tests in `psa.tests.test_workflow_kb_contracts.LateFeeTests` covering: charge applied to overdue at correct math, recent invoice skipped, paid invoice skipped, idempotent second run produces no double charge, disabled when pct=0, dry-run creates no charges.
+
+### Roadmap
+Phase 15 sub-bullet "Late fee automation" annotated `*(shipped v3.17.294)*`.
+
 ## [3.17.293] - 2026-05-05
 
 ### Added — Phase 15 v4 — Proration handling

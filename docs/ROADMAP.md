@@ -339,7 +339,7 @@ Planned capabilities:
 - Proration handling *(shipped v3.17.293 — `Contract._proration_factor()` method computes days-active fraction; `generate_invoice()` applies it to the base amount only (usage line items not prorated); description suffix shows the proration % to the customer)*
 - Service bundles *(shipped — Phase 1.2 ContractBundleItem)*
 - Billing reconciliation
-- Late fee automation
+- Late fee automation *(shipped v3.17.294 — `SystemSetting.late_fee_pct` + `late_fee_min_days_overdue`; daily `psa_apply_late_fees` cron creates a `Charge` row for each overdue invoice; idempotent)*
 - ACH / payment integrations (Stripe ACH, GoCardless, etc.)
 - MRR forecasting
 - Contract profitability tracking *(partial — Phase 3 profitability-by-contract shipped)*

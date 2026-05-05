@@ -1187,6 +1187,115 @@ class ProrationTests(TestCase):
         self.assertIn('prorated', line.description)
 
 
+class LateFeeTests(TestCase):
+    """Phase 15 v7 (v3.17.294): late fee automation cron."""
+
+    def setUp(self):
+        from datetime import date, timedelta
+        from decimal import Decimal as _D
+        from psa.models import Invoice, InvoiceLineItem
+        _setup_seed()
+        self.msp = Organization.objects.create(name='LfMsp', slug='lf-msp')
+        self.client_org = Organization.objects.create(name='LfClient',
+                                                       slug='lf-client')
+        # Configure system settings: 1.5% late fee after 15 days
+        ss = SystemSetting.get_settings()
+        ss.late_fee_pct = _D('1.5')
+        ss.late_fee_min_days_overdue = 15
+        ss.save()
+        # Overdue invoice: $1000 due 30 days ago, $0 paid
+        self.overdue = Invoice.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            title='Overdue', invoice_date=date.today() - timedelta(days=45),
+            due_date=date.today() - timedelta(days=30),
+            status='sent',
+        )
+        InvoiceLineItem.objects.create(
+            invoice=self.overdue, description='Service',
+            quantity=1, unit_price=_D('1000'),
+        )
+        self.overdue.recompute_totals()
+        # Recently overdue (10 days, below threshold) — should NOT fee
+        self.recent = Invoice.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            title='Recent', invoice_date=date.today() - timedelta(days=20),
+            due_date=date.today() - timedelta(days=10),
+            status='sent',
+        )
+        InvoiceLineItem.objects.create(
+            invoice=self.recent, description='Service',
+            quantity=1, unit_price=_D('500'),
+        )
+        self.recent.recompute_totals()
+        # Paid (status=paid) — should NOT fee even if "overdue"
+        self.paid = Invoice.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            title='Paid', invoice_date=date.today() - timedelta(days=45),
+            due_date=date.today() - timedelta(days=30),
+            status='paid', amount_paid=_D('200'),
+        )
+        InvoiceLineItem.objects.create(
+            invoice=self.paid, description='Service',
+            quantity=1, unit_price=_D('200'),
+        )
+        self.paid.recompute_totals()
+
+    def test_charge_applied_to_overdue_invoice(self):
+        from django.core.management import call_command
+        from psa.models import Charge
+        call_command('psa_apply_late_fees', verbosity=0)
+        chg = Charge.objects.filter(
+            description__startswith=f'Late fee for {self.overdue.invoice_number}'
+        ).first()
+        self.assertIsNotNone(chg)
+        from decimal import Decimal as _D
+        # 1.5% of $1000 = $15.00
+        self.assertEqual(chg.amount, _D('15.00'))
+
+    def test_recent_invoice_skipped(self):
+        from django.core.management import call_command
+        from psa.models import Charge
+        call_command('psa_apply_late_fees', verbosity=0)
+        self.assertFalse(Charge.objects.filter(
+            description__startswith=f'Late fee for {self.recent.invoice_number}'
+        ).exists())
+
+    def test_paid_invoice_skipped(self):
+        from django.core.management import call_command
+        from psa.models import Charge
+        call_command('psa_apply_late_fees', verbosity=0)
+        self.assertFalse(Charge.objects.filter(
+            description__startswith=f'Late fee for {self.paid.invoice_number}'
+        ).exists())
+
+    def test_idempotent_second_run_no_double_charge(self):
+        from django.core.management import call_command
+        from psa.models import Charge
+        call_command('psa_apply_late_fees', verbosity=0)
+        call_command('psa_apply_late_fees', verbosity=0)
+        chgs = Charge.objects.filter(
+            description__startswith=f'Late fee for {self.overdue.invoice_number}'
+        )
+        self.assertEqual(chgs.count(), 1)
+
+    def test_disabled_when_pct_zero(self):
+        from django.core.management import call_command
+        from psa.models import Charge
+        ss = SystemSetting.get_settings()
+        ss.late_fee_pct = 0
+        ss.save()
+        call_command('psa_apply_late_fees', verbosity=0)
+        self.assertEqual(Charge.objects.filter(
+            description__contains='Late fee').count(), 0)
+
+    def test_dry_run_creates_no_charges(self):
+        from django.core.management import call_command
+        from psa.models import Charge
+        call_command('psa_apply_late_fees', '--dry-run', verbosity=0)
+        self.assertEqual(Charge.objects.filter(
+            description__contains='Late fee').count(), 0)
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 
