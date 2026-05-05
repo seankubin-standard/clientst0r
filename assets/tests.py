@@ -923,3 +923,85 @@ class VulnerabilityTests(TestCase):
         from assets.models import Vulnerability
         v = Vulnerability(affected_pattern='', title='x', severity='low')
         self.assertEqual(v.affected_assets(), [])
+
+    def test_create_remediation_ticket(self):
+        from assets.models import Vulnerability
+        from psa.models import Ticket
+        # Need basic PSA seed
+        from psa.tests._base import _setup_seed
+        _setup_seed()
+        v = Vulnerability.objects.create(
+            cve_id='CVE-TEST-1', title='Log4Shell',
+            severity='critical', affected_pattern='Log4j',
+            organization=self.org,
+        )
+        t = v.create_remediation_ticket(user=None)
+        self.assertIsNotNone(t)
+        self.assertIn('Log4Shell', t.subject)
+        self.assertIn('affected-server', t.description)
+        # Severity 'critical' → P1
+        self.assertEqual(t.priority.code, 'P1')
+
+
+class AssetGroupTests(TestCase):
+    """Phase 17 v7 (v3.17.307): smart asset cohort matcher."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='AgCo', slug='ag-co')
+        cls.dell_srv = Asset.objects.create(
+            organization=cls.org, name='dell-srv', asset_type='server',
+            manufacturer='Dell', os_version='Ubuntu 24.04',
+        )
+        cls.hp_srv = Asset.objects.create(
+            organization=cls.org, name='hp-srv', asset_type='server',
+            manufacturer='HP', os_version='Windows Server 2022',
+        )
+        cls.dell_lap = Asset.objects.create(
+            organization=cls.org, name='dell-lap', asset_type='laptop',
+            manufacturer='Dell', os_version='Windows 11',
+        )
+
+    def test_asset_type_matcher(self):
+        from assets.models import AssetGroup
+        g = AssetGroup.objects.create(
+            organization=self.org, name='servers',
+            criteria={'asset_type': 'server'},
+        )
+        names = {a.name for a in g.members()}
+        self.assertEqual(names, {'dell-srv', 'hp-srv'})
+
+    def test_manufacturer_matcher(self):
+        from assets.models import AssetGroup
+        g = AssetGroup.objects.create(
+            organization=self.org, name='dells',
+            criteria={'manufacturer__icontains': 'Dell'},
+        )
+        names = {a.name for a in g.members()}
+        self.assertEqual(names, {'dell-srv', 'dell-lap'})
+
+    def test_combined_criteria_AND(self):
+        from assets.models import AssetGroup
+        g = AssetGroup.objects.create(
+            organization=self.org, name='dell-servers',
+            criteria={
+                'asset_type': 'server',
+                'manufacturer__icontains': 'Dell',
+            },
+        )
+        names = {a.name for a in g.members()}
+        self.assertEqual(names, {'dell-srv'})
+
+    def test_empty_criteria_returns_no_members(self):
+        from assets.models import AssetGroup
+        g = AssetGroup.objects.create(
+            organization=self.org, name='empty', criteria={},
+        )
+        self.assertEqual(list(g.members()), [])
+
+    def test_unique_per_org(self):
+        from assets.models import AssetGroup
+        from django.db import IntegrityError
+        AssetGroup.objects.create(organization=self.org, name='dups')
+        with self.assertRaises(IntegrityError):
+            AssetGroup.objects.create(organization=self.org, name='dups')

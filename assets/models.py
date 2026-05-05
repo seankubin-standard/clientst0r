@@ -686,6 +686,69 @@ class Service(BaseModel):
         ).order_by('name'))
 
 
+class AssetGroup(BaseModel):
+    """Phase 17 v7 (v3.17.307): smart asset cohort defined by criteria.
+
+    Membership is computed from a JSON criteria spec rather than
+    explicit join rows so adding/removing matching assets is automatic.
+
+    Supported criteria keys:
+      - `asset_type`: exact match (e.g. "server")
+      - `asset_type__in`: list of types
+      - `manufacturer__icontains`: substring on manufacturer
+      - `model__icontains`: substring on model
+      - `tags__contains`: tag string present in `tags` list
+      - `os_version__icontains`: substring on os_version
+
+    Future iterations can extend with more keys; the matcher applies
+    every supplied filter as AND.
+    """
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='asset_groups',
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    criteria = models.JSONField(
+        default=dict, blank=True,
+        help_text='Filter spec — see AssetGroup docstring for keys.',
+    )
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'asset_groups'
+        ordering = ['name']
+        unique_together = [['organization', 'name']]
+
+    def __str__(self):
+        return self.name
+
+    def members(self):
+        """Return assets matching every criteria key (AND)."""
+        qs = Asset.objects.filter(organization=self.organization)
+        c = self.criteria or {}
+        if not c:
+            return qs.none()
+        # Pull supported lookups from criteria
+        for key, val in c.items():
+            if key == 'asset_type':
+                qs = qs.filter(asset_type=val)
+            elif key == 'asset_type__in':
+                qs = qs.filter(asset_type__in=val)
+            elif key == 'manufacturer__icontains':
+                qs = qs.filter(manufacturer__icontains=val)
+            elif key == 'model__icontains':
+                qs = qs.filter(model__icontains=val)
+            elif key == 'os_version__icontains':
+                qs = qs.filter(os_version__icontains=val)
+            elif key == 'tags__contains':
+                # tags is a JSON list — case-sensitive contains check
+                qs = [a for a in qs if val in (a.tags or [])]
+                return qs  # Python-side filter ends here
+        return list(qs)
+
+
 class Vulnerability(BaseModel):
     """Phase 17 v6 (v3.17.306): CVE-style vulnerability record with
     a software-name matcher. The `affected_assets()` query walks
@@ -766,6 +829,64 @@ class Vulnerability(BaseModel):
         return list(Asset.objects.filter(
             name__in=device_names,
         ).select_related('organization').order_by('organization__name', 'name'))
+
+    def create_remediation_ticket(self, *, organization=None, user=None):
+        """Phase 17 v8 (v3.17.307): spawn a PSA Ticket asking a tech to
+        patch every affected asset for this vulnerability. Returns the
+        new Ticket. Caller picks `organization` (msp tenant); when
+        omitted falls back to the vulnerability's own.
+
+        Conservative defaults — picks the first available Queue,
+        TicketPriority (mapped from severity), TicketType. Ticket
+        body lists the affected_assets() so the assigned tech sees
+        the work upfront.
+        """
+        from psa.models import (
+            Ticket, Queue, TicketPriority, TicketType, TicketStatus,
+        )
+        target_org = organization or self.organization
+        if target_org is None:
+            raise ValueError('Vulnerability is global; pass organization=')
+        affected = self.affected_assets()
+        if not affected:
+            return None
+        queue = Queue.objects.filter(is_active=True).first()
+        # Map severity → priority by code
+        sev_map = {'critical': 'P1', 'high': 'P2',
+                    'medium': 'P3', 'low': 'P4'}
+        priority = (TicketPriority.objects.filter(
+            code=sev_map.get(self.severity, 'P3')).first()
+            or TicketPriority.objects.first())
+        ttype = TicketType.objects.first()
+        status = (TicketStatus.objects.filter(slug='new').first()
+                   or TicketStatus.objects.first())
+        if not (queue and priority and ttype and status):
+            raise RuntimeError('PSA seed data missing — run psa_seed_defaults')
+
+        cve_label = f'{self.cve_id} ' if self.cve_id else ''
+        body_lines = [
+            f'Vulnerability: {cve_label}{self.title}',
+            f'Severity: {self.get_severity_display()}',
+        ]
+        if self.fixed_version:
+            body_lines.append(f'Fixed version: {self.fixed_version}')
+        body_lines.append('')
+        body_lines.append(f'Affected assets ({len(affected)}):')
+        for a in affected:
+            body_lines.append(f'  - {a.name} ({a.organization.name})')
+        if self.description:
+            body_lines.append('')
+            body_lines.append(self.description)
+
+        return Ticket.objects.create(
+            organization=target_org,
+            subject=f'Patch {cve_label}{self.title}'[:200],
+            description='\n'.join(body_lines),
+            queue=queue, priority=priority,
+            ticket_type=ttype, status=status,
+            source='manual',
+            created_by=user,
+        )
 
 
 class SoftwarePolicy(BaseModel):

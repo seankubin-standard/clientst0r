@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.307] - 2026-05-05
+
+### Added — Phase 17 v7+v8 — Smart asset grouping + vulnerability-to-ticket linking
+Closes 2 sub-bullets of Phase 17.
+
+- **New `assets.AssetGroup` model** (migration `assets.0023`) — fields: organization, name (unique per org), description, criteria (JSONField). Membership is computed via `members()` from the criteria spec rather than explicit join rows, so adding/removing matching assets is automatic.
+- **Supported criteria keys**: `asset_type`, `asset_type__in`, `manufacturer__icontains`, `model__icontains`, `os_version__icontains`, `tags__contains`. Multiple keys are AND'd. Empty criteria returns empty (so a group with nothing configured doesn't accidentally include every asset).
+- **`Vulnerability.create_remediation_ticket(*, organization=None, user=None)` method** — spawns a PSA `Ticket` listing every affected asset for the vulnerability. Severity → priority mapping: `critical→P1, high→P2, medium→P3, low→P4`. Ticket body includes the CVE, severity, fixed_version, and bullet list of affected (org, asset) pairs. Returns None when no affected assets; raises `ValueError` if called on a global vulnerability without `organization=` provided.
+
+### Tests
+- 5 tests in `assets.tests.AssetGroupTests` covering: asset_type match, manufacturer substring match, combined AND criteria, empty criteria returns nothing, unique-per-org name constraint.
+- 1 new test in `assets.tests.VulnerabilityTests` covering `create_remediation_ticket()` with severity-mapped priority + body content.
+
+### Roadmap
+- Phase 17 sub-bullet "Smart asset grouping (auto-cohort by role/version/location)" annotated `*(shipped v3.17.307 — `AssetGroup` model with JSON criteria + computed `members()`; supports `asset_type`, `manufacturer__icontains`, `model__icontains`, `os_version__icontains`, `tags__contains`)*`.
+- Phase 17 sub-bullet "Vulnerability-to-ticket linking" annotated `*(shipped v3.17.307 — `Vulnerability.create_remediation_ticket()` spawns a PSA Ticket with severity-mapped priority and affected-asset list)*`.
+
 ## [3.17.306] - 2026-05-05
 
 ### Added — Phase 17 v6 — Patch correlation (CVE → assets)

@@ -378,8 +378,8 @@ Planned capabilities:
 - Hardware lifecycle scoring (composite — see Phase 13)
 - Warranty lookups (vendor API integrations)
 - Patch correlation (this CVE matches these N assets) *(shipped v3.17.306 — `Vulnerability` model with cve_id + cvss_score + affected_pattern; `affected_assets()` walks `RMMSoftware → RMMDevice → Asset` (by name) to surface affected endpoints)*
-- Smart asset grouping (auto-cohort by role/version/location)
-- Vulnerability-to-ticket linking
+- Smart asset grouping (auto-cohort by role/version/location) *(shipped v3.17.307 — `AssetGroup` model with JSON criteria + computed `members()`; supports `asset_type` / `manufacturer__icontains` / `model__icontains` / `os_version__icontains` / `tags__contains`)*
+- Vulnerability-to-ticket linking *(shipped v3.17.307 — `Vulnerability.create_remediation_ticket()` spawns a PSA Ticket with severity-mapped priority (critical→P1) and an affected-asset list)*
 - Configuration monitoring
 - Operational health scoring per asset
 - Automated remediation suggestions (**OPTIONAL AI**)
