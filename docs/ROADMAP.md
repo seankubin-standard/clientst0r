@@ -576,7 +576,7 @@ Planned capabilities:
 - Bidirectional payment sync — when a payment lands in QBO/Xero, mark the source Invoice as paid
 - Invoice deduplication detection (catch double-pushes) *(shipped v3.17.255 — duplicate `(provider, accounting_external_id)` groups surfaced on `/reports/accounting-reconciliation/`)*
 - Unpaid-vs-pushed reconciliation report (what's invoiced here but missing in QBO?) *(shipped v3.17.255 — outstanding-pushed section + push-error section + CSV export)*
-- Per-invoice line-item mapping to GL accounts (revenue vs. cost-of-services-sold splits)
+- Per-invoice line-item mapping to GL accounts (revenue vs. cost-of-services-sold splits) *(shipped v3.17.278 — `InvoiceLineItem.gl_account_code` propagates to QBO `ItemRef.value` and Xero `AccountCode` on push; blank falls through to provider default; back-compat)*
 - Tax reconciliation (compare what we calculated vs. what QBO recorded) *(shipped v3.17.267 — `Invoice.provider_tax_amount` captured at push time from QBO `TxnTaxDetail.TotalTax` / Xero `TotalTax`; reconciliation report flags any |delta| > $0.01)*
 - Accounts receivable aging tied directly back to QBO/Xero AR *(shipped v3.17.269 — `/reports/ar-aging/` per-client 0-30 / 31-60 / 61-90 / 90+ day buckets for pushed-but-unpaid invoices; CSV export; tenant-scoped)*
 - Bank-account reconciliation hooks (mark which payments matched which bank-deposit batches)

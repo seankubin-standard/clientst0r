@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.278] - 2026-05-05
+
+### Added — Phase 27 v6 Per-Line GL Account Mapping
+Closes the "Per-invoice line-item mapping to GL accounts (revenue vs. cost-of-services-sold splits)" sub-bullet of Phase 27. Each invoice line can now carry an explicit GL account code that propagates to the accounting provider on push.
+
+- **New `InvoiceLineItem.gl_account_code`** field (CharField, blank=True; migration `psa.0043`).
+- **QBO push** populates `Line[].SalesItemLineDetail.ItemRef.value` from `gl_account_code` when set; blank lines fall through to the connection default.
+- **Xero push** populates `Invoices[0].LineItems[].AccountCode` from `gl_account_code` when set; blank lines fall through.
+- **Optional, back-compat** — leaving the field blank preserves existing behavior; installs that don't care about per-line GL splits don't have to do anything.
+
+### Tests
+- 2 tests in `integrations.tests.GLAccountMappingTests` covering QBO `ItemRef` injection (and absence on unmapped lines) and the equivalent Xero `AccountCode` path.
+
+### Roadmap
+Phase 27 sub-bullet "Per-invoice line-item mapping to GL accounts" annotated `*(shipped v3.17.278)*`.
+
 ## [3.17.277] - 2026-05-05
 
 ### Added — Phase 20 v9 Operational Sign-off Workflows

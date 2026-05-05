@@ -181,20 +181,24 @@ class QuickBooksOnlineProvider(BaseAccountingProvider):
             )
             return {'success': False, 'error': str(exc)}
 
+        # Phase 27 v6 (v3.17.278): include AccountRef when the line has
+        # gl_account_code set, so revenue lands in the right QBO account.
+        def _line(li):
+            detail = {
+                'Qty': float(li.quantity),
+                'UnitPrice': float(li.unit_price),
+            }
+            if getattr(li, 'gl_account_code', '') and li.gl_account_code:
+                detail['ItemRef'] = {'value': li.gl_account_code}
+            return {
+                'DetailType': 'SalesItemLineDetail',
+                'Amount': float(li.line_total),
+                'Description': li.description[:1000],
+                'SalesItemLineDetail': detail,
+            }
         body = {
             'CustomerRef': {'value': customer_id},
-            'Line': [
-                {
-                    'DetailType': 'SalesItemLineDetail',
-                    'Amount': float(li.line_total),
-                    'Description': li.description[:1000],
-                    'SalesItemLineDetail': {
-                        'Qty': float(li.quantity),
-                        'UnitPrice': float(li.unit_price),
-                    },
-                }
-                for li in invoice.line_items.all()
-            ],
+            'Line': [_line(li) for li in invoice.line_items.all()],
             'TxnDate': invoice.invoice_date.isoformat() if invoice.invoice_date else None,
             'DueDate': invoice.due_date.isoformat() if invoice.due_date else None,
             'CustomerMemo': {'value': (invoice.notes or invoice.title or '')[:1000]},

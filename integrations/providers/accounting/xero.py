@@ -198,20 +198,24 @@ class XeroProvider(BaseAccountingProvider):
             )
             return {'success': False, 'error': str(exc)}
 
+        # Phase 27 v6 (v3.17.278): include AccountCode when the line has
+        # gl_account_code set, so revenue lands in the right Xero account.
+        def _line(li):
+            row = {
+                'Description': li.description[:4000],
+                'Quantity': float(li.quantity),
+                'UnitAmount': float(li.unit_price),
+            }
+            if getattr(li, 'gl_account_code', '') and li.gl_account_code:
+                row['AccountCode'] = li.gl_account_code
+            return row
         body = {
             'Invoices': [{
                 'Type': 'ACCREC',
                 'Contact': {'ContactID': contact_id},
                 'Date': invoice.invoice_date.isoformat() if invoice.invoice_date else None,
                 'DueDate': invoice.due_date.isoformat() if invoice.due_date else None,
-                'LineItems': [
-                    {
-                        'Description': li.description[:4000],
-                        'Quantity': float(li.quantity),
-                        'UnitAmount': float(li.unit_price),
-                    }
-                    for li in invoice.line_items.all()
-                ],
+                'LineItems': [_line(li) for li in invoice.line_items.all()],
                 'Status': 'AUTHORISED',
             }],
         }

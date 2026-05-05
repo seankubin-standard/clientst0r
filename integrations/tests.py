@@ -576,3 +576,108 @@ class DistributorStockCheckTests(TestCase):
         row = r.context['results'][0]
         self.assertFalse(row['ok'])
         self.assertIn('no provider', row['error'])
+
+
+class GLAccountMappingTests(TestCase):
+    """Phase 27 v6 (v3.17.278): per-line GL account mapping is propagated
+    to QBO `ItemRef.value` and Xero `AccountCode` on push."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from psa.models import Invoice, InvoiceLineItem
+        from datetime import date
+        from decimal import Decimal as _D
+        User = get_user_model()
+        self.org = Organization.objects.create(name='GLOrg')
+        # Need a separate "client" org for invoice (different role)
+        self.client_org = Organization.objects.create(name='GLClient')
+        self.invoice = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='GL Test', invoice_date=date.today(),
+            tax_rate=_D('0'),
+        )
+        InvoiceLineItem.objects.create(
+            invoice=self.invoice, description='Mapped line',
+            quantity=2, unit_price=_D('50'),
+            gl_account_code='4100',  # consulting revenue
+        )
+        InvoiceLineItem.objects.create(
+            invoice=self.invoice, description='Default line',
+            quantity=1, unit_price=_D('25'),
+            # gl_account_code blank → uses provider default
+        )
+
+    def test_qbo_payload_includes_itemref_when_set(self):
+        """Without a real QBO sandbox, mock the HTTP call and inspect the
+        body our adapter built."""
+        from unittest import mock
+        from .models import AccountingConnection
+        from .providers.accounting.quickbooks_online import QuickBooksOnlineProvider
+        conn = AccountingConnection.objects.create(
+            organization=self.org, provider_type='quickbooks_online',
+            name='qbo-gl-test',
+        )
+        provider = QuickBooksOnlineProvider(conn)
+        captured = {}
+
+        def fake_api(method, path, **kwargs):
+            captured['method'] = method
+            captured['path'] = path
+            captured['body'] = kwargs.get('json')
+            resp = mock.MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {'Invoice': {'Id': 'qbo-77'}}
+            return resp
+
+        with mock.patch.object(provider, '_ensure_customer',
+                                return_value='cust-1'), \
+             mock.patch.object(provider, '_api', side_effect=fake_api):
+            result = provider.push_invoice(self.invoice)
+
+        self.assertTrue(result['success'])
+        body = captured['body']
+        lines = body['Line']
+        self.assertEqual(len(lines), 2)
+        # Mapped line includes ItemRef
+        line_with_ref = next((l for l in lines
+                              if l['Description'] == 'Mapped line'), None)
+        self.assertIsNotNone(line_with_ref)
+        self.assertEqual(line_with_ref['SalesItemLineDetail']['ItemRef'],
+                          {'value': '4100'})
+        # Unmapped line does NOT include ItemRef
+        line_default = next((l for l in lines
+                             if l['Description'] == 'Default line'), None)
+        self.assertIsNotNone(line_default)
+        self.assertNotIn('ItemRef', line_default['SalesItemLineDetail'])
+
+    def test_xero_payload_includes_accountcode_when_set(self):
+        from unittest import mock
+        from .models import AccountingConnection
+        from .providers.accounting.xero import XeroProvider
+        conn = AccountingConnection.objects.create(
+            organization=self.org, provider_type='xero',
+            name='xero-gl-test',
+        )
+        provider = XeroProvider(conn)
+        captured = {}
+
+        def fake_api(method, path, **kwargs):
+            captured['body'] = kwargs.get('json')
+            resp = mock.MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {'Invoices': [{'InvoiceID': 'xero-77'}]}
+            return resp
+
+        with mock.patch.object(provider, '_ensure_contact',
+                                return_value='contact-1'), \
+             mock.patch.object(provider, '_api', side_effect=fake_api):
+            result = provider.push_invoice(self.invoice)
+
+        self.assertTrue(result['success'])
+        lines = captured['body']['Invoices'][0]['LineItems']
+        mapped = next((l for l in lines
+                       if l['Description'] == 'Mapped line'), None)
+        default = next((l for l in lines
+                        if l['Description'] == 'Default line'), None)
+        self.assertEqual(mapped['AccountCode'], '4100')
+        self.assertNotIn('AccountCode', default)

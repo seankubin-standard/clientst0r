@@ -2461,6 +2461,15 @@ class InvoiceLineItem(models.Model):
     source_id = models.CharField(max_length=80, blank=True,
         help_text='Loose pointer to the source row id (e.g. time_entry pk)')
 
+    # Phase 27 v6 (v3.17.278): per-line GL account mapping. When set,
+    # propagated to the accounting provider (QBO `AccountRef` / Xero
+    # `AccountCode`) on push so revenue lands in the right ledger.
+    gl_account_code = models.CharField(
+        max_length=40, blank=True,
+        help_text='Provider-side GL account code (QBO Item ref or '
+                  'Xero AccountCode). Blank uses the connection default.',
+    )
+
     class Meta:
         db_table = 'psa_invoice_line_items'
         ordering = ['sort_order', 'pk']
