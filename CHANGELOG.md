@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.333] - 2026-05-05
+
+### Fixed — Restore monotonic version numbering after Phase 19 + Phase 28 parallel ship
+Two agents shipped Phases 19 and 28 in parallel. Phase 19 was given range `3.17.320–326` and Phase 28 got `3.17.327–331`. Phase 19's last release pushed the working `VERSION` string back down to `3.17.326`, even though the highest tag on `origin/main` was `v3.17.331`. The in-app updater compares `config/version.py` to the highest tag and so kept showing "Update Available → v3.17.331" with no commit to fast-forward to (HEAD already contained the v3.17.331 commit).
+
+This release bumps `VERSION` to `3.17.333`, which now exceeds every existing tag, so `Settings → Updates` correctly reports the install as up-to-date. No code or schema change.
+
+### Tests
+None — version-bump-only release.
+
 ## [3.17.331] - 2026-05-05
 
 ### Added — Phase 28 closure: API contract docs + phase advance to shipped
