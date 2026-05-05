@@ -1033,6 +1033,100 @@ class RecurringInvoiceTests(TestCase):
             source_contract=self.contract).count(), 0)
 
 
+class UsageBasedBillingTests(TestCase):
+    """Phase 15 v2 (v3.17.292): ContractMeter + usage line items."""
+
+    def setUp(self):
+        from datetime import date, timedelta
+        from decimal import Decimal as _D
+        from psa.models import Contract, ContractMeter
+        _setup_seed()
+        self.msp = Organization.objects.create(name='UbMsp', slug='ub-msp')
+        self.client_org = Organization.objects.create(name='UbClient', slug='ub-client')
+        self.contract = Contract.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            name='Mgd 30',
+            contract_type='managed_services', status='active',
+            start_date=date.today() - timedelta(days=30),
+            total_hours=0, hourly_rate=0,
+            recurring_amount=_D('1000.00'),
+            billing_frequency='monthly',
+            next_billing_date=date.today(),
+        )
+        # 25 seats @ $5/seat
+        ContractMeter.objects.create(
+            contract=self.contract, name='M365 seats',
+            unit='seat', unit_price=_D('5.00'),
+            current_quantity=_D('25'),
+        )
+        # 100 GB backup @ $0.10/GB
+        ContractMeter.objects.create(
+            contract=self.contract, name='Backup storage',
+            unit='gb', unit_price=_D('0.10'),
+            current_quantity=_D('100'),
+        )
+
+    def test_usage_line_items_returns_one_per_active_meter_with_qty(self):
+        items = self.contract.usage_line_items()
+        self.assertEqual(len(items), 2)
+
+    def test_zero_quantity_meter_excluded(self):
+        from psa.models import ContractMeter
+        from decimal import Decimal as _D
+        ContractMeter.objects.create(
+            contract=self.contract, name='Empty meter',
+            unit='seat', unit_price=_D('99'),
+            current_quantity=_D('0'),
+        )
+        items = self.contract.usage_line_items()
+        self.assertEqual(len(items), 2)  # still 2
+
+    def test_inactive_meter_excluded(self):
+        from psa.models import ContractMeter
+        m = ContractMeter.objects.first()
+        m.is_active = False
+        m.save()
+        items = self.contract.usage_line_items()
+        self.assertEqual(len(items), 1)
+
+    def test_generate_invoice_includes_base_plus_usage(self):
+        from decimal import Decimal as _D
+        inv = self.contract.generate_invoice()
+        # Base $1000 + 25*$5 ($125) + 100*$0.10 ($10) = $1135
+        self.assertEqual(inv.subtotal, _D('1135.00'))
+        # 3 line items
+        self.assertEqual(inv.line_items.count(), 3)
+
+    def test_generate_invoice_resets_meters_to_zero(self):
+        from psa.models import ContractMeter
+        from decimal import Decimal as _D
+        self.contract.generate_invoice()
+        for m in ContractMeter.objects.filter(contract=self.contract,
+                                                is_active=True):
+            self.assertEqual(m.current_quantity, _D('0.00'))
+            self.assertIsNotNone(m.last_billed_at)
+
+    def test_increment_atomically_adds(self):
+        from psa.models import ContractMeter
+        from decimal import Decimal as _D
+        m = ContractMeter.objects.first()
+        before = m.current_quantity
+        m.increment(7)
+        self.assertEqual(m.current_quantity, before + _D('7'))
+
+    def test_generate_invoice_with_no_base_but_usage(self):
+        """Phase 15 v2: even with $0 recurring base, an invoice is
+        produced when meters have positive quantity."""
+        from decimal import Decimal as _D
+        self.contract.recurring_amount = _D('0')
+        self.contract.save()
+        inv = self.contract.generate_invoice()
+        self.assertIsNotNone(inv)
+        # Just the 2 meter line items
+        self.assertEqual(inv.line_items.count(), 2)
+        self.assertEqual(inv.subtotal, _D('135.00'))
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.292] - 2026-05-05
+
+### Added — Phase 15 v2 — Usage-based billing
+Closes the "Usage-based billing (per-seat / per-device / per-GB metered)" sub-bullet of Phase 15. Active contracts can now carry meters that bill alongside the base recurring amount each cycle.
+
+- **New `ContractMeter` model** (migration `psa.0051`) — fields: `contract` FK, `name`, `unit` (`seat` / `device` / `gb` / `hour` / `item`), `unit_price`, `current_quantity`, `is_active`, `last_billed_at`. Atomic `increment(amount)` helper for monitoring/provisioning hooks.
+- **`Contract.usage_line_items()` method** — returns one line-item-spec dict per active meter with positive quantity, ready for invoice generation.
+- **`Contract.generate_invoice()` extended** — now adds one line item per active meter alongside the base recurring amount. Subtotal = base + Σ (qty × unit_price). After successful generation, every meter's `current_quantity` resets to 0 and `last_billed_at` is stamped.
+- **Edge cases handled** — zero-base contracts can still bill on usage alone (returns an invoice); zero-quantity meters and inactive meters skipped.
+
+### Tests
+- 7 tests in `psa.tests.test_workflow_kb_contracts.UsageBasedBillingTests` covering: line-item generation per meter, zero-quantity exclusion, inactive-meter exclusion, base + usage invoice math ($1000 base + 25×$5 + 100×$0.10 = $1135), meter reset after billing, atomic `increment()`, usage-only invoice path.
+
+### Roadmap
+Phase 15 sub-bullet "Usage-based billing (per-seat / per-device / per-GB metered)" annotated `*(shipped v3.17.292)*`.
+
 ## [3.17.291] - 2026-05-05
 
 ### Added — Phase 15 v1 — Recurring invoices

@@ -1386,19 +1386,26 @@ class Contract(models.Model):
         return None  # 'none' — billing disabled
 
     def generate_invoice(self, *, on_date=None, user=None):
-        """Phase 15 v1 (v3.17.291): create a draft Invoice for this
-        contract's current billing period. Returns the new invoice (or
-        None when billing is disabled / amount is 0). Caller is
-        responsible for advancing `next_billing_date` if desired —
-        `psa_generate_recurring_invoices` cron does so.
+        """Phase 15 v1 (v3.17.291) + v2 (v3.17.292): create a draft
+        Invoice for this contract's current billing period. Returns
+        the new invoice (or None when billing is disabled AND no
+        usage-based meters have positive quantity). Includes:
+
+        - Base recurring line item (when `effective_recurring_amount > 0`)
+        - One line item per active `ContractMeter` with `current_quantity > 0`
+
+        After successful generation the meters' `current_quantity` is
+        zeroed and `last_billed_at` stamped.
         """
         from datetime import date as _d
         if self.billing_frequency == 'none':
             return None
-        amount = self.effective_recurring_amount
-        if amount <= 0:
-            return None
         on_date = on_date or _d.today()
+        amount = self.effective_recurring_amount
+        usage = self.usage_line_items()
+        if amount <= 0 and not usage:
+            return None
+
         inv = Invoice.objects.create(
             organization=self.organization,
             client_org=self.client_org,
@@ -1408,17 +1415,58 @@ class Contract(models.Model):
             source_contract=self,
             created_by=user,
         )
-        InvoiceLineItem.objects.create(
-            invoice=inv,
-            description=f'{self.get_contract_type_display()} — '
-                        f'{self.get_billing_frequency_display()} period {on_date:%Y-%m-%d}',
-            quantity=1,
-            unit_price=amount,
-            source='contract',
-            source_id=str(self.pk),
-        )
+        if amount > 0:
+            InvoiceLineItem.objects.create(
+                invoice=inv,
+                description=f'{self.get_contract_type_display()} — '
+                            f'{self.get_billing_frequency_display()} period {on_date:%Y-%m-%d}',
+                quantity=1,
+                unit_price=amount,
+                source='contract',
+                source_id=str(self.pk),
+            )
+        # Phase 15 v2: usage-based line items
+        for u in usage:
+            InvoiceLineItem.objects.create(
+                invoice=inv,
+                description=u['description'][:300],
+                quantity=u['quantity'],
+                unit_price=u['unit_price'],
+                source='contract',
+                source_id=f'meter:{u["meter_id"]}',
+            )
         inv.recompute_totals()
+
+        # Reset meter counters after billing them
+        from datetime import datetime as _dt
+        from django.utils import timezone as _tz
+        for meter in self.meters.filter(is_active=True):
+            if (meter.current_quantity or 0) > 0:
+                meter.current_quantity = 0
+                meter.last_billed_at = _tz.now()
+                meter.save(update_fields=['current_quantity',
+                                            'last_billed_at', 'updated_at'])
         return inv
+
+    def usage_line_items(self):
+        """Phase 15 v2 (v3.17.292): generate one InvoiceLineItem-spec
+        dict per active ContractMeter for this contract — used by
+        `generate_invoice()` to add usage-based line items alongside
+        the base recurring amount."""
+        from decimal import Decimal as _D
+        out = []
+        for meter in self.meters.filter(is_active=True):
+            qty = _D(str(meter.current_quantity or 0))
+            if qty <= 0:
+                continue
+            out.append({
+                'description': f'{meter.name} ({meter.get_unit_display()}) — '
+                               f'{qty:g} × ${meter.unit_price}',
+                'quantity': qty,
+                'unit_price': meter.unit_price,
+                'meter_id': meter.pk,
+            })
+        return out
 
     @classmethod
     def for_ticket(cls, ticket):
@@ -1508,6 +1556,64 @@ class Contract(models.Model):
             'hours_used': float(hours_used),
             'overage_hours': float(overage_hours),
         }
+
+
+class ContractMeter(models.Model):
+    """Phase 15 v2 (v3.17.292): usage-based billing meter attached to a
+    Contract. Common patterns:
+      - Per-seat (M365 / VOIP / RMM): `unit='seat'`, increment when a
+        new user is provisioned.
+      - Per-device (RMM agents, network ports): `unit='device'`.
+      - Per-GB (backup storage, log archive): `unit='gb'`, increment by
+        actual usage from monitoring.
+
+    `current_quantity` accumulates between billings. After
+    `Contract.generate_invoice()` adds the meter as a line item, the
+    counter resets to 0 and `last_billed_at` is stamped.
+    """
+    UNIT_CHOICES = [
+        ('seat', 'Seat / user'),
+        ('device', 'Device / endpoint'),
+        ('gb', 'GB (storage / bandwidth)'),
+        ('hour', 'Hour'),
+        ('item', 'Generic item'),
+    ]
+
+    contract = models.ForeignKey(
+        Contract, on_delete=models.CASCADE,
+        related_name='meters',
+    )
+    name = models.CharField(max_length=200)
+    unit = models.CharField(max_length=20, choices=UNIT_CHOICES, default='seat')
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    current_quantity = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text='Accumulated since last billing. Reset after invoice generation.',
+    )
+    is_active = models.BooleanField(default=True)
+    last_billed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_contract_meters'
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['contract', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f'{self.contract.name} — {self.name} ({self.get_unit_display()})'
+
+    def increment(self, amount):
+        """Add `amount` units to `current_quantity` atomically."""
+        from decimal import Decimal as _D
+        from django.db.models import F
+        ContractMeter.objects.filter(pk=self.pk).update(
+            current_quantity=F('current_quantity') + _D(str(amount)),
+        )
+        self.refresh_from_db(fields=['current_quantity'])
 
 
 class ContractBundleItem(models.Model):

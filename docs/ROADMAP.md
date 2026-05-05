@@ -334,7 +334,7 @@ Planned capabilities:
 
 Planned capabilities:
 - Recurring invoices (auto-generated from contract bundles) *(shipped v3.17.291 — `Contract.billing_frequency` (monthly/quarterly/yearly) + `next_billing_date` + `recurring_amount`; `Contract.generate_invoice()` method; daily `psa_generate_recurring_invoices` cron with catch-up cap + dry-run)*
-- Usage-based billing (per-seat / per-device / per-GB metered)
+- Usage-based billing (per-seat / per-device / per-GB metered) *(shipped v3.17.292 — `ContractMeter` model with unit/unit_price/current_quantity + atomic `increment()` helper; `Contract.generate_invoice()` adds one line item per active meter alongside the base recurring amount; meter resets to 0 after billing)*
 - Contract renewals *(partial — auto-renewal cron shipped Phase 1.2)*
 - Proration handling
 - Service bundles *(shipped — Phase 1.2 ContractBundleItem)*
