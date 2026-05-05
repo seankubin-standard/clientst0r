@@ -73,6 +73,9 @@ urlpatterns = [
     path('quotes/<int:pk>/edit/', views.quote_form, name='quote_edit'),
     path('quotes/<int:pk>/accept/', views.quote_accept, name='quote_accept'),
     path('quotes/<int:pk>/to-po/', views.quote_to_po, name='quote_to_po'),
+    # Phase 20 v4 (v3.17.270): quote approval routing.
+    path('quotes/<int:pk>/send-for-approval/', views.quote_send_for_approval,
+         name='quote_send_for_approval'),
     # Expenses (per-ticket)
     path('t/<str:ticket_number>/expense/add/', views.ticket_expense_add, name='ticket_expense_add'),
     # Workflow rules (Workstream 9)

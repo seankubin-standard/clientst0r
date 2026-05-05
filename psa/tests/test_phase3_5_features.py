@@ -1763,3 +1763,95 @@ class RecurringPurchaseTemplateTests(TestCase):
         tpl.refresh_from_db()
         from datetime import date, timedelta
         self.assertEqual(tpl.next_run_at, date.today() - timedelta(days=1))
+
+
+class QuoteApprovalRoutingTests(TestCase):
+    """Phase 20 v4 (v3.17.270) — Quote.send_for_approval()."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='QARCo', slug='qar-co')
+        self.client_org = Organization.objects.create(name='QARClient', slug='qar-client')
+        self.user = User.objects.create_user('qar-user', 'qa@x.com', 'pw')
+
+    def _make_quote(self, total='5000'):
+        from psa.models import Quote
+        from datetime import date
+        from decimal import Decimal as _D
+        return Quote.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Test quote', status='draft',
+            total=_D(total),
+        )
+
+    def test_default_single_stage_chain(self):
+        from psa.models import PSAApproval
+        q = self._make_quote(total='1000')
+        chain = q.send_for_approval(user=self.user)
+        self.assertEqual(len(chain), 1)
+        self.assertEqual(chain[0].kind, 'quote')
+        self.assertEqual(chain[0].object_type, 'psa.Quote')
+        self.assertEqual(chain[0].object_id, q.pk)
+        self.assertEqual(chain[0].status, 'pending')
+        self.assertEqual(chain[0].requested_by, self.user)
+
+    def test_threshold_creates_two_stage_chain(self):
+        q = self._make_quote(total='15000')
+        chain = q.send_for_approval(user=self.user,
+                                     default_threshold_total=10000)
+        self.assertEqual(len(chain), 2)
+        self.assertEqual(chain[0].status, 'pending')
+        self.assertEqual(chain[1].status, 'blocked')
+
+    def test_below_threshold_stays_single_stage(self):
+        q = self._make_quote(total='5000')
+        chain = q.send_for_approval(user=self.user,
+                                     default_threshold_total=10000)
+        self.assertEqual(len(chain), 1)
+
+    def test_explicit_stages_override_default(self):
+        q = self._make_quote(total='100')
+        chain = q.send_for_approval(user=self.user, stages=[
+            {'request_comment': 's1'},
+            {'request_comment': 's2'},
+            {'request_comment': 's3'},
+        ])
+        self.assertEqual(len(chain), 3)
+
+    def test_skips_when_open_chain_exists(self):
+        from psa.models import PSAApproval
+        q = self._make_quote()
+        first = q.send_for_approval(user=self.user)
+        # Resending while pending should return the existing chain
+        second = q.send_for_approval(user=self.user)
+        self.assertEqual([s.pk for s in first], [s.pk for s in second])
+        # Only one chain in DB
+        self.assertEqual(
+            PSAApproval.objects.filter(object_type='psa.Quote',
+                                        object_id=q.pk).count(),
+            1,
+        )
+
+    def test_view_routes_quote_for_approval(self):
+        from psa.models import PSAApproval
+        q = self._make_quote(total='100')
+        ss = SystemSetting.get_settings()
+        ss.psa_enabled = True
+        ss.save()
+        # Make user able to view this org
+        Membership.objects.create(user=self.user, organization=self.org,
+                                   role=Role.OWNER, is_active=True)
+        c = Client()
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+        with override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False):
+            r = c.post(f'/psa/quotes/{q.pk}/send-for-approval/')
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(
+            PSAApproval.objects.filter(object_type='psa.Quote',
+                                        object_id=q.pk).count(),
+            1,
+        )

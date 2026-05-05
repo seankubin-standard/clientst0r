@@ -1593,6 +1593,50 @@ class Quote(models.Model):
             self.convert_to_project(user=user, save=False)
         self.save()
 
+    def send_for_approval(self, *, user=None, stages=None,
+                           default_threshold_total=None):
+        """Phase 20 v4 (v3.17.270): route this quote through a sequential
+        PSAApproval chain. Returns the list of created approvals.
+
+        ``stages`` is an optional list of dicts (forwarded to
+        ``PSAApproval.create_chain``). When omitted, falls back to a
+        single-stage approval keyed off ``default_threshold_total``:
+        quotes at or above the threshold get a 2-stage chain
+        (manager → director); below, just one stage. Both fallback
+        defaults can be overridden by passing explicit ``stages``.
+
+        Skips silently when an OPEN chain already exists (any stage
+        not yet in {approved, denied, cancelled}) — re-sending while
+        approval is still in flight would duplicate effort.
+        """
+        from .models import PSAApproval
+        existing_open = PSAApproval.objects.filter(
+            object_type='psa.Quote', object_id=self.pk,
+        ).exclude(status__in=['approved', 'denied', 'cancelled'])
+        if existing_open.exists():
+            return list(existing_open.order_by('stage_index'))
+
+        if stages is None:
+            crosses = (default_threshold_total is not None
+                       and self.total is not None
+                       and float(self.total) >= float(default_threshold_total))
+            stages = [{'request_comment': f'Manager approval for {self.quote_number}'}]
+            if crosses:
+                stages.append({
+                    'request_comment': f'Director sign-off for {self.quote_number} '
+                                       f'(total ${self.total} ≥ ${default_threshold_total})'
+                })
+
+        return PSAApproval.create_chain(
+            organization=self.organization,
+            kind='quote',
+            object_type='psa.Quote',
+            object_id=self.pk,
+            object_repr=f'{self.quote_number} — {self.title}'[:300],
+            requested_by=user,
+            stages=stages,
+        )
+
     def convert_to_project(self, *, user=None, save: bool = True):
         """
         Spin up a Project from this quote, with one ProjectTask per line

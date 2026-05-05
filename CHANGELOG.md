@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.270] - 2026-05-05
+
+### Added — Phase 20 v4 Quote Approval Routing
+Closes the "Quote approval routing" sub-bullet of Phase 20. Wires the Phase-20-v3 multi-stage approval chain to Quote so a quote can be routed manager → director → CFO before being sent to the customer.
+
+- **New `Quote.send_for_approval(*, user, stages=None, default_threshold_total=None)`** — calls `PSAApproval.create_chain` with `kind='quote'`, `object_type='psa.Quote'`, `object_id=self.pk`. Returns the list of created approvals.
+- **Default routing logic** when no explicit `stages` given:
+  - Quote total ≥ `default_threshold_total` → 2-stage chain (manager → director).
+  - Below threshold → single-stage approval.
+- **Idempotent** — silently returns the existing chain if any non-terminal stages are already in flight; resending while approval is pending doesn't duplicate.
+- **New POST view + URL `/psa/quotes/<pk>/send-for-approval/`** — admin-gated, audit-logged, accepts an optional `threshold` form field; falls back to `SystemSetting.invoice_approval_threshold_total` when blank.
+- **Quote detail UI** gets a "Send for Approval" button (visible on draft + sent quotes) plus a small modal that prompts for the threshold.
+
+### Tests
+- 6 tests in `psa.tests.test_phase3_5_features.QuoteApprovalRoutingTests` covering default single-stage routing, threshold-driven 2-stage routing, below-threshold staying single-stage, explicit stages overriding the default, the open-chain idempotency guard, and the view POST flow.
+
+### Roadmap
+Phase 20 sub-bullet "Quote approval routing" annotated `*(shipped v3.17.270)*`.
+
 ## [3.17.269] - 2026-05-05
 
 ### Added — Phase 27 v5 AR Aging tied to QBO

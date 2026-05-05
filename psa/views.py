@@ -2866,6 +2866,60 @@ def quote_accept(request, pk):
 @require_write
 @require_psa_enabled
 @require_http_methods(['POST'])
+def quote_send_for_approval(request, pk):
+    """Phase 20 v4 (v3.17.270): route a quote through a PSAApproval chain.
+
+    POST fields:
+      - threshold: optional; quotes at or above this dollar total get a
+                   2-stage manager → director chain. Below, single stage.
+                   Empty / 0 means single stage regardless of total.
+    """
+    from core.models import SystemSetting
+    org = get_request_organization(request)
+    qs = Quote.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+
+    threshold_raw = (request.POST.get('threshold') or '').strip()
+    threshold = None
+    if threshold_raw:
+        try:
+            threshold = float(threshold_raw)
+        except (TypeError, ValueError):
+            threshold = None
+    if threshold is None or threshold <= 0:
+        # Fall back to SystemSetting.invoice_approval_threshold_total
+        # which the org already configured for invoice gating.
+        try:
+            ss = SystemSetting.get_settings()
+            threshold = float(ss.invoice_approval_threshold_total or 0) or None
+        except Exception:
+            threshold = None
+
+    chain = item.send_for_approval(user=request.user,
+                                    default_threshold_total=threshold)
+    n = len(chain)
+    AuditLog.log(
+        user=request.user, action='create',
+        organization=org or item.organization,
+        object_type='psa.Quote', object_id=item.pk,
+        object_repr=item.quote_number,
+        description=f'Routed quote {item.quote_number} through {n}-stage approval chain',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    if n == 1 and chain[0].status == 'pending':
+        messages.success(request, f'Sent {item.quote_number} for single-stage approval.')
+    else:
+        messages.success(request,
+                         f'Sent {item.quote_number} for {n}-stage approval routing.')
+    return redirect('psa:quote_detail', pk=item.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
 def ticket_expense_add(request, ticket_number):
     org = get_request_organization(request)
     qs = Ticket.objects.all()
