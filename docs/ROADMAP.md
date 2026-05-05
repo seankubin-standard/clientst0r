@@ -425,7 +425,7 @@ Planned capabilities:
 
 **Goal:** Provide MSP operational visibility and business insight.
 
-## Phase 20 — Approval & Change Management Workflows **(M)** [in progress]
+## Phase 20 — Approval & Change Management Workflows **(M)** [shipped — v3.17.277]
 
 **Roadmap item:** Approval Routing & Change Management. Extends Phase 6.1 (CAB) + the existing approvals queue.
 
@@ -439,7 +439,7 @@ Planned capabilities:
 - Approval audit trails *(shipped v3.17.274 — `PSAApproval.decide()` and `create_chain()` now write to `audit.AuditLog` automatically; cascade transitions (auto-unblock, auto-cancel-on-deny) are logged too; per-approval history viewer at `/psa/approvals/<pk>/history/`)*
 - Workflow enforcement *(shipped v3.17.275 — `Quote.has_open_approvals` property + `Quote.mark_accepted()` raises ValueError when any chain stage is pending/blocked; matches the existing Invoice push gate)*
 - Change tracking *(shipped v3.17.276 — `ChangeRequestTransition` table records every implementation_status transition; `ChangeRequest.transition_status()` method auto-stamps timestamps + writes attribution; pre/post_save signals capture direct edits too)*
-- Operational sign-off workflows
+- Operational sign-off workflows *(shipped v3.17.277 — `Ticket.sign_off()` method + `signed_off_at`/`signed_off_by`/`signoff_note` fields; `TicketStatus.requires_signoff` flag drives a pre_save guard that raises ValidationError on attempted transition without sign-off)*
 
 **Goal:** Improve workflow accountability and operational governance.
 

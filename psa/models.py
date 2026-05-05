@@ -90,6 +90,14 @@ class TicketStatus(models.Model):
     slug = models.SlugField(max_length=100, unique=True)
     is_terminal = models.BooleanField(default=False, help_text='True for resolved/closed/cancelled-style states')
     pauses_sla = models.BooleanField(default=False, help_text='True if SLA clock pauses while in this state')
+    # Phase 20 v9 (v3.17.277): operational sign-off gate. Tickets can't
+    # move INTO a status with `requires_signoff=True` unless the ticket
+    # has `signed_off_at` populated.
+    requires_signoff = models.BooleanField(
+        default=False,
+        help_text='Block transitions into this status unless the ticket '
+                  'has been signed off (signed_off_at populated).',
+    )
     sort_order = models.PositiveIntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -275,6 +283,15 @@ class Ticket(models.Model):
     first_response_at = models.DateTimeField(null=True, blank=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
+
+    # Phase 20 v9 (v3.17.277): operational sign-off — required before
+    # the ticket can transition INTO any TicketStatus.requires_signoff=True.
+    signed_off_at = models.DateTimeField(null=True, blank=True)
+    signed_off_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='signed_off_tickets',
+    )
+    signoff_note = models.TextField(blank=True)
     last_client_response_at = models.DateTimeField(null=True, blank=True)
     last_tech_response_at = models.DateTimeField(null=True, blank=True)
     sla_paused_until = models.DateTimeField(null=True, blank=True)
@@ -348,6 +365,20 @@ class Ticket(models.Model):
         if not self.ticket_number:
             self.ticket_number = self._generate_ticket_number()
         super().save(*args, **kwargs)
+
+    def sign_off(self, *, by_user, note: str = ''):
+        """Phase 20 v9 (v3.17.277): record an operational sign-off.
+        Stamps `signed_off_at` + `signed_off_by` so the ticket is
+        eligible for transitions into `requires_signoff` statuses."""
+        from django.utils import timezone as _tz
+        if self.signed_off_at:
+            return False  # already signed off
+        self.signed_off_at = _tz.now()
+        self.signed_off_by = by_user
+        self.signoff_note = (note or '')[:5000]
+        self.save(update_fields=['signed_off_at', 'signed_off_by',
+                                  'signoff_note', 'updated_at'])
+        return True
 
     @staticmethod
     def _generate_ticket_number():

@@ -2197,3 +2197,79 @@ class ChangeRequestTransitionTests(TestCase):
         self.assertEqual(rows.first().to_status, 'cancelled')
         # by_user is None for signal-captured edits
         self.assertIsNone(rows.first().by_user)
+
+
+class OperationalSignoffTests(TestCase):
+    """Phase 20 v9 (v3.17.277): block transitions into
+    `TicketStatus.requires_signoff=True` until the ticket is signed off."""
+
+    def setUp(self):
+        from psa.models import (
+            TicketStatus, TicketPriority, TicketType, Queue,
+        )
+        _setup_seed()
+        self.org = Organization.objects.create(name='SignCo', slug='sign-co')
+        self.user = User.objects.create_user('signer', 'sn@x.com', 'pw')
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ticket_type = TicketType.objects.first()
+        self.status_open = TicketStatus.objects.filter(slug='new').first() or \
+                           TicketStatus.objects.first()
+        # Mark the 'closed' status as requiring sign-off
+        self.status_closed, _ = TicketStatus.objects.update_or_create(
+            slug='closed-signoff',
+            defaults={
+                'name': 'Closed (sign-off required)',
+                'is_terminal': True, 'requires_signoff': True,
+            },
+        )
+
+    def _make_ticket(self):
+        from psa.models import Ticket
+        return Ticket.objects.create(
+            organization=self.org, subject='Needs sign-off',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ticket_type, status=self.status_open,
+        )
+
+    def test_sign_off_method_stamps_fields(self):
+        t = self._make_ticket()
+        result = t.sign_off(by_user=self.user, note='looks good')
+        self.assertTrue(result)
+        t.refresh_from_db()
+        self.assertIsNotNone(t.signed_off_at)
+        self.assertEqual(t.signed_off_by, self.user)
+        self.assertEqual(t.signoff_note, 'looks good')
+
+    def test_double_sign_off_is_noop(self):
+        t = self._make_ticket()
+        t.sign_off(by_user=self.user)
+        result = t.sign_off(by_user=self.user)
+        self.assertFalse(result)
+
+    def test_transition_blocked_without_signoff(self):
+        from django.core.exceptions import ValidationError
+        t = self._make_ticket()
+        t.status = self.status_closed
+        with self.assertRaises(ValidationError):
+            t.save()
+
+    def test_transition_allowed_after_signoff(self):
+        t = self._make_ticket()
+        t.sign_off(by_user=self.user, note='approved')
+        t.status = self.status_closed
+        t.save()  # should not raise
+        t.refresh_from_db()
+        self.assertEqual(t.status_id, self.status_closed.pk)
+
+    def test_status_without_requires_signoff_unaffected(self):
+        from psa.models import TicketStatus
+        plain_terminal, _ = TicketStatus.objects.update_or_create(
+            slug='resolved-plain',
+            defaults={'name': 'Resolved (plain)', 'is_terminal': True},
+        )
+        t = self._make_ticket()
+        t.status = plain_terminal
+        t.save()  # no sign-off, but status doesn't require one
+        t.refresh_from_db()
+        self.assertEqual(t.status_id, plain_terminal.pk)

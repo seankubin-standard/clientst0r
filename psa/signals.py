@@ -26,6 +26,36 @@ _PRIOR_TICKET = {}
 
 
 @receiver(pre_save, sender=Ticket)
+def _enforce_operational_signoff(sender, instance, **kwargs):
+    """Phase 20 v9 (v3.17.277): block transitions INTO a ticket status
+    flagged `requires_signoff=True` unless `signed_off_at` is populated.
+
+    The check runs only for existing tickets where the status_id
+    actually changed (not on every save), so updating arbitrary fields
+    on a closed ticket doesn't unexpectedly throw.
+    """
+    if not instance.pk or not instance.status_id:
+        return
+    try:
+        prev_status_id = (Ticket.objects.only('status_id')
+                          .get(pk=instance.pk).status_id)
+    except Ticket.DoesNotExist:
+        return
+    if prev_status_id == instance.status_id:
+        return
+    target = instance.status
+    if target is None or not getattr(target, 'requires_signoff', False):
+        return
+    if instance.signed_off_at is None:
+        from django.core.exceptions import ValidationError as _VE
+        raise _VE(
+            f'Ticket {instance.ticket_number or instance.pk} cannot move to '
+            f'"{target.name}" without an operational sign-off. Run '
+            f'Ticket.sign_off() first.'
+        )
+
+
+@receiver(pre_save, sender=Ticket)
 def _capture_prior_status(sender, instance, **kwargs):
     if instance.pk:
         try:

@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.277] - 2026-05-05
+
+### Added — Phase 20 v9 Operational Sign-off Workflows
+Closes the "Operational sign-off workflows" sub-bullet of Phase 20 and advances the **Phase 20 — Approval & Change Management Workflows** marker to `[shipped — v3.17.277]` (10 of 10 sub-bullets shipped).
+
+- **3 new fields on `Ticket`** (migration `psa.0042`):
+  - `signed_off_at` (DateTime, nullable) — when sign-off was recorded.
+  - `signed_off_by` (FK to User, nullable) — who signed it off.
+  - `signoff_note` (TextField) — context/justification.
+- **1 new field on `TicketStatus`**: `requires_signoff` (Boolean, default False) — flags statuses that need sign-off before the transition is allowed.
+- **New `Ticket.sign_off(*, by_user, note)`** method — stamps the three fields. Idempotent (returns False on second call).
+- **`pre_save` signal `_enforce_operational_signoff`** — raises `ValidationError` if a ticket tries to move INTO a `requires_signoff=True` status without `signed_off_at` populated. Only fires on actual status changes — arbitrary field updates on a closed ticket don't throw.
+- **Statuses without the flag are unaffected** — back-compat for installs not using sign-off.
+
+### Tests
+- 5 tests in `psa.tests.test_phase3_5_features.OperationalSignoffTests` covering the `sign_off()` method (stamping + idempotency), the transition gate (blocked without sign-off, allowed after), and the no-flag pass-through.
+
+### Roadmap
+- Phase 20 sub-bullet "Operational sign-off workflows" annotated `*(shipped v3.17.277)*`.
+- **Phase 20 — Approval & Change Management Workflows** header advanced to `[shipped — v3.17.277]`.
+
 ## [3.17.276] - 2026-05-05
 
 ### Added — Phase 20 v8 Change Request Transition Tracking
