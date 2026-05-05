@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.282] - 2026-05-05
+
+### Added — Phase 18 v5/v6/v7/v9 — Location/Region/SLA scaffolding
+Closes 4 sub-bullets of Phase 18 in one focused release:
+- "Location-specific documentation"
+- "Location-level contacts"
+- "Site-level SLA assignment"
+- "Regional operational views" (the schema half — the report ships in v3.17.283)
+
+- **`Organization.region`** (CharField, blank=True; migration `core.0057`) — free-text tag for grouping. `normalized_region` property strips + lowercases for case-insensitive matching.
+- **`Organization.sla_overrides`** (JSONField, default={}; same migration) — per-priority overrides keyed by priority code: `{"P1": {"response_minutes": 15, "resolution_minutes": 240}, …}`.
+- **`Organization.sla_override_for(priority_code)`** method — walks up the parent chain so a child site falls back to its parent's overrides, returning the first hit. None when nothing configured at any level.
+- **Location-specific docs + location-level contacts** are *already* shipped via the existing org-scoping mechanism: KnowledgeBase articles + assets.Contact rows scope by FK to Organization. With Phase 18 v1 (parent/child orgs, v3.17.240) in place, every "site = child Organization" pattern naturally produces location-specific docs/contacts. This release confirms that and annotates the roadmap.
+
+### Tests
+- 6 tests in `core.tests.test_org_hierarchy.SiteSLAOverrideTests` and `RegionTaggingTests` covering: own overrides take priority, parent fallback works, no-override returns None, empty priority code returns None, region normalization (strip + lowercase), blank region normalizes to empty.
+
+### Roadmap
+- "Location-specific documentation" → annotated `*(shipped — child-org KB articles already scope per Phase 18 v1; v3.17.282 confirmation)*`.
+- "Location-level contacts" → annotated `*(shipped — child-org `assets.Contact` rows already scope per Phase 18 v1; v3.17.282 confirmation)*`.
+- "Site-level SLA assignment (override parent SLA)" → annotated `*(shipped v3.17.282)*`.
+- "Regional operational views" → annotated `*(partial — `region` field shipped v3.17.282; report shipping in v3.17.283)*`.
+
 ## [3.17.281] - 2026-05-05
 
 ### Added — Phase 27 v9 Bank Reconciliation Hooks

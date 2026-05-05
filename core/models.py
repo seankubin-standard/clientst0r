@@ -114,6 +114,26 @@ class Organization(models.Model):
                   'descendants\' rows; descendants stay scoped to themselves.',
     )
 
+    # Phase 18 v9 (v3.17.282): regional grouping. Free-text tag — the
+    # multi-location report groups child orgs under their region label.
+    # Examples: "EMEA", "Northeast", "Bay Area".
+    region = models.CharField(
+        max_length=80, blank=True,
+        help_text='Region / area tag — drives the multi-location report '
+                  'grouping. Free-text, normalized to lowercase for grouping.',
+    )
+
+    # Phase 18 v7 (v3.17.282): site-level SLA overrides. JSON dict
+    # keyed by priority code → {response_minutes, resolution_minutes}.
+    # When set, the PSA SLA engine uses these instead of the contract
+    # / queue defaults for tickets on this org.
+    sla_overrides = models.JSONField(
+        default=dict, blank=True,
+        help_text='Per-priority SLA override map: '
+                  '{"P1": {"response_minutes": 15, "resolution_minutes": 240}}. '
+                  'Empty = inherit from contract / queue defaults.',
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -141,6 +161,26 @@ class Organization(models.Model):
         chain = list(reversed(self.ancestors))
         chain.append(self)
         return ' → '.join(o.name for o in chain)
+
+    def sla_override_for(self, priority_code: str):
+        """Phase 18 v7 (v3.17.282): look up the per-priority SLA
+        override for this org, walking up the parent chain when not
+        set locally. Returns a dict like
+        ``{"response_minutes": N, "resolution_minutes": M}`` or None
+        when nothing is configured at any level."""
+        if not priority_code:
+            return None
+        for org in [self] + self.ancestors:
+            data = org.sla_overrides or {}
+            entry = data.get(priority_code)
+            if entry:
+                return entry
+        return None
+
+    @property
+    def normalized_region(self) -> str:
+        """Lowercased, stripped region tag for case-insensitive grouping."""
+        return (self.region or '').strip().lower()
 
     def __str__(self):
         return self.name

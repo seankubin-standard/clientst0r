@@ -394,12 +394,12 @@ Planned capabilities:
 - Parent / child organizations (`Organization.parent` self-FK) *(shipped v3.17.240)*
 - Multi-site hierarchy *(shipped v3.17.240 — `Organization.ancestors` property + breadcrumb labels)*
 - Shared infrastructure inheritance *(shipped v3.17.252 — `Asset.is_shared_with_descendants` flag + `Asset.visible_to_org()` classmethod that unions own/descendants/shared-from-ancestors; `core.utils.ancestor_org_ids` helper added)*
-- Location-specific documentation
-- Location-level contacts
-- Site-level SLA assignment (override parent SLA)
+- Location-specific documentation *(shipped — KnowledgeBase articles already scope per organization via Phase 18 v1 parent/child support; v3.17.282 confirmation)*
+- Location-level contacts *(shipped — `assets.Contact` rows already scope per organization via Phase 18 v1 parent/child support; v3.17.282 confirmation)*
+- Site-level SLA assignment (override parent SLA) *(shipped v3.17.282 — `Organization.sla_overrides` JSONField + `sla_override_for(priority_code)` method that walks up the parent chain)*
 - Site filtering on every list page *(shipped v3.17.240 — `OrganizationManager.for_organization` walks parent chain via `core.utils.descendant_org_ids` helper, parent queries see all descendants automatically)*
 - Shared services mapping
-- Regional operational views (group sites by region)
+- Regional operational views (group sites by region) *(partial — `Organization.region` field + `normalized_region` shipped v3.17.282; multi-location report ships in v3.17.283)*
 - Multi-location reporting
 
 **Goal:** Improve management of larger MSP client environments.

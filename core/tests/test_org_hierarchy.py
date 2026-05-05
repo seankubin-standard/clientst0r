@@ -177,3 +177,57 @@ class OrgFormParentValidationTests(TestCase):
         self.assertNotIn(self.b.pk, choices)
         self.assertNotIn(self.c.pk, choices)
         self.assertIn(self.unrelated.pk, choices)
+
+
+class SiteSLAOverrideTests(TestCase):
+    """Phase 18 v7 (v3.17.282): per-priority SLA overrides on Organization
+    walk up the parent chain so a child site falls back to its parent's
+    overrides, then to whatever the contract / queue defaults are."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = Organization.objects.create(
+            name='HQ', slug='sla-hq',
+            sla_overrides={
+                'P1': {'response_minutes': 15, 'resolution_minutes': 240},
+            },
+        )
+        cls.child_with_own = Organization.objects.create(
+            name='Site-A', slug='sla-a', parent=cls.parent,
+            sla_overrides={
+                'P1': {'response_minutes': 5, 'resolution_minutes': 120},
+            },
+        )
+        cls.child_inherit = Organization.objects.create(
+            name='Site-B', slug='sla-b', parent=cls.parent,
+        )
+        cls.standalone = Organization.objects.create(name='Standalone',
+                                                      slug='sla-standalone')
+
+    def test_own_override_used_first(self):
+        ov = self.child_with_own.sla_override_for('P1')
+        self.assertEqual(ov['response_minutes'], 5)
+
+    def test_falls_back_to_parent(self):
+        ov = self.child_inherit.sla_override_for('P1')
+        self.assertEqual(ov['response_minutes'], 15)
+
+    def test_no_override_returns_none(self):
+        self.assertIsNone(self.standalone.sla_override_for('P1'))
+        self.assertIsNone(self.child_inherit.sla_override_for('P5'))
+
+    def test_empty_priority_code_returns_none(self):
+        self.assertIsNone(self.parent.sla_override_for(''))
+
+
+class RegionTaggingTests(TestCase):
+    """Phase 18 v9 (v3.17.282): `Organization.region` + `normalized_region`."""
+
+    def test_normalized_strips_and_lowercases(self):
+        org = Organization.objects.create(name='A', slug='reg-a',
+                                            region=' EMEA ')
+        self.assertEqual(org.normalized_region, 'emea')
+
+    def test_blank_region_normalizes_to_empty(self):
+        org = Organization.objects.create(name='B', slug='reg-b')
+        self.assertEqual(org.normalized_region, '')
