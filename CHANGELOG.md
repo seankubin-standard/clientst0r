@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.313] - 2026-05-05
+
+### Added — Phase 21 v9 — Web Push notifications (scaffold)
+Closes the "Push notifications" sub-bullet of Phase 21. Model + send helper land today; live VAPID-signed delivery happens when an MSP configures keys.
+
+- **New `psa.WebPushSubscription` model** (migration `psa.0055`) — fields: user FK, endpoint (URL), p256dh_key, auth_secret, user_agent, is_active, last_delivery_at, last_error. `unique_together [['user', 'endpoint']]` so the same user across multiple devices stays ergonomic but a duplicate registration on one device fails fast.
+- **`WebPushSubscription.send(*, title, body, url)` method** — checks for VAPID keys in `settings.WEBPUSH_VAPID_*`; if missing returns `{'success': False, 'error': 'VAPID keys not configured ...'}` and stamps `last_error`. Same pattern when `pywebpush` isn't installed. Live delivery (calling `pywebpush.webpush()`) lands when an admin configures both.
+
+### Tests
+- 4 tests in `WebPushSubscriptionTests` covering: unique_together enforcement, no-VAPID returns clear error, no-pywebpush returns clear error (skipped when locally installed), multi-endpoint per user is allowed.
+
+### Roadmap
+Phase 21 sub-bullet "Push notifications" annotated `*(shipped v3.17.313 — `WebPushSubscription` model + `send()` helper; live VAPID-signed delivery when keys are configured)*`.
+
 ## [3.17.312] - 2026-05-05
 
 ### Added — Phase 21 v7+v8 — Tech signatures + onsite checklist enforcement

@@ -1698,6 +1698,82 @@ class ChecklistEnforcementTests(TestCase):
         self.assertEqual(self.ticket.status_id, self.status_closed.pk)
 
 
+class WebPushSubscriptionTests(TestCase):
+    """Phase 21 v9 (v3.17.313): Web Push subscription scaffold."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('u', 'u@x.com', 'pw')
+
+    def test_unique_per_user_endpoint(self):
+        from psa.models import WebPushSubscription
+        from django.db import IntegrityError
+        WebPushSubscription.objects.create(
+            user=self.user,
+            endpoint='https://fcm.googleapis.com/fcm/send/abc',
+            p256dh_key='pub', auth_secret='auth',
+        )
+        with self.assertRaises(IntegrityError):
+            WebPushSubscription.objects.create(
+                user=self.user,
+                endpoint='https://fcm.googleapis.com/fcm/send/abc',
+                p256dh_key='pub2', auth_secret='auth2',
+            )
+
+    def test_send_without_vapid_returns_clear_error(self):
+        from psa.models import WebPushSubscription
+        sub = WebPushSubscription.objects.create(
+            user=self.user,
+            endpoint='https://fcm.googleapis.com/fcm/send/xyz',
+            p256dh_key='pub', auth_secret='auth',
+        )
+        result = sub.send(title='Hello', body='New ticket')
+        self.assertFalse(result['success'])
+        self.assertIn('VAPID', result['error'])
+        sub.refresh_from_db()
+        self.assertIn('VAPID', sub.last_error)
+
+    def test_send_with_vapid_but_no_pywebpush_clear_error(self):
+        from unittest import mock
+        from psa.models import WebPushSubscription
+        from django.test import override_settings
+        sub = WebPushSubscription.objects.create(
+            user=self.user,
+            endpoint='https://fcm.googleapis.com/fcm/send/abc',
+            p256dh_key='pub', auth_secret='auth',
+        )
+        with override_settings(
+            WEBPUSH_VAPID_PUBLIC_KEY='pub-key',
+            WEBPUSH_VAPID_PRIVATE_KEY='priv-key',
+        ):
+            with mock.patch.dict('sys.modules', {'pywebpush': None}):
+                # The mock above causes ImportError when pywebpush
+                # is imported. Skip when local environment has it
+                # installed (false-negative protection).
+                try:
+                    import pywebpush  # noqa: F401
+                    self.skipTest('pywebpush installed in environment; '
+                                   'cannot reliably mock missing import')
+                except ImportError:
+                    result = sub.send(title='Hello')
+                    self.assertFalse(result['success'])
+                    self.assertIn('pywebpush', result['error'])
+
+    def test_subscription_unique_across_endpoints_same_user(self):
+        from psa.models import WebPushSubscription
+        WebPushSubscription.objects.create(
+            user=self.user,
+            endpoint='https://example.com/push/1',
+            p256dh_key='pub', auth_secret='auth',
+        )
+        # Different endpoint allowed
+        WebPushSubscription.objects.create(
+            user=self.user,
+            endpoint='https://example.com/push/2',
+            p256dh_key='pub', auth_secret='auth',
+        )
+        self.assertEqual(WebPushSubscription.objects.count(), 2)
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

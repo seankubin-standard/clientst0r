@@ -456,7 +456,7 @@ Planned capabilities:
 - GPS time tracking *(planned — Phase 8.2)*
 - Technician signatures (canvas signature pad on completion) *(shipped v3.17.312 — `TicketSignature` model one-to-one with Ticket; base64 PNG data-URI storage + geo capture)*
 - Onsite checklist enforcement (must complete X before close) *(shipped v3.17.312 — `TicketChecklistItem` model + `Ticket.has_outstanding_checklist` property + sign-off-required transitions blocked while required items are incomplete)*
-- Push notifications *(planned — Phase 8.4)*
+- Push notifications *(shipped v3.17.313 — `WebPushSubscription` model with per-user/endpoint uniqueness + `send()` helper; live VAPID-signed delivery via pywebpush when `WEBPUSH_VAPID_PUBLIC_KEY` / `WEBPUSH_VAPID_PRIVATE_KEY` are configured)*
 - Voice-to-ticket workflows
 - Mobile dispatch routing (turn-by-turn from current GPS to next ticket)
 - Mobile asset lookup

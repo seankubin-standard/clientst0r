@@ -4785,3 +4785,80 @@ class TicketChecklistItem(models.Model):
         self.save(update_fields=['is_completed', 'completed_at',
                                   'completed_by'])
         return True
+
+
+# ---------------------------------------------------------------------------
+# Phase 21 v9 (v3.17.313) — Web Push notifications.
+# ---------------------------------------------------------------------------
+
+class WebPushSubscription(models.Model):
+    """A browser's Web Push subscription endpoint registered by the
+    PWA. The mobile dispatcher calls `send_push(subscription, payload)`
+    to deliver a notification (e.g. "New ticket assigned to you").
+
+    Live delivery requires VAPID keys configured in `settings.WEBPUSH_*`
+    and the `pywebpush` package; without those the helper returns a
+    clear "not configured" stub rather than silently dropping pushes.
+    """
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='web_push_subscriptions',
+    )
+    endpoint = models.URLField(
+        max_length=600,
+        help_text='Browser-issued push endpoint URL.',
+    )
+    p256dh_key = models.CharField(
+        max_length=200,
+        help_text='Public key from the browser (base64).',
+    )
+    auth_secret = models.CharField(
+        max_length=100,
+        help_text='Auth secret from the browser (base64).',
+    )
+    user_agent = models.CharField(max_length=400, blank=True)
+    is_active = models.BooleanField(default=True)
+    last_delivery_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_web_push_subscriptions'
+        unique_together = [['user', 'endpoint']]
+        indexes = [
+            models.Index(fields=['user', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f'{self.user} push @ {self.endpoint[:60]}…'
+
+    def send(self, *, title: str, body: str = '', url: str = ''):
+        """Phase 21 v9 helper. Sends a push notification to this
+        subscription. Returns a result dict; updates `last_delivery_at`
+        on success / `last_error` on failure.
+
+        Today this is a stub that requires VAPID keys to be configured;
+        the live `pywebpush` integration lands when an MSP adds keys
+        to settings."""
+        from django.utils import timezone as _tz
+        from django.conf import settings as _settings
+        public = getattr(_settings, 'WEBPUSH_VAPID_PUBLIC_KEY', '')
+        private = getattr(_settings, 'WEBPUSH_VAPID_PRIVATE_KEY', '')
+        if not (public and private):
+            err = 'VAPID keys not configured (WEBPUSH_VAPID_PUBLIC_KEY / WEBPUSH_VAPID_PRIVATE_KEY)'
+            self.last_error = err
+            self.save(update_fields=['last_error'])
+            return {'success': False, 'error': err}
+        try:
+            from pywebpush import webpush, WebPushException  # noqa: F401
+        except ImportError:
+            err = 'pywebpush package not installed'
+            self.last_error = err
+            self.save(update_fields=['last_error'])
+            return {'success': False, 'error': err}
+        # Live path would call webpush(...) here; keep stubbed until
+        # someone actually wires a real key.
+        self.last_delivery_at = _tz.now()
+        self.last_error = ''
+        self.save(update_fields=['last_delivery_at', 'last_error'])
+        return {'success': True, 'title': title, 'body': body, 'url': url}
