@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.345] - 2026-05-07
+
+### Added — Mobile API plan doc (Phase 8 prep)
+First of the v3.17.345 → v3.17.353 mobile-API release train. Pure docs commit. Adds `docs/MOBILE_APP_PLAN.md` describing the planned `/api/mobile/v1/` surface, token-auth + 2FA flow, vault-reveal security rules (GeoIP / Axes / `VaultAccessRule` / `requires_reveal_approval` all preserved), throttling, CSRF posture, and a per-release endpoint table. Companion document to Phase 8 in `docs/ROADMAP.md`. The actual endpoints + tests land starting v3.17.346.
+
+### Tests
+None — pure docs.
+
 ## [3.17.338] - 2026-05-07
 
 ### Added — Phase 23 v2: Security incident model + timelines
