@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.347] - 2026-05-07
+
+### Added — Mobile API: dashboard + organizations endpoints
+Third release in the mobile-API train.
+
+- New endpoint `GET /api/mobile/v1/dashboard/` — headline counts the mobile dashboard renders: open tickets, critical (P1) tickets, expirations within 30 days, offline website monitors, recent assets (7 days), open security alerts, recent audit-log activity (24 h), and `organization_count`. Counts are scoped to the user's accessible organizations. Each model lookup is defensive — if a model / app isn't loaded the count falls back to 0 instead of 500.
+- New endpoint `GET /api/mobile/v1/organizations/?search=&page=` — paginated list of orgs the user has an active `Membership` in. Supports search by name / slug.
+- New endpoint `GET /api/mobile/v1/organizations/<id>/` — detail with related counts (assets, open tickets, contacts). Cross-org reads return 404.
+- New helper `api_mobile/scoping.py::accessible_org_ids(user)` — single source of truth for "which orgs can this user see" used by all subsequent endpoints in the train.
+
+### Tests
+- 6 new tests: dashboard requires auth, dashboard returns counts dict, org list requires auth, org list scoped to user's orgs, org detail returns my org, org detail cross-org read blocked (404).
+- Updated test class decorators to disable DRF rate-throttling — cumulative login attempts across multiple test classes sharing one IP otherwise tripped the 10/hour login throttle.
+
 ## [3.17.346] - 2026-05-07
 
 ### Added — Mobile API: DRF setup + auth endpoints
