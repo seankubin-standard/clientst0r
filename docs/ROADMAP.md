@@ -496,7 +496,7 @@ Planned capabilities:
 - Security incident timelines *(shipped v3.17.338 — SecurityIncident + SecurityIncidentEvent + auto-correlation by asset+severity window + `/security/incidents/`)*
 - Exposure scoring *(shipped v3.17.339 — Organization.exposure_score cached + `recompute_exposure_scores` mgmt cmd + org-detail badge)*
 - Incident SLA tracking *(shipped v3.17.355 — SecurityIncidentSLAPolicy + `check_incident_sla_breaches` mgmt cmd + idempotent timeline events)*
-- Automated remediation workflows
+- Automated remediation workflows *(shipped v3.17.358 — RemediationPlaybook + RemediationPlaybookStep engine; auto-fires on incident open; step types create_ticket / send_email / quarantine_asset_flag / run_workflow_rule)*
 - Security dashboarding *(shipped v3.17.168 via Phase 9.3 — `/security/alerts/`)*
 - Threat visibility
 - Security event reporting *(shipped v3.17.168 via Phase 9.4 — MTTA + suppression + digest framework)*

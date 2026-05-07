@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Remediation Playbooks{% endblock %}
+{% block content %}
+<h2>Remediation Playbooks</h2>
+<p class="text-muted">Automated remediation flows that fire when a SecurityIncident matches a playbook's trigger conditions. Each playbook runs an ordered list of steps and records every step in the incident timeline.</p>
+
+<div class="card mb-3">
+    <table class="table table-sm mb-0">
+        <thead>
+            <tr><th>#</th><th>Name</th><th>Severity ≥</th><th>Client scope</th><th>Active</th><th>Priority</th><th>Steps</th></tr>
+        </thead>
+        <tbody>
+            {% for pb in playbooks %}
+            <tr>
+                <td>{{ pb.pk }}</td>
+                <td>{{ pb.name }}</td>
+                <td>{{ pb.match_severity_min|default:"—" }}</td>
+                <td>{{ pb.match_client_org.name|default:"(MSP-wide)" }}</td>
+                <td>{% if pb.is_active %}<span class="badge bg-success">on</span>{% else %}<span class="badge bg-secondary">off</span>{% endif %}</td>
+                <td>{{ pb.priority }}</td>
+                <td>
+                    <ol class="mb-0 small">
+                        {% for step in pb.steps.all %}
+                        <li>{{ step.get_action_display }}</li>
+                        {% empty %}
+                        <li class="text-muted">No steps configured.</li>
+                        {% endfor %}
+                    </ol>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center text-muted">No playbooks configured.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

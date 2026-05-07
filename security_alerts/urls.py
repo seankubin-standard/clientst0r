@@ -27,4 +27,6 @@ urlpatterns = [
     path('incidents/', views.incident_list, name='incident_list'),
     path('incidents/<int:pk>/', views.incident_detail, name='incident_detail'),
     path('incidents/<int:pk>/decide/', views.incident_decide, name='incident_decide'),
+    # Phase 23 v3.17.356 — remediation playbooks
+    path('playbooks/', views.playbook_list, name='playbook_list'),
 ]
