@@ -1,0 +1,259 @@
+"""
+Mobile API field-ops endpoints — locations / timeclock / active-ticket.
+
+Phase 8 v3.17.410 — Sub-phase 8.1 REST surface.
+
+All endpoints require token auth. Off-shift GPS pings are dropped at the
+API layer per Sub-phase 8.5: pings outside the user's `WorkingHours` are
+audit-logged and discarded — never written to `TechnicianLocation`.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.decorators import (
+    api_view, authentication_classes, permission_classes,
+)
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from audit.models import AuditLog
+from field_ops.models import TechnicianLocation, TimeclockEntry
+
+
+def _audit(user, action, request, extra=None):
+    try:
+        AuditLog.objects.create(
+            user=user,
+            username=getattr(user, 'username', '') or '',
+            action=action,
+            object_type='FieldOps',
+            ip_address=_client_ip(request),
+            extra_data=extra or {},
+        )
+    except Exception:
+        pass
+
+
+def _client_ip(request):
+    xff = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR') or None
+
+
+def _is_off_shift(user, when):
+    """Return True if `when` falls outside the user's WorkingHours.
+
+    Backwards compatible: if the user has no WorkingHours rows at all,
+    we treat them as always working (False).
+    """
+    try:
+        import zoneinfo
+        profile = getattr(user, 'profile', None)
+        tz_name = getattr(profile, 'timezone', None) or 'UTC'
+        try:
+            tz = zoneinfo.ZoneInfo(tz_name)
+        except Exception:
+            tz = zoneinfo.ZoneInfo('UTC')
+        local = when.astimezone(tz)
+        weekday = local.weekday()
+        rows = user.resourcing_working_hours.filter(weekday=weekday, is_active=True)
+        if not rows.exists():
+            # If user has any WorkingHours rows for other weekdays, they're off today
+            if user.resourcing_working_hours.exists():
+                return True
+            return False
+        t = local.time()
+        return not any(r.start_time <= t <= r.end_time for r in rows)
+    except Exception:
+        # On any failure, do not drop pings — fail-open keeps GPS flowing.
+        return False
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def location_ping_view(request):
+    """
+    POST /api/mobile/v1/locations/
+
+    Body: `{lat, lon, accuracy?, timestamp?}`. Off-shift pings return 204
+    and are NOT stored. On-shift pings save a `TechnicianLocation` and
+    return 201 with the row id.
+    """
+    data = request.data or {}
+    try:
+        lat = Decimal(str(data.get('lat')))
+        lon = Decimal(str(data.get('lon')))
+    except (InvalidOperation, TypeError, ValueError):
+        return Response({'detail': 'lat and lon are required'}, status=400)
+
+    try:
+        accuracy = int(data.get('accuracy') or 0)
+    except (TypeError, ValueError):
+        accuracy = 0
+
+    when_raw = data.get('timestamp')
+    when = timezone.now()
+    if when_raw:
+        try:
+            parsed = datetime.fromisoformat(str(when_raw).replace('Z', '+00:00'))
+            if timezone.is_naive(parsed):
+                parsed = timezone.make_aware(parsed, timezone.utc)
+            when = parsed
+        except (ValueError, TypeError):
+            pass
+
+    user = request.user
+
+    if _is_off_shift(user, when):
+        _audit(user, 'api_call', request, {
+            'event': 'locations_dropped_offshift',
+            'channel': 'mobile',
+            'timestamp': when.isoformat(),
+        })
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    loc = TechnicianLocation.objects.create(
+        tech=user,
+        lat=lat,
+        lon=lon,
+        accuracy=accuracy,
+        timestamp=when,
+        source='mobile',
+    )
+    return Response(
+        {'id': loc.id, 'timestamp': loc.timestamp.isoformat()},
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def clock_in_view(request):
+    """
+    POST /api/mobile/v1/timeclock/clock-in/
+
+    Body: `{organization_id?, location_id?, ticket_id?, project_id?, notes?}`.
+    400 if the user already has an open clock-in.
+    """
+    user = request.user
+    if TimeclockEntry.objects.filter(tech=user, clocked_out_at__isnull=True).exists():
+        return Response(
+            {'detail': 'You already have an open clock-in.'},
+            status=400,
+        )
+
+    data = request.data or {}
+    entry = TimeclockEntry(
+        tech=user,
+        organization_id=data.get('organization_id') or None,
+        location_id=data.get('location_id') or None,
+        ticket_id=data.get('ticket_id') or None,
+        project_id=data.get('project_id') or None,
+        notes=(data.get('notes') or '')[:2000],
+        source='mobile',
+    )
+    entry.save()
+    _audit(user, 'api_call', request, {'event': 'timeclock_in', 'entry_id': entry.id})
+    return Response(_timeclock_payload(entry), status=201)
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def clock_out_view(request):
+    """
+    POST /api/mobile/v1/timeclock/clock-out/
+
+    Body: `{notes?}`. 400 if the user has no open entry.
+    """
+    user = request.user
+    entry = TimeclockEntry.objects.filter(
+        tech=user, clocked_out_at__isnull=True,
+    ).first()
+    if entry is None:
+        return Response({'detail': 'No open clock-in.'}, status=400)
+
+    notes = ((request.data or {}).get('notes') or '').strip()
+    if notes:
+        entry.notes = (entry.notes + '\n' + notes).strip()[:2000]
+    entry.clocked_out_at = timezone.now()
+    entry.save()
+    _audit(user, 'api_call', request, {'event': 'timeclock_out', 'entry_id': entry.id})
+    return Response(_timeclock_payload(entry))
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def timeclock_me_view(request):
+    """
+    GET /api/mobile/v1/timeclock/me/
+
+    Returns `{entry: ...}` with the user's open entry, or `{entry: null}`.
+    """
+    entry = TimeclockEntry.objects.filter(
+        tech=request.user, clocked_out_at__isnull=True,
+    ).first()
+    return Response({'entry': _timeclock_payload(entry) if entry else None})
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def active_ticket_view(request):
+    """
+    GET /api/mobile/v1/active-ticket/
+
+    Returns the user's most recent unsubmitted TicketTimeEntry's ticket,
+    or null if none. Used by the mobile app to pre-fill the ticket
+    selector on Clock In.
+    """
+    try:
+        from psa.models import TicketTimeEntry
+    except Exception:
+        return Response({'ticket': None})
+
+    tte = (
+        TicketTimeEntry.objects.filter(user=request.user, submission__isnull=True)
+        .select_related('ticket', 'ticket__organization')
+        .order_by('-started_at')
+        .first()
+    )
+    if tte is None or tte.ticket is None:
+        return Response({'ticket': None})
+
+    t = tte.ticket
+    return Response({
+        'ticket': {
+            'id': t.id,
+            'ticket_number': getattr(t, 'ticket_number', '') or '',
+            'subject': getattr(t, 'subject', '') or '',
+            'organization_id': t.organization_id,
+            'organization_name': t.organization.name if t.organization_id else '',
+            'last_started_at': tte.started_at.isoformat() if tte.started_at else None,
+        },
+    })
+
+
+def _timeclock_payload(entry: TimeclockEntry) -> dict:
+    return {
+        'id': entry.id,
+        'tech_id': entry.tech_id,
+        'organization_id': entry.organization_id,
+        'location_id': entry.location_id,
+        'ticket_id': entry.ticket_id,
+        'project_id': entry.project_id,
+        'clocked_in_at': entry.clocked_in_at.isoformat() if entry.clocked_in_at else None,
+        'clocked_out_at': entry.clocked_out_at.isoformat() if entry.clocked_out_at else None,
+        'duration_minutes': entry.duration_minutes,
+        'source': entry.source,
+        'notes': entry.notes,
+    }

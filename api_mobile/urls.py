@@ -3,7 +3,14 @@ Mobile API URL config — `/api/mobile/v1/`.
 """
 from django.urls import path
 
-from . import views_auth, views_assets, views_dashboard, views_kb, views_tickets
+from . import (
+    views_assets,
+    views_auth,
+    views_dashboard,
+    views_field_ops,
+    views_kb,
+    views_tickets,
+)
 
 app_name = 'api_mobile'
 
@@ -32,4 +39,11 @@ urlpatterns = [
     # KB / docs (v3.17.350)
     path('kb/', views_kb.kb_list_view, name='kb_list'),
     path('kb/<int:pk>/', views_kb.kb_detail_view, name='kb_detail'),
+
+    # Field Ops — Phase 8 (v3.17.410)
+    path('locations/', views_field_ops.location_ping_view, name='location_ping'),
+    path('timeclock/clock-in/', views_field_ops.clock_in_view, name='clock_in'),
+    path('timeclock/clock-out/', views_field_ops.clock_out_view, name='clock_out'),
+    path('timeclock/me/', views_field_ops.timeclock_me_view, name='timeclock_me'),
+    path('active-ticket/', views_field_ops.active_ticket_view, name='active_ticket'),
 ]

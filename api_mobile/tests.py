@@ -454,3 +454,133 @@ class MobileKBTests(TestCase):
         url = f'/api/mobile/v1/kb/{self.org_b_doc.id}/'
         resp = _auth_get(self.client, url, self.token)
         self.assertEqual(resp.status_code, 404)
+
+
+# ---------------------------------------------------------------------------
+# Phase 8 — Field Ops endpoints (v3.17.410)
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileFieldOpsTests(TestCase):
+    """Locations + timeclock + active-ticket endpoints."""
+
+    def setUp(self):
+        from datetime import time
+        from resourcing.models import WorkingHours
+
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='FOPS', slug='fops')
+        self.user = User.objects.create_user('fops-tech', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        # Configure 9-5 weekday WorkingHours so off-shift suppression has
+        # something to test against.
+        for wd in range(0, 7):  # all 7 weekdays so the test is deterministic
+            WorkingHours.objects.create(
+                user=self.user, weekday=wd,
+                start_time=time(9, 0), end_time=time(17, 0),
+            )
+        self.client = Client()
+        resp = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'fops-tech', 'password': 'hunter2',
+        })
+        self.token = resp.json()['token']
+
+    def test_location_ping_during_workhours_stored(self):
+        # Build a timestamp inside 9-5 (12:00 UTC noon)
+        from django.utils import timezone as tz
+        when = tz.now().replace(hour=12, minute=0, second=0, microsecond=0)
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/locations/', self.token,
+            {'lat': '40.123456', 'lon': '-73.987654', 'accuracy': 10,
+             'timestamp': when.isoformat()},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        from field_ops.models import TechnicianLocation
+        self.assertEqual(TechnicianLocation.objects.filter(tech=self.user).count(), 1)
+
+    def test_location_ping_off_shift_dropped(self):
+        # 02:00 UTC — outside 9-5 — should return 204 + no row
+        from django.utils import timezone as tz
+        when = tz.now().replace(hour=2, minute=0, second=0, microsecond=0)
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/locations/', self.token,
+            {'lat': '40.0', 'lon': '-73.0', 'timestamp': when.isoformat()},
+        )
+        self.assertEqual(resp.status_code, 204)
+        from field_ops.models import TechnicianLocation
+        self.assertEqual(TechnicianLocation.objects.filter(tech=self.user).count(), 0)
+        # And an audit row was written (SQLite-safe Python filter)
+        from audit.models import AuditLog
+        rows = AuditLog.objects.filter(user=self.user)
+        self.assertTrue(any(
+            (r.extra_data or {}).get('event') == 'locations_dropped_offshift'
+            for r in rows
+        ))
+
+    def test_clock_in_then_clock_out(self):
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/timeclock/clock-in/', self.token,
+            {'organization_id': self.org.id, 'notes': 'on site'},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertIsNone(body['clocked_out_at'])
+
+        # Second clock-in fails
+        resp2 = _auth_post(
+            self.client, '/api/mobile/v1/timeclock/clock-in/', self.token,
+            {'organization_id': self.org.id},
+        )
+        self.assertEqual(resp2.status_code, 400)
+
+        # Clock out
+        resp3 = _auth_post(
+            self.client, '/api/mobile/v1/timeclock/clock-out/', self.token,
+            {'notes': 'done'},
+        )
+        self.assertEqual(resp3.status_code, 200, resp3.content)
+        self.assertIsNotNone(resp3.json()['clocked_out_at'])
+
+    def test_clock_out_without_open_returns_400(self):
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/timeclock/clock-out/', self.token, {},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_timeclock_me_returns_open_or_null(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/timeclock/me/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.json()['entry'])
+        # Now clock in
+        _auth_post(
+            self.client, '/api/mobile/v1/timeclock/clock-in/', self.token,
+            {'organization_id': self.org.id},
+        )
+        resp2 = _auth_get(self.client, '/api/mobile/v1/timeclock/me/', self.token)
+        self.assertIsNotNone(resp2.json()['entry'])
+        self.assertEqual(resp2.json()['entry']['organization_id'], self.org.id)
+
+    def test_active_ticket_returns_last_unsubmitted(self):
+        from psa.models import (
+            Queue, Ticket, TicketPriority, TicketStatus, TicketTimeEntry, TicketType,
+        )
+        from django.utils import timezone as tz
+        sn = TicketStatus.objects.create(name='New', slug='new', sort_order=1)
+        pr = TicketPriority.objects.create(code='P3', name='Normal')
+        tt = TicketType.objects.create(name='Incident', slug='incident')
+        qu = Queue.objects.create(name='Default', slug='default')
+        ticket = Ticket.objects.create(
+            organization=self.org, subject='Active', status=sn,
+            priority=pr, ticket_type=tt, queue=qu,
+        )
+        TicketTimeEntry.objects.create(
+            ticket=ticket, user=self.user,
+            started_at=tz.now(), ended_at=tz.now(), is_billable=True,
+        )
+        resp = _auth_get(self.client, '/api/mobile/v1/active-ticket/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIsNotNone(body['ticket'])
+        self.assertEqual(body['ticket']['id'], ticket.id)

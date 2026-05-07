@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.410] - 2026-05-07
+
+### Added — Phase 8.1 mobile REST surface: locations / timeclock / active-ticket
+Closes Sub-phase 8.1. Mobile clients can now POST GPS pings, clock in/out, query their open entry, and retrieve their last-active ticket — all over the existing token-auth machinery.
+
+- `api_mobile/views_field_ops.py`:
+  - `POST /api/mobile/v1/locations/` — body `{lat, lon, accuracy?, timestamp?}`. Off-shift suppression: if the timestamp falls outside the user's `WorkingHours`, return 204 + audit-log `locations_dropped_offshift` and DO NOT store. On-shift pings save a `TechnicianLocation` and return 201.
+  - `POST /api/mobile/v1/timeclock/clock-in/` — body `{organization_id?, location_id?, ticket_id?, project_id?, notes?}`. 400 if user already has an open clock-in.
+  - `POST /api/mobile/v1/timeclock/clock-out/` — body `{notes?}`. 400 if no open entry.
+  - `GET /api/mobile/v1/timeclock/me/` — current open entry or null.
+  - `GET /api/mobile/v1/active-ticket/` — most recent `TicketTimeEntry` with a null/pending submission.
+- All endpoints token-authed via the existing `TokenAuthentication` machinery (v3.17.346).
+
+### Tests
+- 6 new `MobileFieldOpsTests`: location ping during work-hours stored, off-shift ping returns 204 + audit row + no DB row, clock-in then clock-out happy path, double clock-in rejected, clock-out without open returns 400, timeclock_me returns null then populated, active-ticket returns last unsubmitted.
+
 ## [3.17.409] - 2026-05-07
 
 ### Added — Phase 8.1 backend foundation (part 2): TimeclockEntry + MobileDevice

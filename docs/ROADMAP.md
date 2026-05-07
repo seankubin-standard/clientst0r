@@ -822,7 +822,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 - `TechnicianLocation` model — append-only GPS pings (lat/lon/accuracy/timestamp/source); retention policy + per-org enable flag. *(shipped v3.17.397)*
 - `TimeclockEntry` model — clock-in / clock-out events with tech, organization, location, optional ticket, optional project, source (`'mobile'` / `'web'` / `'manual'`); derives a `TimeEntry` row on clock-out so existing billing rolls up unchanged. *(shipped v3.17.409)*
 - `ClientSiteGeofence` model — per-client polygon or radius around their physical address(es). Used to auto-detect "tech is on site" for ticket time tracking. *(shipped v3.17.397)*
-- REST API additions: `/api/v2/mobile/locations/`, `/api/v2/mobile/timeclock/`, `/api/v2/mobile/active-ticket/`.
+- REST API additions: `/api/v2/mobile/locations/`, `/api/v2/mobile/timeclock/`, `/api/v2/mobile/active-ticket/`. *(shipped v3.17.410 — endpoints live at `/api/mobile/v1/locations/`, `/api/mobile/v1/timeclock/clock-in/` + `/clock-out/` + `/me/`, and `/api/mobile/v1/active-ticket/`. Off-shift GPS suppression honors `WorkingHours` per Sub-phase 8.5.)*
 - Token auth (long-lived per-device tokens stored in `MobileDevice` model with revoke-on-demand). *(API plan doc shipped v3.17.345; auth endpoints v3.17.346; dashboard + organizations v3.17.347; assets v3.17.348; tickets v3.17.349; KB endpoints — list / search / detail with raw markdown + rendered HTML — shipped v3.17.350; vault / monitoring / profile endpoints land v3.17.351 → v3.17.353)*
 
 ### Sub-phase 8.2 — GPS auto-documentation engine
