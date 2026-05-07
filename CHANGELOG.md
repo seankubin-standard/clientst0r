@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.380] - 2026-05-07
+
+### Added — Admin "Mobile Apps" landing page for sideload distribution
+New page at `/core/mobile-apps/` linked from the Admin nav dropdown (under a new "Mobile" section). Renders a two-card layout:
+
+- **Android** card: build status pill (Ready / Building / Not built), file size + age when available, "Download APK" or "Build & download APK" button (re-uses the existing `core:download_mobile_app` view that auto-builds via `npx expo prebuild` + Gradle on first request), and a 4-step sideload guide.
+- **iOS** card: explains that iOS sideload requires Mac/Xcode or AltStore/Sideloadly (no Linux server-side build path produces a sideloadable IPA). Lists 4 distribution paths (Expo Go for dev, free 7-day cert via Sideloadly, Apple Developer ad-hoc, App Store) so the operator can pick the right one. External links to AltStore and Sideloadly.
+- A "Build pipeline" footer card surfaces the source path (`mobile/`), output paths, and status-JSON paths so admins can debug without SSH.
+
+The page is gated by the existing `is_staff or is_superuser` pattern via `@user_passes_test`.
+
+### Version-numbering note
+This release is intentionally numbered v3.17.380 (skipping ~33 patch numbers above the latest pushed v3.17.363 + the in-flight backend-mobile-API agent's range that tops at 353). The bump avoids version-vs-tag collisions with the still-running parallel agent. A monotonicity-fix release will follow once all parallel work finishes.
+
+### Files
+- `core/views.py` — new `mobile_apps_admin` view
+- `core/urls.py` — new `core:mobile_apps_admin` URL at `/core/mobile-apps/`
+- `templates/core/mobile_apps_admin.html` — new page
+- `templates/base.html` — Admin dropdown gets a "Mobile" section with the new link
+
+### Tests
+None — pure UI/admin landing page; the underlying download view is already covered.
+
 ## [3.17.347] - 2026-05-07
 
 ### Added — Mobile API: dashboard + organizations endpoints

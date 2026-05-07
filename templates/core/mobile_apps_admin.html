@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% load static i18n %}
+{% block title %}{% trans "Mobile Apps" %}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .platform-card { border: 1px solid var(--bs-border-color); border-radius: 8px; padding: 1.5rem; height: 100%; }
+    .platform-card h3 { margin-top: 0; font-size: 1.25rem; }
+    .platform-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .platform-icon.android { color: #3ddc84; }
+    .platform-icon.ios { color: #555; }
+    [data-bs-theme="dark"] .platform-icon.ios { color: #aaa; }
+    .build-meta { font-size: 0.85rem; color: var(--bs-secondary-color); }
+    .sideload-step { margin-bottom: 0.4rem; }
+    .sideload-step code { font-size: 0.82rem; padding: 1px 4px; border-radius: 3px;
+        background: var(--bs-tertiary-bg); }
+    .status-pill { display: inline-block; padding: 2px 10px; border-radius: 999px;
+        font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    .status-pill.available { background: var(--bs-success-bg-subtle); color: var(--bs-success-text); }
+    .status-pill.unavailable { background: var(--bs-secondary-bg-subtle); color: var(--bs-secondary-text); }
+    .status-pill.building { background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container my-4" style="max-width: 1100px;">
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="mb-0"><i class="fas fa-mobile-alt me-2"></i>{% trans "Mobile Apps" %}</h2>
+    </div>
+
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-1"></i>
+        {% blocktrans %}These builds are for sideload distribution to your field technicians.
+        They are not yet on the Apple App Store or Google Play. Source code lives at <code>mobile/</code>
+        in the repo and is built with Expo SDK 51 + React Native + TypeScript.{% endblocktrans %}
+    </div>
+
+    <div class="row g-3 mb-4">
+        <!-- Android -->
+        <div class="col-md-6">
+            <div class="platform-card">
+                <div class="d-flex align-items-start justify-content-between">
+                    <div>
+                        <i class="fab fa-android platform-icon android"></i>
+                        <h3>{% trans "Android" %}</h3>
+                    </div>
+                    <span class="status-pill {% if android.available %}available{% elif android.status == 'building' %}building{% else %}unavailable{% endif %}">
+                        {% if android.available %}
+                            {% trans "Ready" %}
+                        {% elif android.status == 'building' %}
+                            {% trans "Building" %}
+                        {% else %}
+                            {% trans "Not built" %}
+                        {% endif %}
+                    </span>
+                </div>
+
+                {% if android.available %}
+                    <p class="build-meta mb-2">
+                        {{ android.size_mb }} MB · {% trans "Built" %} {{ android.mtime|timesince }} {% trans "ago" %}
+                    </p>
+                    <a href="{% url 'core:download_mobile_app' 'android' %}" class="btn btn-success">
+                        <i class="fas fa-download me-1"></i> {% trans "Download APK" %}
+                    </a>
+                {% elif android.status == 'building' %}
+                    <p class="build-meta mb-2">{{ android.message|default:_("Build in progress…") }}</p>
+                    <a href="{% url 'core:download_mobile_app' 'android' %}" class="btn btn-outline-warning">
+                        <i class="fas fa-spinner fa-spin me-1"></i> {% trans "View build progress" %}
+                    </a>
+                {% else %}
+                    <p class="build-meta mb-2">{% trans "No APK built yet. Clicking the button below triggers an automatic build on the server." %}</p>
+                    <a href="{% url 'core:download_mobile_app' 'android' %}" class="btn btn-outline-primary">
+                        <i class="fas fa-hammer me-1"></i> {% trans "Build & download APK" %}
+                    </a>
+                {% endif %}
+
+                <hr>
+                <h6 class="mb-2">{% trans "Sideload steps" %}</h6>
+                <ol class="mb-0 ps-3">
+                    <li class="sideload-step">{% trans "On the Android device, open Settings → Security → Install unknown apps and allow your browser." %}</li>
+                    <li class="sideload-step">{% trans "Browse to this page on the device and download the APK." %}</li>
+                    <li class="sideload-step">{% trans "Tap the downloaded file to install. Accept the risk warning — Android shows it for any app outside the Play Store." %}</li>
+                    <li class="sideload-step">{% trans "Open the app, enter your server URL, and log in." %}</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- iOS -->
+        <div class="col-md-6">
+            <div class="platform-card">
+                <div class="d-flex align-items-start justify-content-between">
+                    <div>
+                        <i class="fab fa-apple platform-icon ios"></i>
+                        <h3>{% trans "iOS" %}</h3>
+                    </div>
+                    <span class="status-pill {% if ios.available %}available{% else %}unavailable{% endif %}">
+                        {% if ios.available %}{% trans "Ready" %}{% else %}{% trans "Manual" %}{% endif %}
+                    </span>
+                </div>
+
+                {% if ios.available %}
+                    <p class="build-meta mb-2">
+                        {{ ios.size_mb }} MB · {% trans "Built" %} {{ ios.mtime|timesince }} {% trans "ago" %}
+                    </p>
+                    <a href="{% url 'core:download_mobile_app' 'ios' %}" class="btn btn-success">
+                        <i class="fas fa-download me-1"></i> {% trans "Download IPA" %}
+                    </a>
+                {% else %}
+                    <p class="build-meta mb-2">
+                        {% trans "iOS sideloading requires a Mac with Xcode (free) or AltStore / Sideloadly on a desktop. There is no server-side build path that produces a sideloadable IPA on Linux without Apple’s signing toolchain." %}
+                    </p>
+                    <a href="https://altstore.io/" target="_blank" rel="noopener" class="btn btn-outline-secondary me-1">
+                        <i class="fas fa-external-link-alt me-1"></i> AltStore
+                    </a>
+                    <a href="https://sideloadly.io/" target="_blank" rel="noopener" class="btn btn-outline-secondary">
+                        <i class="fas fa-external-link-alt me-1"></i> Sideloadly
+                    </a>
+                {% endif %}
+
+                <hr>
+                <h6 class="mb-2">{% trans "Sideload paths" %}</h6>
+                <ol class="mb-0 ps-3">
+                    <li class="sideload-step"><strong>{% trans "Easiest (dev/testing):" %}</strong>
+                        {% trans "install Expo Go from the App Store. On the dev machine, run" %}
+                        <code>cd mobile &amp;&amp; npm install &amp;&amp; npm start</code>
+                        {% trans "and scan the QR code with Expo Go." %}
+                    </li>
+                    <li class="sideload-step"><strong>{% trans "Self-signed (free, 7-day cert):" %}</strong>
+                        {% trans "build an IPA on a Mac with Xcode, then sign + install with Sideloadly using your free Apple ID. Cert refreshes weekly." %}
+                    </li>
+                    <li class="sideload-step"><strong>{% trans "Apple Developer ($99/yr):" %}</strong>
+                        {% trans "ad-hoc IPA distribution to up to 100 device UDIDs without store review. Builds last 1 year. This is the path most MSPs use for internal tooling." %}
+                    </li>
+                    <li class="sideload-step"><strong>{% trans "App Store:" %}</strong>
+                        {% trans "Apple Developer + store review (~1–7 days). Required for general public distribution." %}
+                    </li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title"><i class="fas fa-cog me-1"></i>{% trans "Build pipeline" %}</h5>
+            <p class="text-muted mb-2">
+                {% blocktrans %}The Android build is triggered automatically by clicking the button above; the server runs <code>npx expo prebuild</code> and Gradle. First build takes ~20–40 minutes (downloads the Android SDK + Gradle dependencies); subsequent builds are 3–5 minutes.{% endblocktrans %}
+            </p>
+            <ul class="text-muted small mb-0">
+                <li>{% trans "Source:" %} <code>mobile/</code> {% if has_new_codebase %}<span class="badge bg-success">found</span>{% else %}<span class="badge bg-warning text-dark">missing — build will fail</span>{% endif %}</li>
+                <li>{% trans "Build output:" %} <code>mobile-app/builds/clientst0r.apk</code></li>
+                <li>{% trans "Build status JSON:" %} <code>mobile-app/builds/&lt;android|ios&gt;_build_status.json</code></li>
+                <li>{% trans "Build log:" %} <code>mobile-app/builds/&lt;android|ios&gt;_build.log</code></li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

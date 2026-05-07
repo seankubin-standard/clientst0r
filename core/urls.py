@@ -47,6 +47,7 @@ urlpatterns = [
     path('search/', search_views.global_search, name='search'),
     path('report-bug/', views.report_bug, name='report_bug'),
     path('download-mobile-app/<str:app_type>/', views.download_mobile_app, name='download_mobile_app'),
+    path('mobile-apps/', views.mobile_apps_admin, name='mobile_apps_admin'),
     path('download-browser-extension/', views.download_browser_extension, name='download_browser_extension'),
 
     # Tags (admin only)

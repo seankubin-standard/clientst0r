@@ -821,6 +821,61 @@ def report_bug(request):
 
 
 @login_required
+@user_passes_test(lambda u: u.is_staff or u.is_superuser)
+def mobile_apps_admin(request):
+    """
+    Admin landing page for mobile-app sideload distribution.
+    Lists Android APK + iOS IPA download status with sideload
+    instructions for each platform. Linked from the Admin nav
+    dropdown so superusers / staff can hand the apps to techs
+    in the field without going through Apple/Google stores.
+    """
+    import os
+    import json
+    from django.conf import settings as dj_settings
+
+    builds_dir = os.path.join(dj_settings.BASE_DIR, 'mobile-app', 'builds')
+    os.makedirs(builds_dir, exist_ok=True)
+
+    def _build_state(app_type, filename):
+        binary_path = os.path.join(builds_dir, filename)
+        status_path = os.path.join(builds_dir, f'{app_type}_build_status.json')
+        state = {
+            'available': os.path.exists(binary_path),
+            'size_mb': None,
+            'mtime': None,
+            'status': 'idle',
+            'message': '',
+        }
+        if state['available']:
+            try:
+                st = os.stat(binary_path)
+                state['size_mb'] = round(st.st_size / (1024 * 1024), 1)
+                state['mtime'] = timezone.datetime.fromtimestamp(
+                    st.st_mtime, tz=timezone.utc,
+                )
+            except OSError:
+                pass
+        if os.path.exists(status_path):
+            try:
+                with open(status_path, 'r') as fh:
+                    sd = json.load(fh)
+                state['status'] = sd.get('status', 'idle')
+                state['message'] = sd.get('message', '')
+            except (OSError, ValueError):
+                pass
+        return state
+
+    return render(request, 'core/mobile_apps_admin.html', {
+        'android': _build_state('android', 'clientst0r.apk'),
+        'ios': _build_state('ios', 'clientst0r.ipa'),
+        'has_new_codebase': os.path.isdir(
+            os.path.join(dj_settings.BASE_DIR, 'mobile')
+        ),
+    })
+
+
+@login_required
 def download_mobile_app(request, app_type):
     """
     Serve mobile app downloads or auto-build if not available.
