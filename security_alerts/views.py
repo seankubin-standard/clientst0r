@@ -24,6 +24,8 @@ from .forms import (
     SIEMWebhookEndpointForm,
 )
 from .models import (
+    RemediationPlaybook,
+    RemediationPlaybookStep,
     SecurityAlert,
     SecurityAlertRule,
     SecurityIncident,
@@ -611,3 +613,20 @@ def incident_decide(request, pk):
     else:
         messages.error(request, f'Unknown decision: {decision}')
     return redirect('security_alerts:incident_detail', pk=incident.pk)
+
+
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.356 — Remediation playbooks
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_perm('security_alerts_view')
+def playbook_list(request):
+    orgs = _user_orgs(request.user)
+    playbooks = RemediationPlaybook.objects.filter(
+        organization__in=orgs,
+    ).select_related('match_client_org').prefetch_related('steps')
+    return render(request, 'security_alerts/playbook_list.html', {
+        'playbooks': playbooks,
+        'can_manage': user_has_perm(request.user, 'security_alerts_create_rules'),
+    })

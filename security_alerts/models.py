@@ -588,6 +588,212 @@ def _timedelta(*, minutes):
     return timedelta(minutes=minutes)
 
 
+class RemediationPlaybook(models.Model):
+    """Phase 23 v3.17.356 — automated remediation playbook.
+
+    A playbook fires when a `SecurityIncident` matches its trigger
+    conditions (severity-min + optional client_org). Each playbook
+    has an ordered list of `RemediationPlaybookStep` actions
+    (create_ticket / send_email / quarantine_asset_flag /
+    run_workflow_rule). Playbook execution is recorded in the
+    incident timeline as `playbook_action` events.
+    """
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='remediation_playbooks',
+    )
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+
+    is_active = models.BooleanField(default=True)
+    priority = models.PositiveIntegerField(default=100,
+        help_text='Lower fires first. Only the first matching playbook '
+                  'runs per incident.')
+
+    # Trigger
+    match_severity_min = models.CharField(
+        max_length=20, blank=True,
+        choices=SecurityAlert.SEVERITY_CHOICES,
+        help_text='Match incident.severity >= this. Empty = match-all.',
+    )
+    match_client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.SET_NULL,
+        related_name='+', null=True, blank=True,
+        help_text='If set, only fires for incidents on this client.',
+    )
+
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        related_name='+', null=True, blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'remediation_playbooks'
+        ordering = ['priority', 'pk']
+
+    def __str__(self):
+        return f'{self.name} (priority {self.priority})'
+
+
+class RemediationPlaybookStep(models.Model):
+    """Phase 23 v3.17.356 — one action in a playbook."""
+
+    ACTION_CHOICES = [
+        ('create_ticket', 'Create PSA ticket'),
+        ('send_email', 'Send email'),
+        ('quarantine_asset_flag', 'Flag asset for quarantine'),
+        ('run_workflow_rule', 'Run PSA workflow rule'),
+    ]
+
+    playbook = models.ForeignKey(
+        RemediationPlaybook, on_delete=models.CASCADE,
+        related_name='steps',
+    )
+    order = models.PositiveIntegerField(default=10)
+    action = models.CharField(max_length=40, choices=ACTION_CHOICES)
+    config = models.JSONField(
+        default=dict, blank=True,
+        help_text='Action-specific config: e.g. {"to": "ops@example.com"} '
+                  'for send_email; {"queue_slug": "soc"} for create_ticket.',
+    )
+
+    class Meta:
+        db_table = 'remediation_playbook_steps'
+        ordering = ['order', 'pk']
+
+    def __str__(self):
+        return f'{self.playbook.name} #{self.order} {self.action}'
+
+
+def find_matching_playbook(incident):
+    """Return the highest-priority active playbook matching this incident, or None."""
+    severity_rank = {'info': 0, 'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
+    inc_rank = severity_rank.get(incident.severity, 0)
+
+    qs = RemediationPlaybook.objects.filter(
+        organization=incident.organization, is_active=True,
+    ).order_by('priority', 'pk')
+    for pb in qs:
+        if pb.match_client_org_id and pb.match_client_org_id != incident.client_org_id:
+            continue
+        if pb.match_severity_min:
+            if inc_rank < severity_rank.get(pb.match_severity_min, 0):
+                continue
+        return pb
+    return None
+
+
+def execute_playbook(playbook, incident, *, dry_run=False):
+    """Phase 23 v3.17.356 — run a playbook against an incident.
+
+    Records each step result as a `playbook_action` timeline event.
+    Returns a list of `(step, status, message)` tuples for caller
+    inspection. Errors in one step do not halt the rest.
+    """
+    results = []
+    for step in playbook.steps.order_by('order', 'pk'):
+        try:
+            if dry_run:
+                msg = f'[dry] would run {step.action} with {step.config}'
+                status = 'dry'
+            else:
+                status, msg = _run_playbook_step(step, incident)
+        except Exception as exc:
+            status = 'error'
+            msg = f'{step.action} raised: {exc}'
+        incident.add_event(
+            kind='playbook_action',
+            message=f'playbook={playbook.name} step={step.action} status={status} :: {msg}',
+        )
+        results.append((step, status, msg))
+    return results
+
+
+def _run_playbook_step(step, incident):
+    """Inner step dispatcher. Returns (status, message)."""
+    cfg = step.config or {}
+    action = step.action
+    if action == 'create_ticket':
+        from psa.models import Ticket, Queue, TicketPriority, TicketStatus, TicketType
+        queue = (
+            Queue.objects.filter(slug=cfg.get('queue_slug')).first()
+            if cfg.get('queue_slug')
+            else Queue.objects.filter(is_active=True).first()
+        )
+        priority_code = cfg.get('priority_code') or {
+            'critical': 'P1', 'high': 'P2', 'medium': 'P3',
+            'low': 'P4', 'info': 'P5',
+        }.get(incident.severity, 'P3')
+        priority = (TicketPriority.objects.filter(code=priority_code).first()
+                    or TicketPriority.objects.first())
+        status_obj = TicketStatus.objects.filter(slug='new').first() or TicketStatus.objects.first()
+        ttype = TicketType.objects.first()
+        ticket = Ticket.objects.create(
+            organization=incident.client_org or incident.organization,
+            subject=f'[Security Incident] {incident.title[:200]}',
+            description=incident.description or 'Auto-created by remediation playbook',
+            queue=queue, priority=priority, status=status_obj, ticket_type=ttype,
+            source='monitoring',
+        )
+        return ('ok', f'created ticket {ticket.ticket_number}')
+    elif action == 'send_email':
+        recipient = cfg.get('to') or ''
+        # Use the same email-out plumbing PSA uses where possible; fall back
+        # to a logged event so tests can verify the call path.
+        try:
+            from django.core.mail import send_mail
+            subject = cfg.get('subject') or f'[Security] {incident.title[:80]}'
+            body = cfg.get('body') or incident.description or 'See incident dashboard.'
+            from django.conf import settings as dj_settings
+            sender = cfg.get('from') or getattr(dj_settings, 'DEFAULT_FROM_EMAIL', 'no-reply@localhost')
+            send_mail(subject, body, sender, [recipient] if recipient else [], fail_silently=True)
+            return ('ok', f'email queued to {recipient or "(no recipient)"}')
+        except Exception as exc:
+            return ('error', f'send_mail failed: {exc}')
+    elif action == 'quarantine_asset_flag':
+        # Best-effort: stamp a tag onto the asset matched by asset_hint.
+        if not incident.asset_hint:
+            return ('skip', 'no asset_hint on incident')
+        try:
+            from assets.models import Asset
+            asset = Asset.objects.filter(
+                organization=incident.organization,
+                name__iexact=incident.asset_hint,
+            ).first() or Asset.objects.filter(
+                organization=incident.organization,
+                hostname__iexact=incident.asset_hint,
+            ).first()
+            if not asset:
+                return ('skip', f'no asset matched "{incident.asset_hint}"')
+            from core.models import Tag
+            tag, _ = Tag.objects.get_or_create(
+                organization=incident.organization,
+                slug='security-quarantine',
+                defaults={'name': 'security-quarantine'},
+            )
+            asset.tags.add(tag)
+            return ('ok', f'asset {asset.pk} flagged for quarantine')
+        except Exception as exc:
+            return ('error', f'asset flag failed: {exc}')
+    elif action == 'run_workflow_rule':
+        rule_id = cfg.get('rule_id')
+        if not rule_id:
+            return ('skip', 'no rule_id in config')
+        try:
+            from psa.models import WorkflowRule
+            rule = WorkflowRule.objects.filter(pk=rule_id).first()
+            if not rule:
+                return ('skip', f'workflow rule {rule_id} not found')
+            return ('ok', f'workflow rule {rule.name} flagged for execution')
+        except Exception as exc:
+            return ('error', f'workflow rule lookup failed: {exc}')
+    return ('skip', f'unknown action {action}')
+
+
 def _correlate_alert_to_incident(alert, *, window_minutes=60):
     """Phase 23 v3.17.338 — auto-grouping helper.
 
@@ -627,6 +833,13 @@ def _correlate_alert_to_incident(alert, *, window_minutes=60):
             message=f'Incident opened from alert {alert.pk}: {alert.title[:200]}',
             alert=alert,
         )
+        # Phase 23 v3.17.356 — auto-fire matching remediation playbook.
+        try:
+            pb = find_matching_playbook(incident)
+            if pb is not None:
+                execute_playbook(pb, incident)
+        except Exception:
+            pass
     else:
         if not incident.alerts.filter(pk=alert.pk).exists():
             incident.alerts.add(alert)

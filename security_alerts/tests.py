@@ -26,6 +26,8 @@ TEST_MIDDLEWARE = [
 from core.models import Organization
 from psa.models import Queue, Ticket, TicketPriority, TicketStatus, TicketType
 from security_alerts.models import (
+    RemediationPlaybook,
+    RemediationPlaybookStep,
     SecurityAlert,
     SecurityAlertRule,
     SecurityIncident,
@@ -35,6 +37,8 @@ from security_alerts.models import (
     SIEMWebhookEndpoint,
     _correlate_alert_to_incident,
     evaluate_incident_breaches,
+    execute_playbook,
+    find_matching_playbook,
 )
 
 
@@ -556,6 +560,89 @@ class IncidentSLATests(TestCase):
         call_command('check_incident_sla_breaches', stdout=out)
         inc.refresh_from_db()
         self.assertEqual(inc.events.filter(kind='sla_breach').count(), 3)
+
+
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.356 — Remediation playbook engine
+# ---------------------------------------------------------------------------
+
+class RemediationPlaybookTests(TestCase):
+    def setUp(self):
+        _seed_psa()
+        self.org = _make_org()
+
+    def _incident(self, severity='critical'):
+        return SecurityIncident.objects.create(
+            organization=self.org, title='t', severity=severity, status='open',
+        )
+
+    def test_find_matching_severity_min(self):
+        pb = RemediationPlaybook.objects.create(
+            organization=self.org, name='only-high+', match_severity_min='high',
+        )
+        # Low incident — no match.
+        low = self._incident(severity='low')
+        self.assertIsNone(find_matching_playbook(low))
+        # Critical — match.
+        crit = self._incident(severity='critical')
+        self.assertEqual(find_matching_playbook(crit), pb)
+
+    def test_priority_order(self):
+        pb_low = RemediationPlaybook.objects.create(
+            organization=self.org, name='low-prio', priority=200,
+        )
+        pb_high = RemediationPlaybook.objects.create(
+            organization=self.org, name='high-prio', priority=10,
+        )
+        inc = self._incident()
+        self.assertEqual(find_matching_playbook(inc), pb_high)
+
+    def test_execute_creates_ticket(self):
+        from psa.models import Ticket
+        pb = RemediationPlaybook.objects.create(
+            organization=self.org, name='auto-ticket',
+        )
+        RemediationPlaybookStep.objects.create(
+            playbook=pb, order=10, action='create_ticket', config={},
+        )
+        inc = self._incident()
+        before = Ticket.objects.count()
+        results = execute_playbook(pb, inc)
+        self.assertEqual(len(results), 1)
+        _, status, _ = results[0]
+        self.assertEqual(status, 'ok')
+        self.assertEqual(Ticket.objects.count(), before + 1)
+        # Timeline event recorded.
+        self.assertEqual(inc.events.filter(kind='playbook_action').count(), 1)
+
+    def test_execute_dry_run_no_side_effects(self):
+        from psa.models import Ticket
+        pb = RemediationPlaybook.objects.create(
+            organization=self.org, name='auto-ticket-dry',
+        )
+        RemediationPlaybookStep.objects.create(
+            playbook=pb, order=10, action='create_ticket', config={},
+        )
+        inc = self._incident()
+        before = Ticket.objects.count()
+        results = execute_playbook(pb, inc, dry_run=True)
+        self.assertEqual(Ticket.objects.count(), before)
+        _, status, _ = results[0]
+        self.assertEqual(status, 'dry')
+
+    def test_unknown_action_step_skips(self):
+        pb = RemediationPlaybook.objects.create(
+            organization=self.org, name='bogus',
+        )
+        RemediationPlaybookStep.objects.create(
+            playbook=pb, order=10, action='create_ticket', config={},
+        )
+        # Force a bad action via .save bypassing choices validation.
+        RemediationPlaybookStep.objects.filter(playbook=pb).update(action='nonexistent_action')
+        inc = self._incident()
+        results = execute_playbook(pb, inc)
+        _, status, _ = results[0]
+        self.assertEqual(status, 'skip')
 
 
 class MTTAQueryTests(TestCase):

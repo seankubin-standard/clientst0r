@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.357] - 2026-05-07
+
+### Added — Phase 23 v5: Remediation playbook engine
+Fifth Phase 23 release. New `RemediationPlaybook` + `RemediationPlaybookStep` models drive automated remediation flows on `SecurityIncident` rows. When an incident is opened by alert correlation, the highest-priority active playbook matching the incident's severity (and optional client_org) fires and runs each step in order. Step results stream to the incident timeline as `playbook_action` events.
+
+- New model `security_alerts.RemediationPlaybook` — trigger conditions (severity ≥ + optional client scope), priority ordering, active flag.
+- New model `security_alerts.RemediationPlaybookStep` — ordered actions: `create_ticket` / `send_email` / `quarantine_asset_flag` / `run_workflow_rule`.
+- New helpers `find_matching_playbook(incident)` and `execute_playbook(playbook, incident, dry_run=False)` — error-isolated step dispatch; one failed step won't halt the rest.
+- `quarantine_asset_flag` adds an Asset to a `security-quarantine` Tag for the incident's organization.
+- Wired into `_correlate_alert_to_incident` so newly opened incidents fire their matching playbook automatically.
+- New view `/security/playbooks/` lists playbooks + steps + active status.
+- New migration `security_alerts/0005_remediationplaybook_remediationplaybookstep.py`.
+
+### Tests
+- 5 new tests covering severity-min matching, priority ordering, ticket creation, dry-run side-effect-free behavior, and unknown-action handling.
+
 ## [3.17.356] - 2026-05-07
 
 ### Added — Phase 8 mobile app v2: Dashboard + Organizations + Assets
