@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Security Incidents{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Security Incidents</h2>
+    <a href="{% url 'security_alerts:alert_list' %}" class="btn btn-outline-secondary btn-sm">Back to alerts</a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-auto">
+        <select name="severity" class="form-select form-select-sm">
+            <option value="">All severities</option>
+            {% for value, label in severity_choices %}
+                <option value="{{ value }}" {% if filters.severity == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <select name="status" class="form-select form-select-sm">
+            <option value="">All statuses</option>
+            {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary btn-sm">Filter</button>
+    </div>
+</form>
+
+<div class="card">
+    <table class="table table-sm mb-0">
+        <thead>
+            <tr><th>#</th><th>Title</th><th>Severity</th><th>Status</th><th>Client</th><th>Asset</th><th>Opened</th><th>Alerts</th></tr>
+        </thead>
+        <tbody>
+            {% for inc in incidents %}
+            <tr>
+                <td><a href="{% url 'security_alerts:incident_detail' inc.pk %}">#{{ inc.pk }}</a></td>
+                <td>{{ inc.title|truncatechars:80 }}</td>
+                <td>{{ inc.get_severity_display }}</td>
+                <td>{{ inc.get_status_display }}</td>
+                <td>{{ inc.client_org.name|default:"—" }}</td>
+                <td><code>{{ inc.asset_hint|default:"—" }}</code></td>
+                <td>{{ inc.opened_at }}</td>
+                <td>{{ inc.alerts.count }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center text-muted">No incidents.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

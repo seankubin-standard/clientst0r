@@ -23,4 +23,8 @@ urlpatterns = [
     path('siem/new/', views.siem_endpoint_form, name='siem_endpoint_create'),
     path('siem/<int:pk>/edit/', views.siem_endpoint_form, name='siem_endpoint_edit'),
     path('siem/webhook/<str:token>/', views.siem_webhook_receive, name='siem_webhook_receive'),
+    # Phase 23 v3.17.338 — incidents + timelines
+    path('incidents/', views.incident_list, name='incident_list'),
+    path('incidents/<int:pk>/', views.incident_detail, name='incident_detail'),
+    path('incidents/<int:pk>/decide/', views.incident_decide, name='incident_decide'),
 ]

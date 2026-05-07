@@ -54,6 +54,12 @@ class SecurityProvider(IntegrationProvider):
                 imported += 1
                 # Auto-ticket evaluation
                 _maybe_auto_ticket(obj)
+                # Phase 23 v3.17.338 — auto-correlate into a SecurityIncident
+                try:
+                    from security_alerts.models import _correlate_alert_to_incident
+                    _correlate_alert_to_incident(obj)
+                except Exception:
+                    pass
 
         connection.last_sync_at = timezone.now()
         connection.last_sync_status = 'ok'

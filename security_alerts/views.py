@@ -26,6 +26,8 @@ from .forms import (
 from .models import (
     SecurityAlert,
     SecurityAlertRule,
+    SecurityIncident,
+    SecurityIncidentEvent,
     SecurityVendorConnection,
     SIEMWebhookEndpoint,
 )
@@ -397,6 +399,11 @@ def webhook_receive(request, token):
         if created:
             imported += 1
             _maybe_auto_ticket(obj)
+            try:
+                from .models import _correlate_alert_to_incident
+                _correlate_alert_to_incident(obj)
+            except Exception:
+                pass
 
     conn.last_sync_at = timezone.now()
     conn.last_sync_status = 'ok'
@@ -512,3 +519,95 @@ def siem_webhook_receive(request, token):
         'received': len(alerts),
         'imported': imported,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.338 — Security incidents + timelines
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_perm('security_alerts_view')
+def incident_list(request):
+    orgs = _user_orgs(request.user)
+    qs = SecurityIncident.objects.filter(
+        organization__in=orgs,
+    ).select_related('client_org', 'organization', 'assigned_to')
+
+    severity = request.GET.get('severity')
+    status = request.GET.get('status')
+    if severity:
+        qs = qs.filter(severity=severity)
+    if status:
+        qs = qs.filter(status=status)
+
+    incidents = qs.order_by('-opened_at')[:300]
+    return render(request, 'security_alerts/incident_list.html', {
+        'incidents': incidents,
+        'severity_choices': SecurityIncident.SEVERITY_CHOICES,
+        'status_choices': SecurityIncident.STATUS_CHOICES,
+        'filters': {'severity': severity or '', 'status': status or ''},
+    })
+
+
+@login_required
+@require_perm('security_alerts_view')
+def incident_detail(request, pk):
+    orgs = _user_orgs(request.user)
+    incident = get_object_or_404(
+        SecurityIncident.objects.select_related(
+            'organization', 'client_org', 'assigned_to', 'created_by',
+        ),
+        pk=pk, organization__in=orgs,
+    )
+    events = incident.events.select_related('actor', 'alert').order_by('occurred_at', 'pk')
+    alerts = incident.alerts.select_related('connection', 'siem_endpoint').order_by('-seen_at')
+    return render(request, 'security_alerts/incident_detail.html', {
+        'incident': incident,
+        'events': events,
+        'alerts': alerts,
+        'can_acknowledge': user_has_perm(request.user, 'security_alerts_acknowledge'),
+    })
+
+
+@login_required
+@require_perm('security_alerts_acknowledge')
+@require_POST
+def incident_decide(request, pk):
+    """Status transitions + add note. POST decision=acknowledge|investigate|contain|resolve|close|note."""
+    orgs = _user_orgs(request.user)
+    incident = get_object_or_404(
+        SecurityIncident, pk=pk, organization__in=orgs,
+    )
+    decision = (request.POST.get('decision') or '').lower()
+    note = (request.POST.get('note') or '').strip()
+    now = timezone.now()
+    transitions = {
+        'acknowledge': ('investigating', 'acknowledged_at', 'acknowledged'),
+        'investigate': ('investigating', None, 'status_change'),
+        'contain': ('contained', 'contained_at', 'contained'),
+        'resolve': ('resolved', 'resolved_at', 'resolved'),
+        'close': ('closed', 'closed_at', 'closed'),
+    }
+    if decision == 'note':
+        if note:
+            incident.add_event(kind='note', message=note, user=request.user)
+            messages.success(request, 'Note added.')
+        else:
+            messages.error(request, 'Note may not be empty.')
+    elif decision in transitions:
+        new_status, ts_field, evt_kind = transitions[decision]
+        incident.status = new_status
+        update_fields = ['status']
+        if ts_field:
+            setattr(incident, ts_field, now)
+            update_fields.append(ts_field)
+        incident.save(update_fields=update_fields)
+        incident.add_event(
+            kind=evt_kind,
+            message=note or f'Status → {new_status}',
+            user=request.user,
+        )
+        messages.success(request, f'Incident moved to {new_status}.')
+    else:
+        messages.error(request, f'Unknown decision: {decision}')
+    return redirect('security_alerts:incident_detail', pk=incident.pk)

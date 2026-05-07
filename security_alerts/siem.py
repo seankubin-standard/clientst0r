@@ -290,4 +290,9 @@ def ingest_payload(endpoint, alerts: list[dict]) -> int:
             except Exception:
                 # Auto-ticket failures must not blow up ingestion.
                 pass
+            try:
+                from .models import _correlate_alert_to_incident
+                _correlate_alert_to_incident(obj)
+            except Exception:
+                pass
     return imported

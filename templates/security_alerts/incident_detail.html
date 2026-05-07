@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Incident #{{ incident.pk }} — {{ incident.title|truncatechars:60 }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'security_alerts:incident_list' %}">Incidents</a></li>
+        <li class="breadcrumb-item active">#{{ incident.pk }}</li>
+    </ol>
+</nav>
+
+<div class="card mb-3"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+        <div>
+            <h3>{{ incident.title }}</h3>
+            <p class="text-muted mb-1">Severity: <strong>{{ incident.get_severity_display }}</strong> · Status: <strong>{{ incident.get_status_display }}</strong></p>
+            <p class="text-muted mb-1">Client: {{ incident.client_org.name|default:"(unscoped)" }}</p>
+            <p class="text-muted mb-1">Asset: <code>{{ incident.asset_hint|default:"—" }}</code></p>
+            <p class="text-muted mb-1">Opened: {{ incident.opened_at }}{% if incident.acknowledged_at %} · Acknowledged: {{ incident.acknowledged_at }}{% endif %}{% if incident.contained_at %} · Contained: {{ incident.contained_at }}{% endif %}{% if incident.resolved_at %} · Resolved: {{ incident.resolved_at }}{% endif %}</p>
+        </div>
+        {% if can_acknowledge and incident.is_open %}
+        <form method="post" action="{% url 'security_alerts:incident_decide' incident.pk %}" class="d-flex gap-1 flex-wrap">
+            {% csrf_token %}
+            {% if incident.status == 'open' %}<button name="decision" value="acknowledge" class="btn btn-success btn-sm">Acknowledge</button>{% endif %}
+            <button name="decision" value="contain" class="btn btn-warning btn-sm">Contain</button>
+            <button name="decision" value="resolve" class="btn btn-outline-success btn-sm">Resolve</button>
+            <button name="decision" value="close" class="btn btn-outline-secondary btn-sm">Close</button>
+        </form>
+        {% endif %}
+    </div>
+</div></div>
+
+{% if incident.description %}
+<div class="card mb-3"><div class="card-body">
+    <h5>Description</h5>
+    <pre style="white-space:pre-wrap;">{{ incident.description }}</pre>
+</div></div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-header"><strong>Timeline ({{ events|length }} event{{ events|length|pluralize }})</strong></div>
+    <ul class="list-group list-group-flush">
+        {% for ev in events %}
+        <li class="list-group-item">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <span class="badge bg-secondary">{{ ev.get_kind_display }}</span>
+                    {{ ev.message|default:"" }}
+                </div>
+                <small class="text-muted">{{ ev.actor.username|default:"system" }} · {{ ev.occurred_at }}</small>
+            </div>
+        </li>
+        {% empty %}
+        <li class="list-group-item text-muted">No timeline events yet.</li>
+        {% endfor %}
+    </ul>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><strong>Linked alerts ({{ alerts|length }})</strong></div>
+    <table class="table table-sm mb-0">
+        <thead><tr><th>#</th><th>Severity</th><th>Title</th><th>Asset hint</th><th>Seen</th></tr></thead>
+        <tbody>
+            {% for a in alerts %}
+            <tr>
+                <td><a href="{% url 'security_alerts:alert_detail' a.pk %}">#{{ a.pk }}</a></td>
+                <td>{{ a.get_severity_display }}</td>
+                <td>{{ a.title|truncatechars:80 }}</td>
+                <td><code>{{ a.asset_hint|default:"—" }}</code></td>
+                <td>{{ a.seen_at }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-muted">No alerts attached.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if can_acknowledge %}
+<div class="card mb-3"><div class="card-body">
+    <h5>Add note</h5>
+    <form method="post" action="{% url 'security_alerts:incident_decide' incident.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="decision" value="note">
+        <textarea name="note" class="form-control mb-2" rows="3" placeholder="Analyst note…"></textarea>
+        <button class="btn btn-primary btn-sm">Add note</button>
+    </form>
+</div></div>
+{% endif %}
+{% endblock %}

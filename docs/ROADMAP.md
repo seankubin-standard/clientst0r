@@ -493,7 +493,7 @@ Planned capabilities:
 - SIEM integrations *(shipped v3.17.337 — generic CEF/JSON/Syslog inbound endpoint with HMAC auth at /security/siem/webhook/)*
 - Vulnerability correlation (CVE → affected assets → exposure) *(shipped v3.17.306–307 via Phase 17 v6+v8 — Vulnerability + affected_assets + ticket linking)*
 - CVE-to-ticket workflows *(shipped v3.17.307 via Phase 17 v8 — vuln-to-ticket linking)*
-- Security incident timelines
+- Security incident timelines *(shipped v3.17.338 — SecurityIncident + SecurityIncidentEvent + auto-correlation by asset+severity window + `/security/incidents/`)*
 - Exposure scoring
 - Incident SLA tracking
 - Automated remediation workflows

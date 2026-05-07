@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.338] - 2026-05-07
+
+### Added — Phase 23 v2: Security incident model + timelines
+Second Phase 23 release. New `SecurityIncident` + `SecurityIncidentEvent` models group related `SecurityAlert` rows into analyst-facing case files with a chronological timeline. Auto-correlation rule: a fresh alert merges into an open incident when (organization, asset_hint, severity) match within a 60-minute window; otherwise a new incident is opened anchored by the alert. Manual notes + status transitions are recorded as timeline events.
+
+- New model `security_alerts.SecurityIncident` — 5-state status machine (open / investigating / contained / resolved / closed), severity inherited from `SecurityAlert`, M2M to alerts, optional `assigned_to`.
+- New model `security_alerts.SecurityIncidentEvent` — typed timeline entries (opened, alert_added, note, status_change, acknowledged, contained, resolved, closed, playbook_action, sla_breach).
+- New helper `_correlate_alert_to_incident(alert, window_minutes=60)` — wired into the vendor sync, vendor webhook, and SIEM webhook ingest paths so every newly created `SecurityAlert` flows into the incident store automatically.
+- New views: `/security/incidents/` (list + filters), `/security/incidents/<id>/` (timeline + linked alerts + status buttons), POST `/security/incidents/<id>/decide/` for transitions and analyst notes.
+- New migration `security_alerts/0003_securityincident_securityincidentevent_and_more.py`.
+
+### Tests
+- 7 new tests covering correlation (open new / attach to existing / different-severity branches), `add_event` helper, resolved-incident branching, plus view tests for detail render and acknowledge transition.
+
 ## [3.17.337] - 2026-05-07
 
 ### Added — Phase 23 v1: SIEM webhook adapter (CEF/JSON/Syslog)

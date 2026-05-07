@@ -28,8 +28,11 @@ from psa.models import Queue, Ticket, TicketPriority, TicketStatus, TicketType
 from security_alerts.models import (
     SecurityAlert,
     SecurityAlertRule,
+    SecurityIncident,
+    SecurityIncidentEvent,
     SecurityVendorConnection,
     SIEMWebhookEndpoint,
+    _correlate_alert_to_incident,
 )
 
 
@@ -310,6 +313,112 @@ class SIEMWebhookReceiverTests(TestCase):
         alert = SecurityAlert.objects.get(siem_endpoint=self.endpoint, external_id='abc-9')
         self.assertEqual(alert.severity, 'high')
         self.assertEqual(alert.asset_hint, 'web-01')
+
+
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.338 — SecurityIncident + timeline correlation
+# ---------------------------------------------------------------------------
+
+class SecurityIncidentCorrelationTests(TestCase):
+    def setUp(self):
+        self.org = _make_org()
+        self.conn = _make_conn(self.org)
+
+    def _make_alert(self, ext, severity='high', asset='workstation-1'):
+        return SecurityAlert.objects.create(
+            connection=self.conn, organization=self.org,
+            external_id=ext, severity=severity,
+            title=f'{severity} on {asset}', asset_hint=asset,
+        )
+
+    def test_first_alert_opens_incident(self):
+        a1 = self._make_alert('a-1')
+        inc = _correlate_alert_to_incident(a1)
+        self.assertIsNotNone(inc.pk)
+        self.assertEqual(inc.organization, self.org)
+        self.assertEqual(inc.severity, 'high')
+        self.assertEqual(inc.asset_hint, 'workstation-1')
+        self.assertIn(a1, inc.alerts.all())
+        # Timeline event for opening
+        self.assertEqual(inc.events.filter(kind='opened').count(), 1)
+
+    def test_second_matching_alert_attaches_to_same_incident(self):
+        a1 = self._make_alert('a-1')
+        inc1 = _correlate_alert_to_incident(a1)
+        a2 = self._make_alert('a-2')
+        inc2 = _correlate_alert_to_incident(a2)
+        self.assertEqual(inc1.pk, inc2.pk)
+        self.assertEqual(inc1.alerts.count(), 2)
+        self.assertEqual(inc1.events.filter(kind='alert_added').count(), 1)
+
+    def test_different_severity_opens_new_incident(self):
+        a1 = self._make_alert('a-1', severity='high')
+        inc1 = _correlate_alert_to_incident(a1)
+        a2 = self._make_alert('a-2', severity='critical')
+        inc2 = _correlate_alert_to_incident(a2)
+        self.assertNotEqual(inc1.pk, inc2.pk)
+
+    def test_resolved_incident_does_not_correlate(self):
+        a1 = self._make_alert('a-1')
+        inc1 = _correlate_alert_to_incident(a1)
+        inc1.status = 'resolved'
+        inc1.save(update_fields=['status'])
+        a2 = self._make_alert('a-2')
+        inc2 = _correlate_alert_to_incident(a2)
+        self.assertNotEqual(inc1.pk, inc2.pk)
+
+    def test_add_event_helper(self):
+        a1 = self._make_alert('a-1')
+        inc = _correlate_alert_to_incident(a1)
+        ev = inc.add_event(kind='note', message='analyst comment')
+        self.assertEqual(ev.kind, 'note')
+        self.assertEqual(ev.message, 'analyst comment')
+        self.assertEqual(ev.incident, inc)
+
+
+_TEST_STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+}
+
+
+@override_settings(
+    MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+    STORAGES=_TEST_STORAGES,
+)
+class SecurityIncidentViewTests(TestCase):
+    def setUp(self):
+        self.org = _make_org()
+        self.user = User.objects.create_user(
+            username='analyst', password='pw', is_superuser=True, is_staff=True,
+        )
+        from accounts.models import Membership
+        Membership.objects.create(
+            user=self.user, organization=self.org, is_active=True,
+        )
+        self.incident = SecurityIncident.objects.create(
+            organization=self.org, title='Test incident', severity='high',
+        )
+
+    def test_incident_detail_view(self):
+        c = Client()
+        c.force_login(self.user)
+        r = c.get(f'/security/incidents/{self.incident.pk}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Test incident')
+
+    def test_incident_decide_acknowledge(self):
+        c = Client()
+        c.force_login(self.user)
+        r = c.post(
+            f'/security/incidents/{self.incident.pk}/decide/',
+            data={'decision': 'acknowledge'},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.incident.refresh_from_db()
+        self.assertEqual(self.incident.status, 'investigating')
+        self.assertIsNotNone(self.incident.acknowledged_at)
+        self.assertEqual(self.incident.events.filter(kind='acknowledged').count(), 1)
 
 
 class MTTAQueryTests(TestCase):

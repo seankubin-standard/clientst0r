@@ -332,3 +332,188 @@ class SIEMWebhookEndpoint(models.Model):
             import secrets
             self.hmac_secret = secrets.token_hex(32)
         super().save(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.338 — Security incidents + timelines
+# ---------------------------------------------------------------------------
+
+class SecurityIncident(models.Model):
+    """Phase 23 v3.17.338 — incidents group related `SecurityAlert` rows.
+
+    An incident is an analyst-facing case file: one row per "thing that
+    needs investigating". Incidents are auto-created (or extended) when
+    a fresh SecurityAlert lands and matches an open incident on
+    (organization, asset_hint, severity) within a configurable
+    correlation window. Manual incidents are also fine.
+
+    The dashboard at `/security/incidents/<id>/` shows the timeline
+    (`SecurityIncidentEvent` rows) and the linked alerts so a tech can
+    see "what happened, in order" without bouncing across tabs.
+    """
+
+    SEVERITY_CHOICES = SecurityAlert.SEVERITY_CHOICES
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('investigating', 'Investigating'),
+        ('contained', 'Contained'),
+        ('resolved', 'Resolved'),
+        ('closed', 'Closed'),
+    ]
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='security_incidents',
+        help_text='MSP tenant that owns the incident.',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.SET_NULL,
+        related_name='security_incidents_for_client',
+        null=True, blank=True,
+    )
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES, default='medium')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+
+    asset_hint = models.CharField(
+        max_length=200, blank=True,
+        help_text='Hostname / IP / device anchoring the incident — used for '
+                  'auto-correlation of subsequent alerts.',
+    )
+
+    alerts = models.ManyToManyField(
+        SecurityAlert, related_name='incidents', blank=True,
+        help_text='Alerts grouped into this incident.',
+    )
+
+    opened_at = models.DateTimeField(auto_now_add=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    contained_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    assigned_to = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+
+    class Meta:
+        db_table = 'security_incidents'
+        ordering = ['-opened_at']
+        indexes = [
+            models.Index(fields=['organization', 'status', '-opened_at']),
+            models.Index(fields=['client_org', 'severity']),
+            models.Index(fields=['asset_hint']),
+        ]
+
+    def __str__(self):
+        return f'[{self.severity.upper()}] {self.title[:80]}'
+
+    @property
+    def is_open(self):
+        return self.status not in {'resolved', 'closed'}
+
+    def add_event(self, kind, message, *, user=None, alert=None):
+        """Convenience: append a timeline event."""
+        return SecurityIncidentEvent.objects.create(
+            incident=self, kind=kind, message=message,
+            actor=user, alert=alert,
+        )
+
+
+class SecurityIncidentEvent(models.Model):
+    """Phase 23 v3.17.338 — single timeline entry on an incident."""
+
+    KIND_CHOICES = [
+        ('opened', 'Opened'),
+        ('alert_added', 'Alert added'),
+        ('note', 'Analyst note'),
+        ('status_change', 'Status change'),
+        ('assigned', 'Assigned'),
+        ('acknowledged', 'Acknowledged'),
+        ('contained', 'Contained'),
+        ('resolved', 'Resolved'),
+        ('closed', 'Closed'),
+        ('playbook_action', 'Playbook action'),
+        ('sla_breach', 'SLA breach'),
+    ]
+
+    incident = models.ForeignKey(
+        SecurityIncident, on_delete=models.CASCADE, related_name='events',
+    )
+    kind = models.CharField(max_length=30, choices=KIND_CHOICES)
+    message = models.TextField(blank=True)
+    actor = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    alert = models.ForeignKey(
+        SecurityAlert, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    occurred_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'security_incident_events'
+        ordering = ['occurred_at', 'pk']
+        indexes = [
+            models.Index(fields=['incident', 'occurred_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.get_kind_display()} on incident {self.incident_id}'
+
+
+def _correlate_alert_to_incident(alert, *, window_minutes=60):
+    """Phase 23 v3.17.338 — auto-grouping helper.
+
+    Find an open `SecurityIncident` matching this alert's
+    (organization, asset_hint, severity) within `window_minutes`. If
+    found, attach the alert and append a timeline event. Otherwise
+    open a brand new incident anchored by this alert. Returns the
+    SecurityIncident.
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+
+    cutoff = timezone.now() - timedelta(minutes=window_minutes)
+    incident = None
+    if alert.asset_hint:
+        incident = SecurityIncident.objects.filter(
+            organization=alert.organization,
+            asset_hint=alert.asset_hint,
+            severity=alert.severity,
+            status__in=['open', 'investigating'],
+            opened_at__gte=cutoff,
+        ).order_by('-opened_at').first()
+
+    if incident is None:
+        incident = SecurityIncident.objects.create(
+            organization=alert.organization,
+            client_org=alert.client_org,
+            title=alert.title[:300],
+            description=alert.description or '',
+            severity=alert.severity,
+            asset_hint=alert.asset_hint or '',
+            status='open',
+        )
+        incident.alerts.add(alert)
+        incident.add_event(
+            kind='opened',
+            message=f'Incident opened from alert {alert.pk}: {alert.title[:200]}',
+            alert=alert,
+        )
+    else:
+        if not incident.alerts.filter(pk=alert.pk).exists():
+            incident.alerts.add(alert)
+            incident.add_event(
+                kind='alert_added',
+                message=f'Alert {alert.pk} correlated: {alert.title[:200]}',
+                alert=alert,
+            )
+    return incident
