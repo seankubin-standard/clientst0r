@@ -68,7 +68,9 @@ def roadmap(request):
         # Look at the whole H2 inner text for status hints
         text = _re.sub(r'<[^>]+>', '', content).lower()
         status = 'planned'
-        if '[complete]' in text or '— complete' in text:
+        if '[wont-do]' in text or '[won\'t do]' in text or '[out-of-scope]' in text:
+            status = 'wont-do'
+        elif '[complete]' in text or '— complete' in text:
             status = 'complete'
         elif 'shipped' in text:  # `[shipped — vN.N.N]` or `**— shipped**`
             status = 'shipped'
@@ -85,6 +87,7 @@ def roadmap(request):
             'complete':    '<span class="phase-badge phase-complete">Complete</span>',
             'in-progress': '<span class="phase-badge phase-inprogress">In progress</span>',
             'planned':     '<span class="phase-badge phase-planned">Planned</span>',
+            'wont-do':     '<span class="phase-badge phase-wontdo">Won’t do</span>',
         }
         badge = badge_map[status]
         new_open = h2_open.replace(
@@ -164,9 +167,11 @@ def roadmap_status_json(request):
     for m in phase_re.finditer(raw):
         bracket = (m.group('bracket_status') or '').strip().lower()
         inline = (m.group('inline_status') or '').strip().lower()
-        # Normalize status into one of: complete / shipped / in_progress / planned
+        # Normalize status into one of: complete / shipped / in_progress / planned / wont_do
         status = 'planned'
-        if 'complete' in bracket or inline == 'complete':
+        if 'wont-do' in bracket or "won't do" in bracket or 'out-of-scope' in bracket:
+            status = 'wont_do'
+        elif 'complete' in bracket or inline == 'complete':
             status = 'complete'
         elif 'shipped' in bracket or inline == 'shipped':
             status = 'shipped'

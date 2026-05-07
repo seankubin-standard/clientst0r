@@ -41,6 +41,19 @@
     background: var(--bs-secondary-bg-subtle, #e9ecef);
     color: var(--bs-secondary-text, #495057);
 }
+.phase-badge.phase-wontdo {
+    background: var(--bs-danger-bg-subtle, #f8d7da);
+    color: var(--bs-danger-text, #842029);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+}
+.roadmap-content h2[data-phase-status="wont-do"] {
+    opacity: 0.55;
+    text-decoration: line-through;
+}
+.roadmap-content section.phase-section[data-phase-status="wont-do"] :is(h3, p, ul, table) {
+    opacity: 0.6;
+}
 /* Shipped phases: dim the heading + content (anything between this h2
    and the next h2). The +~ general sibling combinator dims everything
    after a shipped h2 until the next h2 resets via specificity. */
@@ -94,6 +107,7 @@
         <span id="phaseShippedCount">0</span> shipped
         · <span id="phaseInProgressCount">0</span> in progress
         · <span id="phasePlannedCount">0</span> planned
+        · <span id="phaseWontDoCount">0</span> won’t do
     </span>
 </div>
 
@@ -130,7 +144,7 @@
     });
 
     // Count by status for the small summary badge
-    var counts = {shipped: 0, complete: 0, 'in-progress': 0, planned: 0};
+    var counts = {shipped: 0, complete: 0, 'in-progress': 0, planned: 0, 'wont-do': 0};
     content.querySelectorAll('section.phase-section').forEach(function(s) {
         var st = s.getAttribute('data-phase-status');
         if (counts[st] !== undefined) counts[st] += 1;
@@ -139,6 +153,7 @@
     if (byId('phaseShippedCount')) byId('phaseShippedCount').textContent = counts.shipped + counts.complete;
     if (byId('phaseInProgressCount')) byId('phaseInProgressCount').textContent = counts['in-progress'];
     if (byId('phasePlannedCount')) byId('phasePlannedCount').textContent = counts.planned;
+    if (byId('phaseWontDoCount')) byId('phaseWontDoCount').textContent = counts['wont-do'];
 
     function applyFilter() {
         var hide = toggle.checked;

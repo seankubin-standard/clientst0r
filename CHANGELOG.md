@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.334] - 2026-05-07
+
+### Changed — Phase 24 + Phase 30 cancelled (won’t do)
+Both phases are removed from the active roadmap. The project remains a PSA + Asset + Vault + Documentation + Monitoring platform that integrates with external RMMs via the Phase 9 connection framework and Phase 7 Integration SDK. Building a first-party RMM agent (Phase 24) or remote-access relay (Phase 30) is intentionally not on the roadmap.
+
+### Added — `[wont-do]` phase status
+- `core/views.py::roadmap()` HTML classifier recognizes `[wont-do]`, `[won't do]`, `[out-of-scope]` and emits `data-phase-status="wont-do"` on the H2 with a "Won’t do" badge.
+- `core/views.py::roadmap_status_json()` JSON parser maps the same brackets to `status: "wont_do"` so external dashboards / status pages don't need to special-case them.
+- `templates/core/roadmap.html` adds a strikethrough red badge style and dims the phase content. Page summary now reports won’t-do count alongside shipped / in-progress / planned.
+
+### Roadmap
+- `## Phase 24 — Native RMM Agent + Endpoint Management` header now `[wont-do]`. Original sub-bullets preserved for historical context.
+- `## Phase 30 — Endpoint Remote Access (alternative to Phase 24)` header now `[wont-do]`. Original sub-bullets preserved for historical context.
+- Sizing table: rows for Phase 24 + Phase 30 say `won’t do — out of scope`.
+- Closing paragraph rewritten — was "Phase 24 is by far the largest…", now explicitly notes both phases are out of scope and points users to third-party RMM / remote-access integrations (TacticalRMM, NinjaOne, Datto, ConnectWise Automate, ScreenConnect, RustDesk, MeshCentral).
+
+### Tests
+None — pure roadmap + classifier change.
+
 ## [3.17.333] - 2026-05-05
 
 ### Fixed — Restore monotonic version numbering after Phase 19 + Phase 28 parallel ship
