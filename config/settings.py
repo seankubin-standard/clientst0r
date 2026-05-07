@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     'crm.apps.CrmConfig',
     'security_alerts.apps.SecurityAlertsConfig',
     'compliance.apps.ComplianceConfig',
+    'field_ops.apps.FieldOpsConfig',
 ]
 
 # Optional apps - only add if installed (allows updates without dependencies)

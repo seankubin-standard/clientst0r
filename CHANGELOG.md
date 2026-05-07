@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.397] - 2026-05-07
+
+### Added — Phase 8.1 backend foundation: TechnicianLocation + ClientSiteGeofence
+First server-side concrete deliverable for the Phase 8 train (originally targeted v3.17.386; bumped to v3.17.397 to stay above the v3.17.396 monotonicity-fix release). The other half of Sub-phase 8.1 (TimeclockEntry + MobileDevice + the locations/timeclock/active-ticket REST endpoints) lands in the next two releases.
+
+- New Django app `field_ops/` with `default_auto_field = BigAutoField`, registered in `INSTALLED_APPS`.
+- `TechnicianLocation` model — append-only GPS ping with tech FK, lat/lon (Decimal 9,6), accuracy (meters), timestamp, source choices (`mobile` / `web`), and a pre-computed `retention_until` date so the (forthcoming v3.17.400) prune mgmt cmd is a one-shot WHERE clause.
+- `ClientSiteGeofence` model — per-organization geofence supporting both `radius` (center + meters) and `polygon` (list of [lat, lon] vertices) modes. Optional `location` FK keeps Phase 18 multi-location working. Includes a `contains(lat, lon)` method using equirectangular distance for radius mode and ray casting for polygon mode.
+- Admin registration for both models.
+- Migration `field_ops/migrations/0001_initial.py`.
+
+### Tests
+- 6 new tests: TechnicianLocation default retention applied, explicit retention preserved; ClientSiteGeofence radius-contains, radius-excludes, polygon-contains, admin str.
+
 ## [3.17.396] - 2026-05-07
 
 ### Fixed — Update flow stuck in "Update Available" loop
