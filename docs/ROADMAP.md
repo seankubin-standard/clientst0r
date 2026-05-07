@@ -590,29 +590,6 @@ Dependencies: existing vault model + AES-GCM key infra. Browser extension is a s
 
 **Goal:** Match the IT Glue / Bitwarden experience that techs already expect.
 
-## Phase 29 — Commercial Operations Ecosystem **(continuous · meta)**
-
-**Roadmap item:** Not a feature — the *commercial* support stack around the open-source product: SLAs, professional onboarding, commercial support tiers. This is the ecosystem an enterprise buyer evaluates before adopting a self-hosted MSP platform.
-
-Planned capabilities:
-- Tiered commercial support offering (Bronze / Silver / Gold / Platinum) with response-time SLAs
-- Paid onboarding service — installation, data migration, integration setup
-- Migration scripts for inbound data imports from common existing platforms (one-time imports for new customers onboarding from another tool)
-- Architect-led implementation packages for installs > 50 techs
-- Per-customer commercial-support portal (dedicated case queue, escalation path)
-- Public status page (https://status.huduglue.example) with planned-maintenance windows
-- Roadmap voting page where commercial customers can prioritize phases
-- Quarterly customer advisory board
-- Public security-disclosure / responsible-disclosure program with bug-bounty
-- SOC 2 readiness (controls inventory + audit trail + auditor-ready evidence pack)
-- Trust portal: vendor security questionnaire pre-answers, DPIA, sub-processor list
-- Commercial license / EULA optionality for enterprise buyers who can't accept MIT-only
-- Reseller / partner program for IT consultancies who deploy on customer premises
-
-Dependencies: this runs alongside the technical phases — the commercial program matures with the product. Items here are not unit-testable; they're operational + organizational.
-
-**Goal:** Provide the commercial trust signals an enterprise buyer expects on top of the open-source product.
-
 ## Phase 31 — Vault GeoIP / IP / Time Access Rules **(S)** [shipped — v3.17.163]
 
 Per-rule GeoIP / IP / time-of-day gates on top of the vault. New `VaultAccessRule` model, scopable to a specific Password, a specific User, or an Organization (three scopes). Rules carry allowed/blocked country lists (ISO codes), allowed/blocked CIDR lists, allowed weekdays + hour window with IANA timezone, plus priority + active flag. DENY-wins-then-priority engine; empty rule set keeps back-compat ALLOW. Every reveal/view decision is audit-logged with the reason, source IP, country, and matched rule ID. New `vault_manage_access_rules` permission gate.
@@ -920,7 +897,6 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 26 — Custom Report Writer + Saved Queries | L | 4-5 weeks | extends Phase 3.5 + 3.6 |
 | 27 — Advanced Accounting Reconciliation | M | 2-3 weeks | extends QBO/Xero connection |
 | 28 — Browser Extension + Offline Vault Access | L | 4-5 weeks | separate codebase |
-| 29 — Commercial Operations Ecosystem | Continuous · meta | ongoing | runs alongside |
 | 31 — Vault GeoIP / IP / Time Access Rules | S | shipped v3.17.163 | extends FirewallMiddleware GeoIP infra |
 | 32 — Remote Network Discovery Import | M | 2-3 weeks | future / late-stage — non-RMM, scoped, single-use tokens |
 | 33 — Network Discovery & Auto Documentation | L | 4-6 weeks | extends Phase 32 + Phase 16 |

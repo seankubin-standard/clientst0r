@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.336] - 2026-05-07
+
+### Removed — Phase 29 deleted from roadmap
+Same treatment as Phases 24 + 30 in v3.17.335. Phase 29 (Commercial Operations Ecosystem — tiered support tiers, paid onboarding, SOC 2 readiness, reseller program, etc.) is removed from the roadmap entirely. Roadmap now jumps Phase 28 → Phase 31. Sizing-table row dropped.
+
+### Tests
+None — pure roadmap edit.
+
 ## [3.17.335] - 2026-05-07
 
 ### Removed — Phase 24 + Phase 30 deleted from roadmap
