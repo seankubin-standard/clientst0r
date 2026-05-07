@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.335] - 2026-05-07
+
+### Removed — Phase 24 + Phase 30 deleted from roadmap
+v3.17.334 marked these `[wont-do]` while keeping the original sub-bullets for context. Per follow-up: just delete them — they shouldn't appear at all. The roadmap (in-app + GitHub + JSON feed) now jumps directly Phase 23 → Phase 25 and Phase 29 → Phase 31. The sizing-table rows are also dropped, and the closing scope-note is reworded as a positive statement of the project's domain rather than an apology for the deletion.
+
+The `[wont-do]` parser support added in v3.17.334 stays in place — useful if a future phase needs the marker.
+
+### Tests
+None — pure roadmap edit.
+
 ## [3.17.334] - 2026-05-07
 
 ### Changed — Phase 24 + Phase 30 cancelled (won’t do)

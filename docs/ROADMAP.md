@@ -512,27 +512,6 @@ Potential integrations:
 
 **Goal:** Improve operational security visibility and incident response workflows.
 
-## Phase 24 — Native RMM Agent + Endpoint Management **(XL — major undertaking)** [wont-do]
-
-**Won’t do — out of scope.** Building a first-party RMM stack (lightweight cross-platform agent + patch management + scripting + remote access) is intentionally not on the roadmap. The project remains a PSA + Asset + Vault + Documentation platform that integrates with existing RMMs via the connection framework (Phase 9 + Phase 7 SDK). For installs that need RMM capability, use one of the supported third-party RMMs (TacticalRMM, NinjaOne, Datto RMM, ConnectWise Automate, etc.) — those are well-served by their existing vendors. The original sub-bullets below are preserved for context only.
-
-**Original (now-cancelled) roadmap item:** First-party RMM stack — patch management, scripting, remote access. Today the project integrates with external RMMs via the existing integration framework; this phase adds an in-house alternative for installs that want a self-hosted RMM.
-
-Planned capabilities:
-- Lightweight cross-platform agent (Go or Python) that registers via secure token
-- Endpoint inventory (CPU / RAM / disk / installed software / network state)
-- **Patch management** — Windows Update / apt / yum / Homebrew push + scheduling + rollback. Extends OS Package Scanner shipped earlier.
-- **Scripting / automation against endpoints** — sandboxed PowerShell / Bash / Python with audit log + approval gate for high-risk scripts
-- **Remote access** — browser-launched session over WebSocket relay (no third-party agent install). Optional fallback to existing ScreenConnect / RustDesk integration.
-- Health monitoring + drift detection (extends Phase 17)
-- Performance metrics + alerting
-- Software deployment + uninstall
-- Background task queue (push command → agent ack → result back via webhook)
-
-Dependencies: Phase 9 (security framework — auth + audit), Phase 17 (asset intelligence baselines). Significantly larger scope than other phases — likely a multi-quarter program. Recommended only if customer demand for self-hosted RMM is strong.
-
-**Goal:** Provide a self-hosted RMM option that integrates natively with the existing PSA + asset stack instead of requiring a third-party RMM.
-
 ## Phase 25 — Mature Timesheet Approval Workflows **(M)** [complete]
 
 **Roadmap item:** Formal time-entry approval pipeline. Today `psa.TicketTimeEntry` is logged ad-hoc by techs; there's no formal weekly approval before billing.
@@ -645,25 +624,6 @@ Per-rule GeoIP / IP / time-of-day gates on top of the vault. New `VaultAccessRul
 - 7 unit tests in `vault.tests.VaultAccessRuleEngineTests` *(shipped v3.17.163)*
 
 ---
-
-## Phase 30 — Endpoint Remote Access (alternative to Phase 24) **(L)** [wont-do]
-
-**Won’t do — out of scope.** Phase 30 was the smaller "remote access only" slice of Phase 24. With Phase 24 now cancelled, Phase 30 is also off the table. Installs needing remote access can use existing tools the project integrates with (ScreenConnect, RustDesk, MeshCentral, etc.) instead of a first-party relay. The original sub-bullets below are preserved for context only.
-
-**Original (now-cancelled) roadmap item:** If Phase 24 (Native RMM) is too large to take on directly, Phase 30 is the smaller-scope remote-access-only slice that doesn't require building a full RMM agent.
-
-Planned capabilities:
-- WebSocket relay service: tech browser ↔ relay ↔ end-user agent
-- Browser-only client (canvas-based VNC-over-WebSocket or RDP-relay)
-- Lightweight per-endpoint helper agent (Windows / macOS / Linux) — accepts inbound relay sessions only; no scripting / no scheduling
-- Recording of sessions (opt-in per client) for audit
-- Per-session approval prompt on the user's screen
-- Permission gates: `remote_access_view`, `remote_access_initiate`, `remote_access_record`
-- Optional integration with existing ScreenConnect / RustDesk / MeshCentral (preferred for installs that already have one)
-
-Dependencies: none direct. Strictly smaller than Phase 24.
-
-**Goal:** Provide remote access without building a full RMM stack.
 
 ## Phase 32 — Remote Network Discovery Import **(M · future / late-stage)** [planned]
 
@@ -956,13 +916,11 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 21 — Advanced Mobile Technician Workflows | L | 4-6 weeks | requires Phase 8 |
 | 22 — Knowledge Base & SOP Management | M | 2-3 weeks | extends KB v3.17.128/134 |
 | 23 — Security Event & Incident Workflows | L | 4-6 weeks | requires Phase 9 |
-| 24 — Native RMM Agent + Endpoint Mgmt | — | **won’t do — out of scope** | use third-party RMM via Phase 9 framework |
 | 25 — Mature Timesheet Approval Workflows | M | 2-3 weeks | extends Phase 2 + approvals |
 | 26 — Custom Report Writer + Saved Queries | L | 4-5 weeks | extends Phase 3.5 + 3.6 |
 | 27 — Advanced Accounting Reconciliation | M | 2-3 weeks | extends QBO/Xero connection |
 | 28 — Browser Extension + Offline Vault Access | L | 4-5 weeks | separate codebase |
 | 29 — Commercial Operations Ecosystem | Continuous · meta | ongoing | runs alongside |
-| 30 — Endpoint Remote Access (alt to Phase 24) | — | **won’t do — out of scope** | use ScreenConnect / RustDesk / MeshCentral integrations |
 | 31 — Vault GeoIP / IP / Time Access Rules | S | shipped v3.17.163 | extends FirewallMiddleware GeoIP infra |
 | 32 — Remote Network Discovery Import | M | 2-3 weeks | future / late-stage — non-RMM, scoped, single-use tokens |
 | 33 — Network Discovery & Auto Documentation | L | 4-6 weeks | extends Phase 32 + Phase 16 |
@@ -981,4 +939,4 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 
 **Phases 10-30**: long-term operational deepening. None should be positioned as fully implemented today; each extends or adds to the foundations already shipped. Items overlapping shipped phases call out the deltas explicitly. AI-assisted features are explicitly **OPTIONAL AI** and gated by `psa_ai_enabled` (existing pattern from v3.17.125 AI Triage).
 
-**Phases 24 + 30 are out of scope.** The project is a PSA + Asset + Vault + Documentation + Monitoring platform that integrates with external RMMs (Phase 9 connection framework + Phase 7 Integration SDK). Building a first-party RMM agent or a remote-access relay isn't on the roadmap — installs that need those capabilities should use one of the supported third-party tools (TacticalRMM, NinjaOne, Datto RMM, ConnectWise Automate, ScreenConnect, RustDesk, MeshCentral, etc.).
+**Scope note:** This is a PSA + Asset + Vault + Documentation + Monitoring platform that integrates with external RMMs (Phase 9 connection framework + Phase 7 Integration SDK). First-party RMM agents and remote-access relays aren't on the roadmap — installs that need those capabilities use the supported third-party tools (TacticalRMM, NinjaOne, Datto RMM, ConnectWise Automate, ScreenConnect, RustDesk, MeshCentral, etc.).
