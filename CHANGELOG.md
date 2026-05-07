@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.363] - 2026-05-07
+
+### Changed — Phase 23 close
+Phase 23 (Security Event & Incident Workflows) closeout. All 12 sub-bullets now carry `*(shipped vN.N.N)*` annotations and the phase header is now `[shipped — v3.17.363]` so the JSON roadmap feed at `/core/roadmap.json` reports the correct status. Sizing-table row updated to "shipped v3.17.337–363 (extends Phase 9 + 17)".
+
+Phase 23 features delivered (over 8 releases v3.17.337 → v3.17.363):
+- v3.17.337 — SIEM webhook adapter (CEF/JSON/Syslog).
+- v3.17.338 — `SecurityIncident` + `SecurityIncidentEvent` + auto-correlation by asset/severity window.
+- v3.17.339 — Per-organization cached `exposure_score` + `recompute_exposure_scores` mgmt cmd.
+- v3.17.355 — `SecurityIncidentSLAPolicy` + `check_incident_sla_breaches` mgmt cmd (idempotent timeline events).
+- v3.17.358 — `RemediationPlaybook` + `RemediationPlaybookStep` engine; auto-fires on incident open.
+- v3.17.361 — `/security/threat-overview/` single-pane analyst dashboard.
+- v3.17.362 — OPTIONAL AI incident summarization gated by `psa_ai_enabled`.
+
+The remaining sub-bullets (Security event ingestion, Security dashboarding, Security event reporting, Vulnerability correlation, CVE-to-ticket workflows) shipped via prior Phase 9 / Phase 17 work and carry cross-phase shipping annotations.
+
+### Tests
+None — pure docs / metadata commit.
+
 ## [3.17.362] - 2026-05-07
 
 ### Added — Phase 23 v7: AI-assisted incident summarization (OPTIONAL AI)

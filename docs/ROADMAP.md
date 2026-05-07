@@ -484,7 +484,7 @@ Planned capabilities:
 
 **Goal:** Improve operational knowledge management and documentation governance.
 
-## Phase 23 — Security Event & Incident Workflows **(L)** [in progress]
+## Phase 23 — Security Event & Incident Workflows **(L)** [shipped — v3.17.363]
 
 **Roadmap item:** Security Event Correlation & Incident Operations. Extends Phase 9 (security alert ingestion) — these are the next-tier incident workflows on top of the basic alert dashboard.
 
@@ -892,7 +892,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 20 — Approval & Change Management Workflows | M | 2-3 weeks | extends Phase 6.1 |
 | 21 — Advanced Mobile Technician Workflows | L | 4-6 weeks | requires Phase 8 |
 | 22 — Knowledge Base & SOP Management | M | 2-3 weeks | extends KB v3.17.128/134 |
-| 23 — Security Event & Incident Workflows | L | 4-6 weeks | requires Phase 9 |
+| 23 — Security Event & Incident Workflows | L | 4-6 weeks | shipped v3.17.337–363 (extends Phase 9 + 17) |
 | 25 — Mature Timesheet Approval Workflows | M | 2-3 weeks | extends Phase 2 + approvals |
 | 26 — Custom Report Writer + Saved Queries | L | 4-5 weeks | extends Phase 3.5 + 3.6 |
 | 27 — Advanced Accounting Reconciliation | M | 2-3 weeks | extends QBO/Xero connection |
