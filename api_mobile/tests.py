@@ -1,5 +1,6 @@
 """
-Tests for the mobile API auth endpoints (v3.17.346).
+Tests for the mobile API auth endpoints (v3.17.346) and the
+dashboard / organizations endpoints (v3.17.347).
 """
 from __future__ import annotations
 
@@ -7,6 +8,7 @@ import json
 
 from django.conf import settings as django_settings
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from rest_framework.authtoken.models import Token
 
@@ -19,6 +21,19 @@ TEST_MIDDLEWARE = [
     m for m in django_settings.MIDDLEWARE
     if 'Enforce2FAMiddleware' not in m and 'AxesMiddleware' not in m
 ]
+
+# Disable DRF rate-throttling for tests — cumulative login attempts across
+# multiple test classes sharing one IP otherwise trip the 10/hour login
+# throttle and the test client gets 429 on `setUp` logins.
+NO_THROTTLE_REST = dict(django_settings.REST_FRAMEWORK, DEFAULT_THROTTLE_CLASSES=[])
+
+
+def _clear_throttle_cache():
+    """Reset the DRF throttle cache between tests."""
+    try:
+        cache.clear()
+    except Exception:
+        pass
 
 
 def _post(client, path, payload):
@@ -37,11 +52,12 @@ def _auth_post(client, path, token, payload=None):
     )
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
 class MobileAuthLoginTests(TestCase):
     """Verifies happy-path login + wrong-password rejection + missing fields."""
 
     def setUp(self):
+        _clear_throttle_cache()
         self.org = Organization.objects.create(name='OrgA-Mobile', slug='orga-mobile')
         self.user = User.objects.create_user('mobileuser', password='hunter2', email='m@x.com')
         Membership.objects.create(
@@ -72,11 +88,12 @@ class MobileAuthLoginTests(TestCase):
         self.assertEqual(resp.status_code, 400)
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
 class MobileAuth2FAFlowTests(TestCase):
     """Users with 2FA must complete `/auth/mfa/` to get the API token."""
 
     def setUp(self):
+        _clear_throttle_cache()
         self.user = User.objects.create_user('mfauser', password='hunter2')
         # Mark profile two_factor_enabled — that's how `user_has_2fa_enabled`
         # detects without a real TOTP device row.
@@ -102,11 +119,12 @@ class MobileAuth2FAFlowTests(TestCase):
         self.assertEqual(resp.status_code, 401)
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
 class MobileAuthTokenLifecycleTests(TestCase):
     """Logout revokes the token; refresh issues a new one; me returns profile."""
 
     def setUp(self):
+        _clear_throttle_cache()
         self.user = User.objects.create_user('luser', password='hunter2', email='l@x.com')
         self.client = Client()
         resp = _post(self.client, '/api/mobile/v1/auth/login/', {
@@ -142,3 +160,62 @@ class MobileAuthTokenLifecycleTests(TestCase):
         # New token works
         resp3 = _auth_get(self.client, '/api/mobile/v1/auth/me/', new_token)
         self.assertEqual(resp3.status_code, 200)
+
+
+# v3.17.347 — dashboard + organizations endpoints
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileDashboardOrgsTests(TestCase):
+    """Dashboard counts + organization list + detail are org-scoped."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        self.org_a = Organization.objects.create(name='OrgA-Dash', slug='orga-dash')
+        self.org_b = Organization.objects.create(name='OrgB-Dash', slug='orgb-dash')
+        self.user_a = User.objects.create_user('dashuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user_a, organization=self.org_a, role=Role.OWNER, is_active=True,
+        )
+        # user_a is NOT in org_b
+        self.client = Client()
+        resp = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'dashuser', 'password': 'hunter2',
+        })
+        self.token = resp.json()['token']
+
+    def test_dashboard_requires_auth(self):
+        c = Client()
+        self.assertIn(c.get('/api/mobile/v1/dashboard/').status_code, (401, 403))
+
+    def test_dashboard_returns_counts(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/dashboard/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        for key in ('open_tickets', 'critical_tickets', 'expiring_soon',
+                    'offline_monitors', 'recent_assets', 'security_alerts_open',
+                    'organization_count'):
+            self.assertIn(key, body)
+        self.assertEqual(body['organization_count'], 1)
+
+    def test_org_list_requires_auth(self):
+        c = Client()
+        self.assertIn(c.get('/api/mobile/v1/organizations/').status_code, (401, 403))
+
+    def test_org_list_returns_only_user_orgs(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/organizations/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        ids = [o['id'] for o in body['results']]
+        self.assertIn(self.org_a.id, ids)
+        self.assertNotIn(self.org_b.id, ids)
+        self.assertEqual(body['count'], 1)
+
+    def test_org_detail_returns_my_org(self):
+        url = f'/api/mobile/v1/organizations/{self.org_a.id}/'
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['name'], 'OrgA-Dash')
+
+    def test_org_detail_cross_org_blocked(self):
+        url = f'/api/mobile/v1/organizations/{self.org_b.id}/'
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 404)
