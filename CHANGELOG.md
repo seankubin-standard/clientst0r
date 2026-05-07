@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.360] - 2026-05-07
+
+### Added — Phase 8 mobile app v5: Docs + EAS placeholder + roadmap close
+Final mobile-app release in this train. Documentation + production-build scaffolding so an operator can run `eas init && eas build` once they have Apple Developer + Play Console accounts.
+
+- New `mobile/README.md` — full setup (prereqs, local dev, backend URL examples for iOS sim / Android emulator / LAN device, type-check command, EAS production-build path, signing-keys checklist, security notes about token storage and vault-secret handling).
+- New `mobile/eas.json` — `development` / `preview` / `production` build profiles. Submit-config keys for App Store Connect + Play Console are placeholders that operators fill in.
+- New `mobile/assets/icon.png`, `mobile/assets/splash.png`, `mobile/assets/adaptive-icon.png`, `mobile/assets/favicon.png` — solid-color 1024×1024 placeholders generated programmatically. Replace before store submission.
+- `mobile/app.json` — `extra.eas.projectId` placeholder so `eas init` can fill it in cleanly.
+- `docs/MOBILE_APP_PLAN.md` — appended a "Mobile app shipped" section with the per-release breakdown, screens delivered, and what remains deferred (GPS auto-time, timeclock UI, push notifications, biometric unlock, Azure SSO).
+- `docs/ROADMAP.md` Phase 8 sub-phase 8.4 annotation completed; phase header stays `[in progress]` because Sub-phases 8.2 (GPS auto-time), 8.3 (timeclock), and 8.5 (privacy hardening) are explicitly deferred.
+
+### Tests
+- `cd mobile && npx tsc --noEmit` clean.
+
 ## [3.17.359] - 2026-05-07
 
 ### Added — Phase 8 mobile app v4: Vault + Monitoring + Security + Settings

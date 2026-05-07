@@ -838,7 +838,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 - Payroll export — CSV per pay period, hooks for QuickBooks Time / Gusto / etc. (defer the integration; just structured export first).
 
 ### Sub-phase 8.4 — App build
-- React Native (Expo SDK 51+ with EAS cloud build — revisits the earlier "no Expo accounts" rejection; required for store submission). *(scaffold + auth shipped v3.17.354; dashboard + orgs + assets shipped v3.17.356; tickets + KB shipped v3.17.357; vault + monitoring + security + settings shipped v3.17.359 — `mobile/` Expo TypeScript app)*
+- React Native (Expo SDK 51+ with EAS cloud build — revisits the earlier "no Expo accounts" rejection; required for store submission). *(read-heavy field-use slice complete: scaffold + auth v3.17.354; dashboard + orgs + assets v3.17.356; tickets + KB v3.17.357; vault + monitoring + security + settings v3.17.359; docs + EAS profiles + placeholder icons v3.17.360 — `mobile/` Expo TypeScript app. Phase 8 stays `[in progress]` because Sub-phases 8.2 (GPS auto-time), 8.3 (timeclock UI), and 8.5 (privacy hardening) are deferred.)*
 - Auth: Azure SSO + email/password fallback; session-token cookie not used (mobile uses long-lived bearer).
 - Screens: Dashboard / My Tickets / Active Ticket / Clock In-Out / Map / Settings.
 - Background location: foreground-only by default, opt-in for background; iOS "Always" permission requested only for techs who enable Always-on auto-time.

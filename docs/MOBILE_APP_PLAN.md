@@ -165,3 +165,40 @@ curl -X POST https://yourhost/api/mobile/v1/auth/login/ \
 * **Token rotation on every request** is not implemented — tokens rotate explicitly via `/auth/refresh/`. Added in v3.17.353 if needed.
 * **GeoIP for token-issuing** — login currently honours Axes (IP-based) but does not gate by country. Add later if a customer asks.
 * **WebAuthn / passkeys for mobile** — deferred; TOTP is the universal floor.
+
+---
+
+## Mobile app shipped (v3.17.354–360)
+
+The Expo React Native + TypeScript client lives at `mobile/`. Shipped across five releases:
+
+| Release | Scope |
+|---------|-------|
+| v3.17.354 | Scaffold (Expo SDK 51 + Expo Router + TypeScript strict + TanStack Query + axios + zod), SecureStore-backed auth, login screen with MFA second-step. |
+| v3.17.356 | Dashboard (stat tiles + recent tickets/assets/alerts), Organizations list/detail, Assets list (search + filters: org / type / status) + detail. |
+| v3.17.357 | Tickets list (filter chips: open / mine / critical / closed / all), Ticket detail (status + priority chip-pickers, comments thread, add-comment with internal flag), New-ticket form, KB list + article (markdown via `react-native-markdown-display`). |
+| v3.17.359 | Vault list (no secrets), Vault detail with audit-logged reveal flow (confirmation modal, in-state-only secret, 30s clipboard auto-clear, `expo-screen-capture` engaged, 202-approval branch handled), Monitoring (websites + expirations), Security summary, Settings (profile PATCH, server URL, theme override, logout, clear-local). |
+| v3.17.360 | README + `eas.json` build profiles + placeholder icons + Phase 8 roadmap closeout. |
+
+Versions skipped over by the mobile-app train (v3.17.355, v3.17.358) were taken by the concurrent Phase 23 release train.
+
+### Screens delivered
+
+`/login`, `/dashboard`, `/organizations`, `/organizations/[id]`, `/assets`, `/assets/[id]`, `/tickets`, `/tickets/[id]`, `/tickets/new`, `/kb`, `/kb/[id]`, `/vault`, `/vault/[id]`, `/monitoring`, `/security`, `/settings`.
+
+### What still needs manual setup
+
+* Apple Developer + Play Console accounts
+* `eas init` to fill `extra.eas.projectId` (placeholder in `app.json`)
+* iOS / Android signing keys (EAS can manage)
+* Store listings (descriptions, screenshots, privacy policy URL)
+* APNs key + FCM service-account JSON (only when push notifications ship)
+
+### Deferred from Phase 8 (explicitly out of scope for this train)
+
+* GPS auto-documentation engine (Sub-phase 8.2)
+* Timeclock mobile UI (Sub-phase 8.3 mobile half — web side is separate)
+* Background location, foreground-only fallback, off-shift suppression (Sub-phase 8.5)
+* Push notifications — web push is already shipped (v3.17.313); APNs/FCM native pushes need a paid Apple Developer + Play Console flow
+* Biometric unlock — needs `expo-local-authentication` + native rebuild
+* iOS Azure SSO via in-app browser (the password fallback is implemented; Azure SSO integration is phase-2)
