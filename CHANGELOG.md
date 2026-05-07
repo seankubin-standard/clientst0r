@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.382] - 2026-05-07
+
+### Fixed — Mobile Apps page hard to read on dark theme
+The custom `.platform-card` div had a 1px border but no background, so on the dark theme it inherited the page background and the card content blended into the surrounding chrome. Switched to Bootstrap's `<div class="card">` + `<div class="card-body">` pair so each platform tile now gets a proper themed background that contrasts with the page. Also tightened the inline-`<code>` and status-pill foreground colors via `--bs-emphasis-color` / `--bs-*-text-emphasis` for stronger contrast in both light and dark themes.
+
+### Tests
+None — pure CSS / template structure change.
+
 ## [3.17.381] - 2026-05-07
 
 ### Fixed — Mobile Apps admin page 500

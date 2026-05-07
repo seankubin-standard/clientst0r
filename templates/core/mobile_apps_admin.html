@@ -4,21 +4,22 @@
 
 {% block extra_css %}
 <style>
-    .platform-card { border: 1px solid var(--bs-border-color); border-radius: 8px; padding: 1.5rem; height: 100%; }
-    .platform-card h3 { margin-top: 0; font-size: 1.25rem; }
+    .platform-card { height: 100%; }
+    .platform-card .card-body h3 { margin-top: 0; font-size: 1.25rem; }
     .platform-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
     .platform-icon.android { color: #3ddc84; }
     .platform-icon.ios { color: #555; }
     [data-bs-theme="dark"] .platform-icon.ios { color: #aaa; }
     .build-meta { font-size: 0.85rem; color: var(--bs-secondary-color); }
     .sideload-step { margin-bottom: 0.4rem; }
-    .sideload-step code { font-size: 0.82rem; padding: 1px 4px; border-radius: 3px;
-        background: var(--bs-tertiary-bg); }
+    .sideload-step code { font-size: 0.82rem; padding: 1px 5px; border-radius: 3px;
+        background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color); }
+    [data-bs-theme="dark"] .sideload-step code { background: rgba(255,255,255,0.08); }
     .status-pill { display: inline-block; padding: 2px 10px; border-radius: 999px;
         font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-    .status-pill.available { background: var(--bs-success-bg-subtle); color: var(--bs-success-text); }
-    .status-pill.unavailable { background: var(--bs-secondary-bg-subtle); color: var(--bs-secondary-text); }
-    .status-pill.building { background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text); }
+    .status-pill.available { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis, var(--bs-success-text)); }
+    .status-pill.unavailable { background: var(--bs-secondary-bg-subtle); color: var(--bs-secondary-text-emphasis, var(--bs-secondary-text)); }
+    .status-pill.building { background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis, var(--bs-warning-text)); }
 </style>
 {% endblock %}
 
@@ -39,7 +40,7 @@
     <div class="row g-3 mb-4">
         <!-- Android -->
         <div class="col-md-6">
-            <div class="platform-card">
+            <div class="card platform-card"><div class="card-body">
                 <div class="d-flex align-items-start justify-content-between">
                     <div>
                         <i class="fab fa-android platform-icon android"></i>
@@ -83,12 +84,12 @@
                     <li class="sideload-step">{% trans "Tap the downloaded file to install. Accept the risk warning — Android shows it for any app outside the Play Store." %}</li>
                     <li class="sideload-step">{% trans "Open the app, enter your server URL, and log in." %}</li>
                 </ol>
-            </div>
+            </div></div>
         </div>
 
         <!-- iOS -->
         <div class="col-md-6">
-            <div class="platform-card">
+            <div class="card platform-card"><div class="card-body">
                 <div class="d-flex align-items-start justify-content-between">
                     <div>
                         <i class="fab fa-apple platform-icon ios"></i>
@@ -136,7 +137,7 @@
                         {% trans "Apple Developer + store review (~1–7 days). Required for general public distribution." %}
                     </li>
                 </ol>
-            </div>
+            </div></div>
         </div>
     </div>
 
