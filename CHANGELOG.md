@@ -5,6 +5,31 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.359] - 2026-05-07
+
+### Added — Phase 8 mobile app v4: Vault + Monitoring + Security + Settings
+Fourth mobile-app release. Closes the read-heavy MSP-field surface — secure vault reveal flow, website-monitor + expirations dashboard, security alert summary, and account/server/theme settings.
+
+- New screens:
+  - `app/vault/index.tsx` (list — never shows secrets, flags entries that need approval).
+  - `app/vault/[id].tsx` (detail + secure reveal flow):
+    - Reveal is gated by a confirmation modal.
+    - 200 response shows the secret in component state ONLY — never SecureStore, never AsyncStorage, never logged.
+    - 202 response (approval required) surfaces the request URL instead of the secret.
+    - Optional copy-to-clipboard auto-clears in 30 s and warns the user.
+    - `expo-screen-capture.preventScreenCaptureAsync` engaged while a secret is on screen (best-effort; iOS cannot fully suppress).
+    - Secret + clipboard cleared on unmount.
+  - `app/monitoring/index.tsx` (website monitors + upcoming expirations with status pills).
+  - `app/security/index.tsx` (severity-bucketed alert tiles + recent-alerts list).
+  - `app/settings/index.tsx` (profile edit via PATCH /profile/, server URL, theme override stored in AsyncStorage, logout, clear-local-data, app version display).
+- New TanStack Query hooks: `useVaultEntries`, `useVaultEntry(id)`, `useRevealVaultSecret(id)`, `useMonitors`, `useExpirations`, `useSecuritySummary`, `useProfile`, `useUpdateProfile`.
+- Reveal hook deliberately performs no `onSuccess` cache write — secrets are not cached anywhere on disk.
+- Renumbered to v3.17.359 because Phase 23 closeout took v3.17.358.
+- No Django code touched. `cd mobile && npx tsc --noEmit` clean.
+
+### Tests
+- `cd mobile && npx tsc --noEmit` clean.
+
 ## [3.17.358] - 2026-05-07
 
 ### Added — Phase 23 v5: Remediation playbook engine
