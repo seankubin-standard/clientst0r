@@ -17,4 +17,17 @@ urlpatterns = [
         'timeclock/payroll-export.csv',
         views.timeclock_payroll_export, name='timeclock_payroll_export',
     ),
+    # Sub-phase 8.5 (v3.17.415)
+    path(
+        'my-location-history/', views.my_location_history,
+        name='my_location_history',
+    ),
+    path(
+        'my-location-history/<int:pk>/delete/',
+        views.my_location_delete, name='my_location_delete',
+    ),
+    path(
+        'my-location-history/delete-all/',
+        views.my_location_delete_all, name='my_location_delete_all',
+    ),
 ]

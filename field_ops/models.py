@@ -466,3 +466,72 @@ class PendingAutoTime(models.Model):
 
     def __str__(self) -> str:
         return f'PendingAutoTime#{self.pk or "?"} u={self.user_id}'
+
+
+# -----------------------------------------------------------------------------
+# Sub-phase 8.5 (parts 1+2) — OrganizationFieldOpsSettings + GeofenceVisit
+# (v3.17.415)
+# -----------------------------------------------------------------------------
+
+
+class OrganizationFieldOpsSettings(models.Model):
+    """
+    Per-organization field-ops privacy + retention settings.
+
+    `geofence_only_mode` — when True, the locations POST endpoint stores
+        only `(geofence, entered_at, exited_at)` triples in `GeofenceVisit`
+        for techs working under this org's umbrella; raw lat/lon is never
+        persisted.
+    `retention_days` — controls TechnicianLocation retention deadlines
+        (existing `LocationRetentionPolicy` predates this and remains
+        valid; this row supersedes it when both exist).
+    """
+
+    organization = models.OneToOneField(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='field_ops_settings',
+    )
+    geofence_only_mode = models.BooleanField(default=False)
+    retention_days = models.PositiveIntegerField(default=90)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Org Field Ops settings'
+        verbose_name_plural = 'Org Field Ops settings'
+
+    def __str__(self) -> str:
+        return f'{self.organization_id} fops (geofence_only={self.geofence_only_mode})'
+
+
+class GeofenceVisit(models.Model):
+    """
+    Privacy-preserving alternative to TechnicianLocation. When an org
+    enables `geofence_only_mode`, the locations endpoint logs a row here
+    on first inside-ping and updates `exited_at` when the tech leaves.
+    Raw coordinates are never stored — just the geofence id + timestamps.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='geofence_visits',
+    )
+    geofence = models.ForeignKey(
+        ClientSiteGeofence,
+        on_delete=models.CASCADE,
+        related_name='visits',
+    )
+    entered_at = models.DateTimeField(default=timezone.now)
+    exited_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-entered_at']
+        indexes = [
+            models.Index(fields=['user', '-entered_at']),
+            models.Index(fields=['geofence', '-entered_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f'GeofenceVisit#{self.pk or "?"} u={self.user_id} g={self.geofence_id}'

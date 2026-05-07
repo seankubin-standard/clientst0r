@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.415] - 2026-05-07
+
+### Added — Phase 8.5: per-tech location history + geofence-only mode
+Major slice of Sub-phase 8.5 (privacy hardening). Closes parts 1 (per-tech UI) + 2 (geofence-only mode).
+
+- `field_ops.OrganizationFieldOpsSettings` — per-org `geofence_only_mode` flag + `retention_days`. When `geofence_only_mode=True`, the locations API endpoint stops persisting raw lat/lon for any geofence-matching ping and instead writes a privacy-preserving `GeofenceVisit` row (geofence id + entered_at + exited_at).
+- `field_ops.GeofenceVisit` — privacy-preserving alternative to `TechnicianLocation`. Existing TechnicianLocation rows are untouched.
+- `/api/mobile/v1/locations/` updated: when an inside-ping matches a geofence whose org has `geofence_only_mode=True`, return 201 with `mode=geofence_only` + a `visit_id`. Audit-log `locations_geofence_only_write`.
+- `/field-ops/my-location-history/` (logged-in user, any role) — paginated list of THE CALLER'S OWN GPS pings. Per-row Delete + bulk **Delete all my history** (requires typing `DELETE` to confirm). All views + actions audit-logged.
+- Migration `field_ops/0005_orgfopssettings_geofencevisit.py`.
+
+### Tests
+- 5 new tests: history page lists only my rows; per-row delete on someone else's row 404s; per-row delete on mine works; bulk delete requires confirm word; geofence-only mode writes `GeofenceVisit` (no raw row); outside-fence ping under geofence-only org still writes regular `TechnicianLocation`.
+
 ## [3.17.414] - 2026-05-07
 
 ### Added — Phase 8.3 mobile Timeclock screen

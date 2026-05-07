@@ -6,8 +6,10 @@ from django.contrib import admin
 from .models import (
     AutoTimePreference,
     ClientSiteGeofence,
+    GeofenceVisit,
     LocationRetentionPolicy,
     MobileDevice,
+    OrganizationFieldOpsSettings,
     PendingAutoTime,
     TechnicianLocation,
     TimeclockEntry,
@@ -68,3 +70,18 @@ class MobileDeviceAdmin(admin.ModelAdmin):
     search_fields = ('user__username', 'name', 'device_id')
     raw_id_fields = ('user', 'token')
     readonly_fields = ('device_id', 'created_at')
+
+
+@admin.register(OrganizationFieldOpsSettings)
+class OrganizationFieldOpsSettingsAdmin(admin.ModelAdmin):
+    list_display = ('organization', 'geofence_only_mode', 'retention_days', 'updated_at')
+    list_filter = ('geofence_only_mode',)
+    search_fields = ('organization__name',)
+
+
+@admin.register(GeofenceVisit)
+class GeofenceVisitAdmin(admin.ModelAdmin):
+    list_display = ('user', 'geofence', 'entered_at', 'exited_at')
+    search_fields = ('user__username', 'geofence__name')
+    raw_id_fields = ('user', 'geofence')
+    date_hierarchy = 'entered_at'

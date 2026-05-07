@@ -17,7 +17,7 @@ from django.views.decorators.http import require_http_methods
 
 from audit.models import AuditLog
 
-from .models import TechnicianLocation, TimeclockEntry
+from .models import OrganizationFieldOpsSettings, TechnicianLocation, TimeclockEntry
 
 
 def _staff_only(user):
@@ -140,3 +140,59 @@ def timeclock_payroll_export(request):
 
     _audit(request.user, 'payroll_export', {'weeks_back': weeks_back})
     return response
+
+
+# ---------------------------------------------------------------------------
+# Sub-phase 8.5 — Per-tech location history (v3.17.415)
+# ---------------------------------------------------------------------------
+
+@login_required
+def my_location_history(request):
+    """`/field-ops/my-location-history/` — paginated list of the caller's
+    own GPS pings. Per-row delete + bulk delete-all."""
+    qs = TechnicianLocation.objects.filter(tech=request.user).order_by('-timestamp')
+    try:
+        page = max(int(request.GET.get('page', 1)), 1)
+    except ValueError:
+        page = 1
+    page_size = 50
+    start = (page - 1) * page_size
+    total = qs.count()
+    rows = list(qs[start:start + page_size])
+    has_next = total > start + page_size
+
+    _audit(request.user, 'my_location_history_view', {'page': page, 'total': total})
+
+    return render(request, 'field_ops/my_location_history.html', {
+        'rows': rows,
+        'page': page,
+        'page_size': page_size,
+        'total': total,
+        'has_next': has_next,
+        'has_prev': page > 1,
+    })
+
+
+@login_required
+@require_http_methods(['POST'])
+def my_location_delete(request, pk: int):
+    """Per-row delete of the caller's own location row."""
+    loc = get_object_or_404(TechnicianLocation, pk=pk, tech=request.user)
+    loc.delete()
+    _audit(request.user, 'my_location_history_delete', {'row_id': pk})
+    messages.success(request, 'Deleted location row.')
+    return redirect('field_ops:my_location_history')
+
+
+@login_required
+@require_http_methods(['POST'])
+def my_location_delete_all(request):
+    """Bulk delete every TechnicianLocation row owned by the caller."""
+    confirm = request.POST.get('confirm') or ''
+    if confirm != 'DELETE':
+        messages.error(request, "Type DELETE to confirm.")
+        return redirect('field_ops:my_location_history')
+    deleted, _ = TechnicianLocation.objects.filter(tech=request.user).delete()
+    _audit(request.user, 'my_location_history_delete_all', {'deleted': deleted})
+    messages.success(request, f'Deleted {deleted} location row(s).')
+    return redirect('field_ops:my_location_history')

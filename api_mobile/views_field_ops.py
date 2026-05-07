@@ -22,7 +22,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from audit.models import AuditLog
-from field_ops.models import TechnicianLocation, TimeclockEntry
+from field_ops.models import (
+    ClientSiteGeofence,
+    GeofenceVisit,
+    OrganizationFieldOpsSettings,
+    TechnicianLocation,
+    TimeclockEntry,
+)
 
 
 def _audit(user, action, request, extra=None):
@@ -119,6 +125,26 @@ def location_ping_view(request):
         })
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    # Geofence-only mode: any active OrgFieldOpsSettings with
+    # geofence_only_mode=True for an org whose geofence the tech is
+    # inside means we never persist raw lat/lon. We log a GeofenceVisit
+    # row instead and audit the privacy-preserving write.
+    fence = _first_geofence_only_match(lat, lon)
+    if fence is not None:
+        visit = _open_or_extend_visit(user, fence, when)
+        _audit(user, 'api_call', request, {
+            'event': 'locations_geofence_only_write',
+            'channel': 'mobile',
+            'geofence_id': fence.id,
+            'visit_id': visit.id,
+        })
+        return Response(
+            {'id': visit.id, 'mode': 'geofence_only',
+             'geofence_id': fence.id,
+             'entered_at': visit.entered_at.isoformat()},
+            status=status.HTTP_201_CREATED,
+        )
+
     loc = TechnicianLocation.objects.create(
         tech=user,
         lat=lat,
@@ -131,6 +157,39 @@ def location_ping_view(request):
         {'id': loc.id, 'timestamp': loc.timestamp.isoformat()},
         status=status.HTTP_201_CREATED,
     )
+
+
+def _first_geofence_only_match(lat, lon):
+    """Return the first ClientSiteGeofence whose org has geofence_only_mode=True
+    AND that contains (lat, lon), or None."""
+    org_ids = list(
+        OrganizationFieldOpsSettings.objects
+        .filter(geofence_only_mode=True)
+        .values_list('organization_id', flat=True)
+    )
+    if not org_ids:
+        return None
+    qs = ClientSiteGeofence.objects.filter(
+        active=True, organization_id__in=org_ids,
+    )
+    for fence in qs:
+        if fence.contains(lat, lon):
+            return fence
+    return None
+
+
+def _open_or_extend_visit(user, fence, when):
+    """Reuse a visit row that doesn't have an exited_at yet, otherwise
+    create a new one. (Exit-detection is handled by the auto-document
+    engine; here we just keep the entered_at row up to date.)"""
+    visit = GeofenceVisit.objects.filter(
+        user=user, geofence=fence, exited_at__isnull=True,
+    ).first()
+    if visit is None:
+        visit = GeofenceVisit.objects.create(
+            user=user, geofence=fence, entered_at=when,
+        )
+    return visit
 
 
 @api_view(['POST'])

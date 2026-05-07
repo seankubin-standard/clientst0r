@@ -437,3 +437,126 @@ class TimeclockDashboardTests(TestCase):
         self.assertIn('tech,week_start,hours,overtime_hours,org', body)
         self.assertIn('tech-d', body)
         self.assertIn('Dash Org', body)
+
+
+@override_settings(
+    MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+    STORAGES=_TEST_STORAGES,
+)
+class MyLocationHistoryTests(TestCase):
+    """v3.17.415 — per-tech location history view + delete actions."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='hist-user', password='x')
+        self.other = User.objects.create_user(username='other', password='x')
+        # Three pings for our user, one for someone else
+        for i in range(3):
+            TechnicianLocation.objects.create(
+                tech=self.user, lat=Decimal('40.0'), lon=Decimal('-73.0'),
+            )
+        TechnicianLocation.objects.create(
+            tech=self.other, lat=Decimal('41.0'), lon=Decimal('-72.0'),
+        )
+        self.client = Client()
+
+    def test_history_lists_only_my_rows(self):
+        self.client.force_login(self.user)
+        resp = self.client.get('/field-ops/my-location-history/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Total rows: <strong>3</strong>')
+
+    def test_delete_one_row_only_my_own(self):
+        self.client.force_login(self.user)
+        # Try deleting another user's row — must 404
+        other_pk = TechnicianLocation.objects.filter(tech=self.other).first().pk
+        resp = self.client.post(f'/field-ops/my-location-history/{other_pk}/delete/')
+        self.assertEqual(resp.status_code, 404)
+        # Delete one of mine
+        my_pk = TechnicianLocation.objects.filter(tech=self.user).first().pk
+        resp2 = self.client.post(f'/field-ops/my-location-history/{my_pk}/delete/')
+        self.assertEqual(resp2.status_code, 302)
+        self.assertEqual(
+            TechnicianLocation.objects.filter(tech=self.user).count(), 2,
+        )
+
+    def test_delete_all_requires_confirm_word(self):
+        self.client.force_login(self.user)
+        # Wrong confirmation — keeps rows
+        resp = self.client.post(
+            '/field-ops/my-location-history/delete-all/', {'confirm': 'NO'},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(
+            TechnicianLocation.objects.filter(tech=self.user).count(), 3,
+        )
+        # Correct confirmation — wipes
+        resp2 = self.client.post(
+            '/field-ops/my-location-history/delete-all/', {'confirm': 'DELETE'},
+        )
+        self.assertEqual(resp2.status_code, 302)
+        self.assertEqual(
+            TechnicianLocation.objects.filter(tech=self.user).count(), 0,
+        )
+        # Other user's row untouched
+        self.assertEqual(
+            TechnicianLocation.objects.filter(tech=self.other).count(), 1,
+        )
+
+
+@override_settings(MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class GeofenceOnlyModeTests(TestCase):
+    """v3.17.415 — geofence-only-mode write at the locations endpoint."""
+
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        from datetime import time as _time
+        from resourcing.models import WorkingHours
+        self.org = Organization.objects.create(name='Geo Org')
+        self.user = User.objects.create_user('geo-tech', password='hunter2')
+        # Always-on WorkingHours so we never get suppressed off-shift
+        for wd in range(0, 7):
+            WorkingHours.objects.create(
+                user=self.user, weekday=wd,
+                start_time=_time(0, 0), end_time=_time(23, 59),
+            )
+        self.token = Token.objects.create(user=self.user)
+        from .models import OrganizationFieldOpsSettings
+        OrganizationFieldOpsSettings.objects.create(
+            organization=self.org, geofence_only_mode=True,
+        )
+        self.fence = ClientSiteGeofence.objects.create(
+            organization=self.org, name='HQ', kind='radius',
+            center_lat=Decimal('40.0'), center_lon=Decimal('-73.0'),
+            radius_meters=200, active=True,
+        )
+
+    def test_inside_geofence_writes_visit_not_location(self):
+        from .models import GeofenceVisit
+        import json
+        resp = self.client.post(
+            '/api/mobile/v1/locations/',
+            data=json.dumps({'lat': '40.0', 'lon': '-73.0'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {self.token.key}',
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['mode'], 'geofence_only')
+        # No raw row
+        self.assertEqual(TechnicianLocation.objects.filter(tech=self.user).count(), 0)
+        self.assertEqual(GeofenceVisit.objects.filter(user=self.user).count(), 1)
+
+    def test_outside_geofence_writes_normal_row(self):
+        from .models import GeofenceVisit
+        import json
+        # Far away — outside the 200m fence
+        resp = self.client.post(
+            '/api/mobile/v1/locations/',
+            data=json.dumps({'lat': '41.5', 'lon': '-74.5'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {self.token.key}',
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        # Outside any geofence-only org -> regular TechnicianLocation row
+        self.assertEqual(TechnicianLocation.objects.filter(tech=self.user).count(), 1)
+        self.assertEqual(GeofenceVisit.objects.filter(user=self.user).count(), 0)

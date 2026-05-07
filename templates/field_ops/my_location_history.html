@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}My location history — Client St0r{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <h1 class="h3 mb-4"><i class="fa-solid fa-map-pin me-2"></i>My location history</h1>
+
+  {% if messages %}
+    {% for m in messages %}
+      <div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags|default:'info' }}{% endif %}">{{ m }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <p class="mb-0">
+        Total rows: <strong>{{ total }}</strong>.
+        These are GPS pings your device sent for time-on-site auto-documentation.
+        You can delete individual rows or wipe everything below.
+      </p>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header"><strong>Pings (page {{ page }})</strong></div>
+    <div class="card-body p-0">
+      {% if rows %}
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr><th>Timestamp</th><th>Lat</th><th>Lon</th><th>Acc (m)</th><th>Source</th><th></th></tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                <tr>
+                  <td>{{ r.timestamp|date:"Y-m-d H:i" }}</td>
+                  <td>{{ r.lat }}</td>
+                  <td>{{ r.lon }}</td>
+                  <td>{{ r.accuracy }}</td>
+                  <td>{{ r.source }}</td>
+                  <td>
+                    <form method="post" action="{% url 'field_ops:my_location_delete' r.pk %}" class="d-inline">
+                      {% csrf_token %}
+                      <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="p-4 text-muted text-center">No pings to show.</div>
+      {% endif %}
+    </div>
+    {% if has_prev or has_next %}
+      <div class="card-footer d-flex justify-content-between">
+        {% if has_prev %}<a class="btn btn-sm btn-outline-secondary" href="?page={{ page|add:'-1' }}">Previous</a>{% else %}<span></span>{% endif %}
+        {% if has_next %}<a class="btn btn-sm btn-outline-secondary" href="?page={{ page|add:'1' }}">Next</a>{% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card border-danger">
+    <div class="card-header text-danger"><strong>Delete all my history</strong></div>
+    <div class="card-body">
+      <p>This permanently removes every GPS ping you've ever sent. Type <code>DELETE</code> below and click confirm.</p>
+      <form method="post" action="{% url 'field_ops:my_location_delete_all' %}" class="d-flex gap-2">
+        {% csrf_token %}
+        <input type="text" class="form-control" name="confirm" placeholder="Type DELETE here">
+        <button class="btn btn-danger" type="submit">Confirm bulk delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
