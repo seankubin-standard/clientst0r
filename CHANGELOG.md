@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.408] - 2026-05-07
+
+### Fixed — APK build failed in 12s with "SDK location not found"
+The Gradle build was bailing immediately because `ANDROID_HOME` wasn't set in the subprocess env, so it couldn't find the Android SDK. SDK is installed at `/home/administrator/android-sdk/` (platforms 34 + build-tools 33/34). Two changes in `core/management/commands/build_mobile_app.py`:
+
+- Auto-detect SDK location (first `$ANDROID_HOME`, then `$ANDROID_SDK_ROOT`, then candidate paths). Set both env vars before running any subprocess. Also prepend `platform-tools`, `cmdline-tools/latest/bin`, and `build-tools/34.0.0` to `PATH`.
+- Belt-and-suspenders: write `mobile/android/local.properties` with `sdk.dir=$ANDROID_HOME` right before `./gradlew assembleRelease`. Some Gradle wrappers honor only the file, not the env var.
+
+### What this doesn't fix yet
+The build log also showed a SECOND error from `expo-modules-core/android/ExpoModulesCorePlugin.gradle` line 85: `Could not get unknown property 'release' for SoftwareComponent container`. That's the long-standing `expo-module-gradle-plugin` compat issue documented in memory from Feb 2026. Worth attempting the build again with v3.17.408 — sometimes the SDK-not-found error masks fixable downstream issues.
+
+If the second error still fires after Apply + Rebuild + Build:
+1. Capture the build log tail (visible on the live Build status page).
+2. Send it back; we can either patch the Expo modules manifest or fall back to **Expo Go** as the dev/test path (`cd mobile && npm start`, scan QR with Expo Go from Play Store).
+
+### Tests
+None — env-var fix; verified by inspecting the `mobile/android/local.properties` write path.
+
 ## [3.17.398] - 2026-05-07
 
 ### Fixed — APK build was using the wrong (legacy) codebase

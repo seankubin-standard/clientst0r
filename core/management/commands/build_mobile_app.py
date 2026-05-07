@@ -26,6 +26,33 @@ class Command(BaseCommand):
         current_path = os.environ.get('PATH', '')
         os.environ['PATH'] = ':'.join(path_additions) + ':' + current_path
 
+        # v3.17.408: Android SDK env. Without ANDROID_HOME the Gradle build
+        # bails in ~12 seconds with "SDK location not found". The SDK is
+        # installed at /home/administrator/android-sdk (platforms 34,
+        # build-tools 33+34) — we just need to point the build at it.
+        android_sdk = os.environ.get('ANDROID_HOME') or os.environ.get(
+            'ANDROID_SDK_ROOT'
+        )
+        if not android_sdk:
+            for candidate in (
+                '/home/administrator/android-sdk',
+                '/opt/android-sdk',
+                os.path.expanduser('~/Android/Sdk'),
+            ):
+                if os.path.isdir(candidate):
+                    android_sdk = candidate
+                    break
+        if android_sdk:
+            os.environ['ANDROID_HOME'] = android_sdk
+            os.environ['ANDROID_SDK_ROOT'] = android_sdk
+            for sdk_path_part in (
+                os.path.join(android_sdk, 'platform-tools'),
+                os.path.join(android_sdk, 'cmdline-tools', 'latest', 'bin'),
+                os.path.join(android_sdk, 'build-tools', '34.0.0'),
+            ):
+                if os.path.isdir(sdk_path_part):
+                    os.environ['PATH'] = sdk_path_part + ':' + os.environ['PATH']
+
         app_type = options['app_type']
 
         # FIX: Validate app_type to prevent command injection
@@ -183,6 +210,19 @@ class Command(BaseCommand):
 
                     # Build APK using Gradle
                     android_dir = os.path.join(mobile_app_dir, 'android')
+
+                    # v3.17.408: write local.properties so Gradle finds the
+                    # SDK even when ANDROID_HOME isn't honored by the wrapper.
+                    sdk_dir = os.environ.get('ANDROID_HOME')
+                    if sdk_dir and os.path.isdir(android_dir):
+                        local_props = os.path.join(android_dir, 'local.properties')
+                        try:
+                            with open(local_props, 'w') as fh:
+                                fh.write(f'sdk.dir={sdk_dir}\n')
+                            self._log(f'Wrote {local_props} → sdk.dir={sdk_dir}\n')
+                        except OSError as exc:
+                            self._log(f'Could not write local.properties: {exc}\n')
+
                     self._run_command_with_logging(
                         ['./gradlew', 'assembleRelease'],
                         cwd=android_dir,
