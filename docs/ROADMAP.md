@@ -833,7 +833,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 
 ### Sub-phase 8.3 — Timeclock feature
 - Web UI: Timeclock dashboard at `/timeclock/` for staff to view who's clocked in, total hours per pay period, exception flags (long shifts, missing clock-out). *(shipped v3.17.413 — `/field-ops/timeclock/`)*
-- Mobile UI: prominent "Clock in / Clock out" button on the app home screen. Optional tie to the active ticket.
+- Mobile UI: prominent "Clock in / Clock out" button on the app home screen. Optional tie to the active ticket. *(shipped v3.17.414 — `mobile/app/timeclock/index.tsx` + dashboard widget)*
 - Selectable per-org and per-tech: required vs optional, with vs without GPS context, separate from per-ticket time tracking.
 - Payroll export — CSV per pay period, hooks for QuickBooks Time / Gusto / etc. (defer the integration; just structured export first). *(shipped v3.17.413)*
 

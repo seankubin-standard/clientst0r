@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.414] - 2026-05-07
+
+### Added — Phase 8.3 mobile Timeclock screen
+Closes Sub-phase 8.3. The Expo TS app now has a prominent Timeclock screen + a dashboard widget linking to it. Server-side endpoints already shipped in v3.17.410.
+
+- `mobile/app/timeclock/index.tsx` — Clock In / Clock Out screen. If clocked in: shows started timestamp, duration, org/ticket context (read-only), notes field, and a Clock Out button. If not: notes field + Clock In button.
+- `mobile/src/api/timeclock.ts` — TanStack Query hooks `useTimeclockMe`, `useClockIn`, `useClockOut` wrapping `/api/mobile/v1/timeclock/{me,clock-in,clock-out}/`.
+- `mobile/app/dashboard.tsx` — adds a Timeclock card at the top of the dashboard. Tapping the card routes to `/timeclock`.
+- `Stack.Screen name="timeclock/index"` was already registered in `_layout.tsx` (Phase 8.4 scaffolding).
+
+### Tests
+None — server-side already covered by `api_mobile.tests.MobileFieldOpsTests` (v3.17.410). The screen reuses the typed hook shapes and shared components (`Card`, `Button`, `TextField`, `ListRow`, `Screen`, `ErrorBanner`).
+
 ## [3.17.413] - 2026-05-07
 
 ### Added — Phase 8.3 Web Timeclock dashboard + payroll CSV export
