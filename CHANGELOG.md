@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.438] - 2026-05-08
+
+### Added — Phase 41: HIPAA Security Rule seed
+Management command `python manage.py seed_hipaa` populates the HIPAA Security Rule framework with all three safeguard categories from 45 CFR Part 164, Subpart C:
+
+1. **Administrative Safeguards (164.308)** — 13 items including Security Management Process, Risk Analysis, Risk Management, Sanction Policy, Information System Activity Review, Assigned Security Responsibility, Workforce Security, Information Access Management, Security Awareness Training, Security Incident Procedures, Contingency Plan, Evaluation, Business Associate Contracts.
+2. **Physical Safeguards (164.310)** — 8 items: Facility Access Controls, Contingency Operations, Facility Security Plan, Workstation Use, Workstation Security, Device and Media Controls, Disposal, Media Re-use.
+3. **Technical Safeguards (164.312)** — 12 items: Access Control, Unique User Identification, Emergency Access Procedure, Automatic Logoff, Encryption and Decryption, Audit Controls, Integrity, Mechanism to Authenticate ePHI, Person or Entity Authentication, Transmission Security, Integrity Controls, Encryption.
+
+Each item references the actual CFR subsection (e.g. `164.308(a)(1)(ii)(A)` for Risk Analysis) with a verbatim-style description and `evidence_hint` of what auditors typically expect.
+
+Idempotent — re-runs do `update_or_create` keyed on `(framework, slug)` pairs.
+
+### Tests
+2 new tests: HIPAA seed creates 3 categories + 25+ items; idempotent on re-run.
+
 ## [3.17.437] - 2026-05-08
 
 ### Added — Phase 41: PCI-DSS v4.0 seed

@@ -294,3 +294,31 @@ class SeedPciDssTests(TestCase):
         second = ComplianceCheckItem.objects.filter(
             category__framework__slug='pci-dss-v4').count()
         self.assertEqual(first, second)
+
+
+class SeedHipaaTests(TestCase):
+    def test_seed_creates_framework_categories_items(self):
+        from django.core.management import call_command
+        from compliance.models import (
+            ComplianceFramework, ComplianceCheckItem,
+        )
+        call_command('seed_hipaa')
+        fw = ComplianceFramework.objects.get(slug='hipaa-security-rule')
+        self.assertEqual(fw.name, 'HIPAA Security Rule')
+        # 3 safeguard categories: Administrative, Physical, Technical
+        self.assertEqual(fw.categories.count(), 3)
+        # Total items > 25 (HIPAA Security Rule has many implementation specs)
+        total = ComplianceCheckItem.objects.filter(
+            category__framework=fw).count()
+        self.assertGreater(total, 25)
+
+    def test_seed_idempotent(self):
+        from django.core.management import call_command
+        from compliance.models import ComplianceCheckItem
+        call_command('seed_hipaa')
+        first = ComplianceCheckItem.objects.filter(
+            category__framework__slug='hipaa-security-rule').count()
+        call_command('seed_hipaa')
+        second = ComplianceCheckItem.objects.filter(
+            category__framework__slug='hipaa-security-rule').count()
+        self.assertEqual(first, second)
