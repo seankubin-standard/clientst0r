@@ -1018,45 +1018,66 @@ function waitForServerThenReload() {
             });
     }
 
-    // v3.17.422 — fan out parallel probes to wake/exercise every gunicorn
-    // worker. Reload only once all 6 return 200 (so the page-reload's
-    // static-file flood won't catch a half-restarted worker and 502).
-    // If any probe fails, drop back to the regular polling loop.
+    // v3.17.426 — fan out parallel probes to wake/exercise every gunicorn
+    // worker. Crucially, probe REAL static-file URLs (CSS / manifest /
+    // favicon) plucked from the current page's <link> tags — those go
+    // through WhiteNoise on the same gunicorn workers as the reload's
+    // static-file fan-out will, so if they succeed, the reload will too.
+    // (Earlier versions only probed the API endpoint, which uses a
+    // different code path inside gunicorn — workers serving dynamic
+    // requests can be healthy while WhiteNoise/static path is still
+    // cycling.)
     function warmupAndReload() {
         const cd = document.getElementById('serverWaitCountdown');
-        const numProbes = 6;
-        const probes = [];
-        for (let i = 0; i < numProbes; i++) {
+
+        // Build the URL list to exercise. Always include the progress API
+        // (so we know dynamic Django is alive) plus every <link href> we
+        // can find on the page (CSS, manifest, favicon — all the things
+        // a reload will fetch in parallel).
+        const urls = [probeUrl];
+        document.querySelectorAll('link[href]').forEach(function(el) {
+            const href = el.getAttribute('href') || '';
+            if (href.startsWith('/static/')) {
+                // Cache-bust so we hit the upstream every time.
+                urls.push(href + (href.indexOf('?') === -1 ? '?' : '&')
+                          + '_warmup=1&_=' + Date.now());
+            }
+        });
+        // Cap at 8 distinct URLs so we don't overwhelm a small worker pool.
+        const probeUrls = urls.slice(0, 8);
+
+        const probes = probeUrls.map(function(u, i) {
             const ctrl = new AbortController();
             const t = setTimeout(function() { ctrl.abort(); }, 4000);
-            probes.push(
-                fetch(probeUrl + '?_warmup=' + i + '&_=' + Date.now(), {
-                    cache: 'no-store',
-                    credentials: 'same-origin',
-                    signal: ctrl.signal,
+            return fetch(u, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                signal: ctrl.signal,
+            })
+                .then(function(r) {
+                    clearTimeout(t);
+                    return { ok: r.ok, status: r.status, url: u };
                 })
-                    .then(function(r) {
-                        clearTimeout(t);
-                        return r.ok;
-                    })
-                    .catch(function() {
-                        clearTimeout(t);
-                        return false;
-                    })
-            );
-        }
+                .catch(function() {
+                    clearTimeout(t);
+                    return { ok: false, status: 0, url: u };
+                });
+        });
+
         Promise.all(probes).then(function(results) {
-            const allOk = results.every(Boolean);
-            if (!allOk) {
+            const failures = results.filter(function(r) { return !r.ok; });
+            if (failures.length > 0) {
+                const f = failures[0];
                 if (cd) cd.textContent =
-                    'Warmup found a slow worker — re-checking…';
+                    'Warmup found a slow path (' + (f.status || 'no response')
+                    + ') — re-checking…';
                 consecutiveOk = 0;
                 setTimeout(probe, 600);
                 return;
             }
-            // All workers responded. Add a settle delay so any final
-            // worker still in graceful shutdown finishes before the
-            // reload's static-file fan-out hits.
+            // All paths (API + static) returned 200 in parallel. Add a
+            // settle delay so any final worker still in graceful shutdown
+            // finishes before the reload's static-file fan-out hits.
             clearInterval(tickInterval);
             const barEl = document.getElementById('serverWaitBar');
             if (barEl) {
@@ -1065,7 +1086,7 @@ function waitForServerThenReload() {
                 barEl.style.width = '100%';
             }
             if (cd) cd.textContent =
-                'All workers responding — reloading in 3 seconds…';
+                'All paths responding (' + probeUrls.length + ' URLs) — reloading in 3 seconds…';
             setTimeout(function() { location.reload(); }, 3000);
         });
     }

@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.426] - 2026-05-08
+
+### Fixed (third try) — 502s on `/static/...` after Apply reload
+v3.17.422's parallel warmup probed `/api/update-progress/` six times — a Django dynamic endpoint. But static files (`/static/css/themes.*.css`, `/static/manifest.*.json`, etc.) go through **WhiteNoise** on the same gunicorn workers. Workers can be healthy on dynamic requests while WhiteNoise's static path is still flaky during a worker cycle, so the warmup said "all good" → reload fired → static fan-out hit a worker mid-rotation → 502s on CSS/JS/favicon/manifest.
+
+Fix in `templates/core/system_updates.html::warmupAndReload()`: scrape `<link href>` URLs starting with `/static/` from the current page (CSS, manifest, favicon) and probe THOSE in parallel with the API URL. The set is capped at 8 URLs to avoid swamping a small worker pool. If any return non-200 we drop back to single-probe polling. Once all 8 return 200 simultaneously we know the exact set of URLs the reload will refetch is healthy on every worker.
+
+The progress message now reads `"All paths responding (8 URLs) — reloading in 3 seconds…"` so you can see it's actually exercising the static path.
+
+### Tests
+None — frontend warmup probe path change; verified by reading the page's `<link>` tags + WhiteNoise middleware position in `config/settings.py`.
+
 ## [3.17.425] - 2026-05-08
 
 ### Fixed (for real this time) — APK was still 137MB after v3.17.424
