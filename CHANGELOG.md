@@ -5,6 +5,30 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.437] - 2026-05-08
+
+### Added — Phase 41: PCI-DSS v4.0 seed
+Management command `python manage.py seed_pci_dss` populates the PCI-DSS v4.0 framework with all 12 Requirements as categories and ~35 representative check items. Each item references a real PCI-DSS v4.0 control number (e.g. `1.2.1`, `8.4.2`, `11.3.2`) and includes verbatim-style description + an `evidence_hint` for what an auditor typically expects.
+
+Categories (= PCI-DSS v4.0 Requirements):
+1. Install and maintain network security controls
+2. Apply secure configurations to all system components
+3. Protect stored account data
+4. Protect cardholder data with strong cryptography during transmission
+5. Protect all systems and networks from malicious software
+6. Develop and maintain secure systems and software
+7. Restrict access to system components and CHD by need-to-know
+8. Identify users and authenticate access to system components
+9. Restrict physical access to cardholder data
+10. Log and monitor all access
+11. Test security of systems and networks regularly
+12. Support information security with organizational policies and programs
+
+Idempotent — re-running updates by `(framework, category)` slug pair, never duplicates. An MSP can extend each category in the management command source over time as their attestation needs grow.
+
+### Tests
+2 new tests: seed populates framework + 12 categories + 30+ items; seed is idempotent across repeated runs.
+
 ## [3.17.436] - 2026-05-08
 
 ### Added — Phase 41: compliance framework + per-org attestation models

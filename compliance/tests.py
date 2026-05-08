@@ -261,3 +261,36 @@ class OrganizationComplianceModelTests(TestCase):
             OrganizationCompliance.objects.create(
                 organization=self.org, framework=self.fw,
             )
+
+
+class SeedPciDssTests(TestCase):
+    def test_seed_creates_framework_categories_items(self):
+        from django.core.management import call_command
+        from compliance.models import (
+            ComplianceFramework, ComplianceCategory, ComplianceCheckItem,
+        )
+        call_command('seed_pci_dss')
+        fw = ComplianceFramework.objects.get(slug='pci-dss-v4')
+        self.assertEqual(fw.name, 'PCI-DSS')
+        self.assertEqual(fw.version, 'v4.0')
+        # 12 categories (Requirements 1-12)
+        self.assertEqual(fw.categories.count(), 12)
+        # Each category has at least 2 items
+        for cat in fw.categories.all():
+            self.assertGreaterEqual(cat.items.count(), 2,
+                msg=f'category {cat.slug} has too few items')
+        # Total items > 30
+        total_items = ComplianceCheckItem.objects.filter(
+            category__framework=fw).count()
+        self.assertGreater(total_items, 30)
+
+    def test_seed_idempotent(self):
+        from django.core.management import call_command
+        from compliance.models import ComplianceCheckItem
+        call_command('seed_pci_dss')
+        first = ComplianceCheckItem.objects.filter(
+            category__framework__slug='pci-dss-v4').count()
+        call_command('seed_pci_dss')  # re-run
+        second = ComplianceCheckItem.objects.filter(
+            category__framework__slug='pci-dss-v4').count()
+        self.assertEqual(first, second)
