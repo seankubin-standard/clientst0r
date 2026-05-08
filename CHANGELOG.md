@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.442] - 2026-05-08
+
+### Added — Phase 41 v6: recertification reminder cron
+New management command `python manage.py send_compliance_recertifications` (run daily via cron) walks every `OrganizationCompliance` with `recertification_emails_enabled=True`, computes `recertification_due_at`, and sends a reminder email if:
+
+1. now() ≥ due_at
+2. No `RecertificationReminder` row for this enrollment exists in the last 7 days (dedup)
+
+Recipient resolution order:
+1. `OrganizationCompliance.notify_email` (if explicitly set)
+2. First active `Membership(role in ['owner','admin'])` user's email
+3. Fallback: `DEFAULT_FROM_EMAIL` (with a warning logged)
+
+Email body links to the checklist (uses `SITE_URL` if defined). Subject indicates whether the recertification is due today, in N days, or overdue by N days.
+
+`--dry-run` flag identifies which enrollments would be reminded without sending or recording.
+
+### Cron setup (operator)
+Add to crontab — daily at 09:00 UTC works:
+```
+0 9 * * * cd /home/administrator && /home/administrator/venv/bin/python manage.py send_compliance_recertifications
+```
+
+### Tests
+5 new: due enrollment gets an email + audit row; dedup-within-7-days; disabled-flag respected; not-yet-due skipped; dry-run sends nothing + writes no rows.
+
 ## [3.17.441] - 2026-05-08
 
 ### Added — Phase 41 v5: customer-facing PDF compliance report

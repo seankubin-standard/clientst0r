@@ -1,7 +1,8 @@
-"""Tests for Phase 39 compliance evidence packs."""
+"""Tests for Phase 39 compliance evidence packs + Phase 41 frameworks."""
 from django.conf import settings as django_settings
 from django.contrib.auth.models import User
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
 
 TEST_MIDDLEWARE = [
@@ -577,3 +578,92 @@ class ReportPdfTests(TestCase):
         url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/report.pdf'
         resp = c.get(url)
         self.assertEqual(resp.status_code, 404)
+
+
+class RecertificationCronTests(TestCase):
+    """Phase 41 v3.17.442: send_compliance_recertifications cron."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from accounts.models import Membership
+        from core.models import Organization
+        from compliance.models import (
+            ComplianceFramework, OrganizationCompliance,
+        )
+        self.user = User.objects.create_user(
+            'rc-admin', email='admin@example.com', password='x',
+        )
+        self.org = Organization.objects.create(name='ACME-RC')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role='admin',
+            is_active=True,
+        )
+        call_command('seed_pci_dss')
+        self.fw = ComplianceFramework.objects.get(slug='pci-dss-v4')
+        # Enrollment that's due NOW (interval=30, enrolled 31 days ago).
+        self.due_oc = OrganizationCompliance.objects.create(
+            organization=self.org, framework=self.fw,
+            recertification_interval_days=30,
+        )
+        self.due_oc.enrolled_at = timezone.now() - timedelta(days=31)
+        self.due_oc.save()
+
+    def test_due_enrollment_gets_email(self):
+        from django.core import mail
+        from django.core.management import call_command
+        from compliance.models import RecertificationReminder
+        mail.outbox = []
+        call_command('send_compliance_recertifications')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('PCI-DSS', mail.outbox[0].subject)
+        self.assertEqual(mail.outbox[0].to, ['admin@example.com'])
+        # RecertificationReminder row written
+        self.assertEqual(
+            RecertificationReminder.objects.filter(
+                org_compliance=self.due_oc).count(),
+            1,
+        )
+
+    def test_dedup_within_seven_days(self):
+        from django.core import mail
+        from django.core.management import call_command
+        mail.outbox = []
+        call_command('send_compliance_recertifications')
+        # Re-run immediately — should not double-send
+        call_command('send_compliance_recertifications')
+        self.assertEqual(len(mail.outbox), 1, 'second run should dedupe')
+
+    def test_disabled_emails_skipped(self):
+        from django.core import mail
+        from django.core.management import call_command
+        self.due_oc.recertification_emails_enabled = False
+        self.due_oc.save()
+        mail.outbox = []
+        call_command('send_compliance_recertifications')
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_not_yet_due_skipped(self):
+        from datetime import timedelta
+        from django.core import mail
+        from django.core.management import call_command
+        # Reset to now -> not due for 30 days
+        self.due_oc.enrolled_at = timezone.now()
+        self.due_oc.save()
+        mail.outbox = []
+        call_command('send_compliance_recertifications')
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_dry_run_does_not_send_or_log(self):
+        from django.core import mail
+        from django.core.management import call_command
+        from compliance.models import RecertificationReminder
+        mail.outbox = []
+        call_command('send_compliance_recertifications', '--dry-run')
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(
+            RecertificationReminder.objects.filter(
+                org_compliance=self.due_oc).count(),
+            0,
+        )
