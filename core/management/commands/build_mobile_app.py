@@ -224,17 +224,43 @@ class Command(BaseCommand):
                             self._log(f'Could not write local.properties: {exc}\n')
 
                     # v3.17.419: assembleDebug skips ProGuard/minification.
-                    # v3.17.424: -PreactNativeArchitectures=arm64-v8a tells
-                    #   Gradle to bundle only the arm64-v8a native libs.
-                    #   Default debug builds ship 4 ABIs (armeabi-v7a +
-                    #   arm64-v8a + x86 + x86_64) ~ 30-40MB each → 151MB
-                    #   APK. arm64-v8a covers every Android phone from
-                    #   2017 onward, which is the entire sideload audience.
-                    #   Drops the APK to ~40MB.
+                    # v3.17.425: inject `ndk.abiFilters 'arm64-v8a'` into
+                    #   android/app/build.gradle. The previous attempt
+                    #   (-PreactNativeArchitectures=arm64-v8a, v3.17.424)
+                    #   did nothing for assembleDebug — ABI splits aren't
+                    #   enabled on debug builds and the flag is only read
+                    #   by the splits{} block. Patching ndk.abiFilters in
+                    #   defaultConfig actually drops the other 3 ABIs.
+                    #   151MB → ~40MB.
+                    app_gradle = os.path.join(android_dir, 'app', 'build.gradle')
+                    abi_marker = '// CST-ABI-FILTER'
+                    if os.path.isfile(app_gradle):
+                        try:
+                            with open(app_gradle, 'r') as fh:
+                                gradle_src = fh.read()
+                            if abi_marker not in gradle_src:
+                                # Append a project-level override after the
+                                # main `android {}` block. Using a separate
+                                # `android.defaultConfig.ndk.abiFilters` line
+                                # at the bottom is cleaner than rewriting
+                                # the existing block.
+                                gradle_src = gradle_src.rstrip() + (
+                                    '\n\n'
+                                    f'{abi_marker} — bundle only arm64-v8a (v3.17.425)\n'
+                                    "android.defaultConfig.ndk.abiFilters 'arm64-v8a'\n"
+                                )
+                                with open(app_gradle, 'w') as fh:
+                                    fh.write(gradle_src)
+                                self._log(
+                                    'Patched app/build.gradle with '
+                                    'ndk.abiFilters arm64-v8a\n'
+                                )
+                        except OSError as exc:
+                            self._log(f'Could not patch build.gradle: {exc}\n')
+
                     self._run_command_with_logging(
                         ['./gradlew', '--daemon', '--parallel',
                          '--max-workers=4', '--build-cache',
-                         '-PreactNativeArchitectures=arm64-v8a',
                          'assembleDebug'],
                         cwd=android_dir,
                         timeout=1800  # 30 minute timeout

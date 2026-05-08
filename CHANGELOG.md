@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.425] - 2026-05-08
+
+### Fixed (for real this time) — APK was still 137MB after v3.17.424
+The `-PreactNativeArchitectures=arm64-v8a` Gradle property in v3.17.424 did nothing on `assembleDebug`. That property is only consumed by the `splits { abi { include (*reactNativeArchitectures()) } }` block, which is gated behind `enableSeparateBuildPerCPUArchitecture` — disabled by default for debug builds. Inspecting the v3.17.424 APK confirmed all 4 ABIs were still bundled (`lib/arm64-v8a/`, `lib/armeabi-v7a/`, `lib/x86/`, `lib/x86_64/` — ~150MB total of native libs).
+
+Real fix in `core/management/commands/build_mobile_app.py`: after `expo prebuild --clean` regenerates `android/app/build.gradle`, append `android.defaultConfig.ndk.abiFilters 'arm64-v8a'` to the file. That sets the NDK ABI filter directly on the default variant — the build only packages arm64-v8a native libs, and the other 3 ABI directories never enter the APK.
+
+Patch is idempotent (guarded by a `// CST-ABI-FILTER` marker comment) so re-running the build after a clean prebuild always re-injects the line.
+
+Expected APK after v3.17.425: **~40-50MB**. If size doesn't drop on the next rebuild, unzip the APK and check `lib/` — only `lib/arm64-v8a/` should be present.
+
+### Tests
+None — Gradle gradle-file injection; verified by inspecting the v3.17.424 APK contents (all 4 ABIs present, total native libs 147.9MB) and the React Native default-config docs.
+
 ## [3.17.424] - 2026-05-08
 
 ### Fixed — APK was 151MB, now ~40MB
