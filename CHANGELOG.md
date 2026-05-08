@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.445] - 2026-05-08
+
+### Documentation sweep, mobile-app trim, Play Console targetSdk 35
+
+Three threads land together:
+
+**Documentation:**
+- `FEATURES.md` — full Compliance Frameworks section (Phase 41) + Native Mobile Apps section (Phase 8). Header bumped to v3.17.444.
+- `README.md` — version badge bumped to v3.17.444; "Latest Release" rewritten with the actual recent phases (Compliance, Mobile, Evidence Packs, Onboarding/Offboarding) — was stuck on v3.17.143. Compliance + Mobile screenshot rows added to the gallery and the index list.
+- `docs/SCREENSHOT_CHECKLIST.md` — Compliance + Mobile sections added at the top.
+- `user-guide/compliance.md` — new page covering enroll → attest → recertify → PDF flow + data model. Linked from `user-guide/README.md`.
+- `scripts/generate_screenshots_v2.py` — captures `compliance-org-dashboard` + `compliance-checklist` automatically when an org is enrolled.
+- `docs/screenshots/compliance-org-dashboard.png`, `docs/screenshots/compliance-checklist.png`, `docs/screenshots/compliance-checklist-annotated.png` — fresh captures from the live app, with numbered callouts on the annotated version.
+
+**Mobile app — six-area top nav (per user directive):**
+- `mobile/app/dashboard.tsx` — replaces the previous Settings header button with a primary 5-tile nav row (Assets / Vault / Docs / PSA / Operations). Monitoring / Security / Timeclock tile destinations rerouted through `/operations`.
+- `mobile/app/operations/index.tsx` — new hub screen consolidating Timeclock, Monitoring, Security alerts, and Settings under one route.
+- `mobile/app/_layout.tsx` — top-level Stack screens reorganized: 6 primary (Dashboard / Assets / Vault / Docs / PSA / Operations) above the secondary screens reachable via deep-link.
+
+**Play Console fixes (target SDK 35 + R8 mapping):**
+- `mobile/app.json` — adds `expo-build-properties` plugin with `compileSdkVersion: 35`, `targetSdkVersion: 35`, `buildToolsVersion: "35.0.0"`, `enableProguardInReleaseBuilds: true`, `enableShrinkResourcesInReleaseBuilds: true`. Resolves Play Console error "must target at least API level 35".
+- `mobile/package.json` — adds `expo-build-properties: ~0.12.5` dependency.
+- `local_apps/play_publish/scripts/build-aab.sh` — PATH bumped to `build-tools/35.0.0`; captures `mapping.txt` from `build/outputs/mapping/release/` next to the AAB so it can ship with the upload.
+- `local_apps/play_publish/scripts/upload-aab.py` — after the AAB upload, also calls `androidpublisher.deobfuscationfiles.upload(deobfuscationFileType='proguard', …)` to ship `mapping.txt`. Resolves the "no deobfuscation file associated" warning.
+- Android SDK platform `android-35` + build-tools `35.0.0` installed locally via `sdkmanager`.
+
 ## [3.17.444] - 2026-05-08
 
 ### Phase 41 — Compliance Frameworks & Recertification: shipped

@@ -1,5 +1,21 @@
 # Client St0r Screenshot Checklist - v3.17.x
 
+## 🛡️ Compliance Frameworks (Phase 41 — v3.17.435→v3.17.444)
+
+- [ ] `compliance-org-dashboard.png` — `/compliance/organizations/<id>/` framework cards with progress bars, status counts, recertification countdown
+- [ ] `compliance-checklist.png` — `/compliance/organizations/<id>/<framework>/` attestation rows + recertification settings card
+- [ ] `compliance-checklist-annotated.png` — annotated version (numbered callouts: status dropdown, evidence URL, recert toggle, Mark Recertified button)
+- [ ] `compliance-pdf-report.png` — branded customer-facing PDF report (rendered preview)
+
+## 📱 Mobile App (Phase 8 — v3.17.346→v3.17.444)
+
+- [ ] `mobile-dashboard.png` — Dashboard with 5-tile primary nav + KPI tiles
+- [ ] `mobile-operations.png` — Operations hub (Timeclock / Monitoring / Security / Settings)
+- [ ] `mobile-assets.png` — Assets list
+- [ ] `mobile-vault.png` — Vault list
+- [ ] `mobile-tickets.png` — Tickets (PSA) list
+- [ ] `mobile-kb.png` — Docs / Knowledge base list
+
 ## 🎫 Native PSA / Service Desk (PRIORITY — none captured yet)
 
 The PSA module shipped across 11 phases (v3.17.83 → v3.17.101). Every page below is live and ready to capture.

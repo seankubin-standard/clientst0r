@@ -16,6 +16,7 @@ ClientSt0r is a self-hosted IT management platform for MSPs and IT teams — com
 | [Password Vault](password-vault.md) | AES-256 encrypted credentials, TOTP, breach detection |
 | [WAN Monitoring](wan-monitoring.md) | HTTP/TCP/ICMP checks, SSL expiry, alerting |
 | [Security](security.md) | Vulnerability scanning, RBAC, audit logs, 2FA |
+| [Compliance](compliance.md) | PCI-DSS / HIPAA attestation, customer reports, recertification |
 | [Reports & Analytics](reports.md) | Custom dashboards, report templates, scheduled reports |
 | [Workflows](workflows.md) | Step-by-step checklists and process executions |
 | [Documentation & KB](documentation.md) | Runbooks, knowledge base, diagrams, AI assistant |

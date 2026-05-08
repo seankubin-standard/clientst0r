@@ -207,6 +207,33 @@ class ScreenshotGenerator:
         org = Organization.objects.filter(is_active=True).first()
         return org.pk if org else None
 
+    @staticmethod
+    def _find_compliance_framework_slug(org_id: int) -> str | None:
+        """Return a framework slug to capture for the given org.
+
+        Prefers a framework the org is already enrolled in (so the
+        screenshot shows real attestation rows). Falls back to the first
+        active framework so we still capture the catalog if the org
+        hasn't enrolled yet.
+        """
+        try:
+            from compliance.models import (
+                ComplianceFramework,
+                OrganizationCompliance,
+            )
+        except Exception:
+            return None
+        enrolled = (
+            OrganizationCompliance.objects
+            .filter(organization_id=org_id)
+            .select_related('framework')
+            .first()
+        )
+        if enrolled:
+            return enrolled.framework.slug
+        fw = ComplianceFramework.objects.filter(active=True).first()
+        return fw.slug if fw else None
+
     # -- Orchestration ------------------------------------------------------
     def run(self) -> None:
         ticket_number = self.find_first_ticket_number()
@@ -250,6 +277,22 @@ class ScreenshotGenerator:
             ('wallboards-list', '/reports/wallboards/'),
             ('wallboards-new', '/reports/wallboards/new/'),
         ]
+        # Phase 41 — Compliance Frameworks & Recertification (v3.17.435–444).
+        # The dashboard + checklist live under /compliance/organizations/<id>/.
+        if org_id:
+            pages.append((
+                'compliance-org-dashboard',
+                f'/compliance/organizations/{org_id}/',
+            ))
+            # Pick the first framework slug the org is enrolled in (or the
+            # first available framework so we capture the empty-state if
+            # the org isn't enrolled yet).
+            fw_slug = self._find_compliance_framework_slug(org_id)
+            if fw_slug:
+                pages.append((
+                    'compliance-checklist',
+                    f'/compliance/organizations/{org_id}/{fw_slug}/',
+                ))
         if ticket_number:
             pages.append(('psa-ticket-detail', f'/psa/t/{ticket_number}/'))
         else:

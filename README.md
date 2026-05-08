@@ -1,7 +1,7 @@
 # Client St0r
 
 [![GitHub Stars](https://img.shields.io/github/stars/agit8or1/clientst0r?style=social)](https://github.com/agit8or1/clientst0r/stargazers)
-[![Version 3.17.210](https://img.shields.io/badge/version-3.17.210-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
+[![Version 3.17.444](https://img.shields.io/badge/version-3.17.444-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green)](https://github.com/agit8or1/clientst0r)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-blue)](https://www.djangoproject.com/)
@@ -164,6 +164,20 @@ Unified triage queue for EDR / AV / firewall alerts from any vendor, plus auto-t
 ![New M365 connection](docs/screenshots/integrations-m365-new.png)
 *Tenant ID + Azure app-registration credentials. Setup-guide sidebar lists the exact Graph API permissions required.*
 
+### 🛡️ Compliance Frameworks & Recertification *(Phase 41 — v3.17.435→v3.17.444)*
+
+Per-organization PCI-DSS v4.0 + HIPAA attestation, branded PDF reports, monthly recertification reminders.
+
+![Compliance org dashboard](docs/screenshots/compliance-org-dashboard.png)
+*Per-org framework cards with progress bars, status counts, and recertification countdown. Enroll, open the checklist, or download the PDF report from each card.*
+
+![Compliance attestation checklist](docs/screenshots/compliance-checklist.png)
+*Per-control attestation row: status dropdown, notes textarea, evidence URL field, last-reviewed audit stamp. Color-coded left border (green compliant, orange partial, red non-compliant). Recertification settings + Mark Recertified Now button at the top.*
+
+### 📱 Native Mobile App *(Phase 8 — v3.17.346→v3.17.444)*
+
+Expo + React Native + TypeScript. Six top-level areas: Dashboard, Assets, Vault, Docs, PSA, Operations. Backed by `/api/mobile/v1/` DRF with token auth.
+
 ### 🗺️ Live Roadmap *(rendered from `docs/ROADMAP.md`)*
 
 ![Live roadmap page](docs/screenshots/roadmap.png)
@@ -278,6 +292,10 @@ A complete in-house ticketing system:
 - [New UniFi connection](docs/screenshots/integrations-unifi-new.png) - Self-hosted vs. cloud mode toggle; setup-guide sidebar
 - [New M365 connection](docs/screenshots/integrations-m365-new.png) - Tenant ID + Azure app credentials; required Graph permissions in sidebar
 
+### Compliance Frameworks *(Phase 41 — v3.17.435→v3.17.444)*
+- [Compliance org dashboard](docs/screenshots/compliance-org-dashboard.png) - Per-framework cards with progress, status counts, recertification countdown
+- [Compliance attestation checklist](docs/screenshots/compliance-checklist.png) - Per-control status / notes / evidence + recertification settings card
+
 ### Live Roadmap
 - [Roadmap page](docs/screenshots/roadmap.png) - Rendered from `docs/ROADMAP.md`; also published as JSON feed at `/core/roadmap.json` for external status-page polling
 
@@ -388,9 +406,16 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 
 ## 🆕 What's New
 
-### Latest Release - v3.17.x (April 2026)
+### Latest Release - v3.17.x (May 2026)
 
-**🎉 New in v3.17 (latest: v3.17.143):**
+**🎉 New in v3.17 (latest: v3.17.444):**
+
+- **🛡️ Compliance Frameworks & Recertification** *(Phase 41 — v3.17.435→v3.17.444)* — per-organization PCI-DSS v4.0 (38 controls) and HIPAA Security Rule (33 controls). Color-coded attestation checklist with notes + evidence URLs, branded customer-facing PDF report, and monthly recertification reminder cron with 7-day dedup. Toggle reminders / interval / notify-email per enrollment; **Mark Recertified Now** button stamps the cycle. RBAC-gated: superuser / staff / org-owner / org-admin only.
+- **📱 Native mobile app** *(Phase 8 — v3.17.346→v3.17.444)* — Expo + React Native + TypeScript. Six top-level areas: **Dashboard / Assets / Vault / Docs / PSA / Operations**. Operations is a hub for Timeclock, Monitoring, Security alerts, and Settings. Backed by DRF `/api/mobile/v1/` with token auth + per-endpoint throttling. Play Console publishing infrastructure under `local_apps/play_publish/` (local-only, gitignored): keystore generation, AAB build with auto-derived versionCode, R8 minify + proguard `mapping.txt`, Android API 35 target, Google Play Developer API upload.
+- **📋 Compliance Evidence Packs** *(Phase 39)* — single-ZIP audit bundle per org for SOC2 / ISO27001 / due-diligence requests.
+- **🚀 Client onboarding / offboarding runbooks** *(Phase 38)* — templated checklists for new-client + departing-client workflows.
+
+**Earlier in v3.17:**
 
 - **🎫 Native PSA / Service Desk** — full ticketing system across **15+ phases** (v3.17.83 → v3.17.143): tickets / queues / SLA engine / time tracking / service catalog / watchers / canned replies / @mentions / similar-tickets / merge / projects with tasks & milestones / recurring tickets / KB linking / approvals / contracts (block-hours, retainer, managed-services with auto-tracked hours and per-priority SLA matrix) / quotes & estimates with line items and convert-to-ticket on accept + **e-signature** / per-ticket expenses / **invoices & payments with branded PDFs / per-client account view + aging report / charges** / **dispatch board with drag-and-drop reassignment** / **workflow rules engine (MSP-wide or per-client) with visual rule builder** / **workflows embedded in tickets with inline checklist + sign-off audit history** / customer portal at `/portal/` **with per-org branding + vault RBAC** / IMAP email-to-ticket / distributor integrations (Ingram Micro, Pax8, TD Synnex) / **QuickBooks Online + Xero accounting push** / AI-assisted reply & action suggestions
 - **📊 Financial reporting + BI** *(Phase 3 — v3.17.139→v3.17.143)*: canonical `reports/queries.py` query layer; profitability reports (by client / tech / contract / project); effective hourly rate (with realization %); revenue leakage (stale unbilled, expired contract blocks, stuck drafts); SLA trends (per-priority breach % over time + worst-clients); margin analytics by service line; 12-widget custom dashboards with Chart.js; seeded "MSP Overview" default dashboard.

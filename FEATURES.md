@@ -1,6 +1,6 @@
 # Client St0r Features
 
-Complete feature documentation for Client St0r - Self-hosted IT documentation platform.
+Complete feature documentation for Client St0r — self-hosted MSP documentation, ticketing, billing, monitoring, and compliance platform. Current release: **v3.17.444**.
 
 ## 🔐 Security Features
 
@@ -767,6 +767,63 @@ Per-ticket "AI Suggestions" button surfaces handling guidance without acting on 
 - **`RoleTemplate.psa_ai_request_triage`** boolean (default True for all tech roles).
 - **Mark as helpful / Reject** buttons write to `AIActionLog` for feedback.
 - Confidence indicator + model name + generated time-ago shown on each suggestion.
+
+## 🛡️ Compliance Frameworks & Recertification *(Phase 41 — v3.17.435→v3.17.444)*
+
+Per-organization compliance attestation with seeded control catalogs, branded customer reports, and monthly recertification reminders.
+
+### Frameworks
+- **PCI-DSS v4.0** *(seeded v3.17.437)* — 12 categories, 38 control items with real PCI-DSS v4.0 control numbers (1.2.1, 2.2.7, 3.3.1, 4.2.1, 5.2.1, 6.3.3, 7.2.4, 8.4.2, 9.4.7, 10.4.1, 11.3.2, 12.10.1, …).
+- **HIPAA Security Rule** *(seeded v3.17.438)* — Administrative / Physical / Technical Safeguards, 33 control items keyed to 45 CFR 164.308 / 164.310 / 164.312 with subsection refs.
+- **Idempotent seeders** — `python manage.py seed_pci_dss` and `seed_hipaa` use `update_or_create((framework, slug))` so re-running never duplicates rows.
+
+### Per-organization workflow
+- **Org-scoped enrollment** *(v3.17.439)* — `/compliance/organizations/<id>/`. Each framework appears as a card with progress bar, status counts (compliant / partial / non-compliant / N/A / unanswered), and an "Enroll" CTA when not yet active.
+- **Attestation checklist** *(v3.17.440)* — `/compliance/organizations/<id>/<framework>/`. Per-control row with status dropdown (5 states), notes textarea, evidence URL field, and a `last_reviewed_at` / reviewer audit stamp. Color-coded left border (green compliant / orange partial / red non-compliant / grey N/A or unanswered).
+- **Customer-facing PDF report** *(v3.17.441)* — `/compliance/organizations/<id>/<framework>/report.pdf`. Branded ReportLab output via `reports.pdf_export.render_pdf` with summary card (percent compliant + counts), per-category sections, evidence link footnotes, and last-reviewed timestamps.
+
+### Monthly recertification reminders
+- **Cron job** *(v3.17.442)* — `python manage.py send_compliance_recertifications` runs daily; idempotent + 7-day dedup via `RecertificationReminder` table so a flapping cron can't spam.
+- **Recipient resolution** — `enrollment.notify_email` (override) → owner/admin Membership email → `DEFAULT_FROM_EMAIL`. `--dry-run` flag for testing.
+- **Per-enrollment settings** *(v3.17.443)* — toggle reminders on/off, choose interval (Monthly / Bi-monthly / Quarterly / Semi-annual / Annual), set notify-email override. **Mark Recertified Now** button stamps `last_recertified_at = now` and resets the next reminder window.
+
+### Auth + RBAC
+- **`_user_can_access_pack(user, org)`** — superuser OR is_staff OR Membership(owner/admin). Same gate covers the dashboard, checklist, attestation save, PDF download, and recertification settings — no read-only or editor leak.
+
+### Data model
+- `ComplianceFramework`, `ComplianceCategory`, `ComplianceCheckItem` — global catalog (seeded once).
+- `OrganizationCompliance` — per-org enrollment with recertification settings + computed properties (`recertification_due_at`, `days_until_recertification`, `status_counts()`, `percent_compliant()`).
+- `OrganizationComplianceItem` — per-org-per-control attestation row.
+- `RecertificationReminder` — audit log of reminder emails sent (used for dedup).
+
+### Evidence packs *(Phase 39 — earlier)*
+- **`/compliance/organizations/<id>/evidence-pack/`** — generates a single ZIP with attestations, evidence links, audit history, and a manifest for SOC2 / ISO27001 / customer-due-diligence requests.
+
+## 📱 Native Mobile Apps *(Phase 8 — v3.17.346→v3.17.444)*
+
+Expo + React Native + TypeScript app for iOS + Android, sharing the web app's session token via the dedicated `/api/mobile/v1/` DRF surface.
+
+### Six top-level navigation areas *(v3.17.445)*
+The mobile app exposes only six primary screens; everything else is reachable as a sub-route via deep-link or the Operations hub.
+
+| # | Tile | Maps to |
+|---|------|---------|
+| 1 | **Dashboard** | `/dashboard` — timeclock card, KPI tiles, recent tickets/assets, recent alerts |
+| 2 | **Assets** | `/assets` — list + detail with linked org, IP, type |
+| 3 | **Vault** | `/vault` — encrypted credential search and reveal |
+| 4 | **Docs** | `/kb` — knowledge base browser with markdown rendering |
+| 5 | **PSA** | `/tickets` — list + detail + new-ticket flow |
+| 6 | **Operations** | `/operations` — Timeclock / Monitoring / Security / Settings hub |
+
+### Backend mobile API
+- **`/api/mobile/v1/`** under DRF `TokenAuthentication` with throttle classes per endpoint.
+- Endpoints: `auth/login`, `auth/mfa`, `auth/logout`, `auth/me`, `auth/refresh`, `dashboard/`, `organizations/`, `assets/`, `tickets/`, `kb/`, `locations/` (GPS ping), `timeclock/clock-in`, `timeclock/clock-out`, `timeclock/me/`, `active-ticket/`.
+- **Tenant scoping** in `api_mobile/scoping.py` — every list endpoint applies the user's org membership filter; superusers see all.
+
+### Build & sign infrastructure
+- **`local_apps/play_publish/`** (gitignored, local-only) — admin web UI at `/play_publish/` for keystore generation, AAB build, AAB upload to Play Console, and per-app status tracking.
+- **`build-aab.sh`** — enforces canonical package name `com.clientstor.mspreboot` + auto-derives Android `versionCode` from `config/version.py` (`major × 1_000_000 + minor × 10_000 + patch`). Targets **Android API 35** (SDK 35 + build-tools 35.0.0) per Play Console policy. R8 minify + resource-shrink enabled in release builds; `mapping.txt` captured next to the AAB.
+- **`upload-aab.py`** — Google Play Developer API v3 (`google-api-python-client`); resumable AAB upload, proguard `mapping.txt` upload via `androidpublisher.deobfuscationfiles.upload`, track assignment, edit commit. Replaces fastlane (no ruby toolchain).
 
 ## 🚀 Performance & Deployment
 - **Optimization** - Database indexing, query optimization, caching, lazy loading, pagination
