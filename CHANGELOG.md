@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.443] - 2026-05-08
+
+### Added — Phase 41 v7: recertification toggle UI + Mark Recertified button
+On the checklist page (`/compliance/organizations/<org_id>/<framework_slug>/`), a new "Recertification" card sits below the progress bar with two halves:
+
+**Left side — settings form:**
+- Toggle switch: enable/disable email reminders (`recertification_emails_enabled`)
+- Interval dropdown: Monthly (30) / Bi-monthly (60) / Quarterly (90) / Semi-annual (180) / Annual (365). Validated server-side against `VALID_INTERVAL_DAYS`; invalid values silently fall back to current.
+- Notify email override (optional). If blank, the recertification cron resolves to the org's primary admin.
+- **Save settings** button POSTs to `/compliance/.../settings/`.
+
+**Right side — manual recertify:**
+- Shows last-recertified timestamp + days until next reminder + the actual due date.
+- **Mark recertified now** button (green) → POSTs to `/compliance/.../recertify/` → stamps `last_recertified_at = now()`. Confirms via `confirm()` dialog before submit.
+
+Both actions write `AuditLog` entries (action=update). Description on settings save lists exactly what fields changed (e.g. `Recert settings: emails_enabled: True -> False; interval_days: 365 -> 30`).
+
+### Tests
+6 new: settings save updates fields; invalid interval falls back; unchecked toggle disables; mark-recertified stamps timestamp + audits; outsider blocked.
+
 ## [3.17.442] - 2026-05-08
 
 ### Added — Phase 41 v6: recertification reminder cron

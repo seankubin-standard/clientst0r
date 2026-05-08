@@ -667,3 +667,105 @@ class RecertificationCronTests(TestCase):
                 org_compliance=self.due_oc).count(),
             0,
         )
+
+
+class RecertSettingsTests(TestCase):
+    """Phase 41 v3.17.443: settings toggle + manual recertify."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from accounts.models import Membership
+        from core.models import Organization
+        from compliance.models import (
+            ComplianceFramework, OrganizationCompliance,
+        )
+        self.user = User.objects.create_user(
+            'rs-tester', email='r@example.com', password='x', is_staff=True,
+        )
+        self.org = Organization.objects.create(name='ACME-RS')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role='admin',
+            is_active=True,
+        )
+        call_command('seed_pci_dss')
+        fw = ComplianceFramework.objects.get(slug='pci-dss-v4')
+        self.oc = OrganizationCompliance.objects.create(
+            organization=self.org, framework=fw,
+        )
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_save_settings_updates_fields(self):
+        c = Client()
+        c.force_login(self.user)
+        url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/settings/'
+        resp = c.post(url, {
+            'emails_enabled': 'on',
+            'interval_days': '30',
+            'notify_email': 'compliance@example.com',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.oc.refresh_from_db()
+        self.assertTrue(self.oc.recertification_emails_enabled)
+        self.assertEqual(self.oc.recertification_interval_days, 30)
+        self.assertEqual(self.oc.notify_email, 'compliance@example.com')
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_settings_invalid_interval_falls_back(self):
+        c = Client()
+        c.force_login(self.user)
+        url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/settings/'
+        original = self.oc.recertification_interval_days
+        c.post(url, {
+            'emails_enabled': 'on',
+            'interval_days': '12345',  # not in VALID_INTERVAL_DAYS
+        })
+        self.oc.refresh_from_db()
+        self.assertEqual(self.oc.recertification_interval_days, original)
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_emails_unchecked_disables(self):
+        c = Client()
+        c.force_login(self.user)
+        url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/settings/'
+        # Default is True; submit without 'emails_enabled' field
+        c.post(url, {'interval_days': '365'})
+        self.oc.refresh_from_db()
+        self.assertFalse(self.oc.recertification_emails_enabled)
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_mark_recertified_stamps_timestamp(self):
+        from django.utils import timezone as _tz
+        c = Client()
+        c.force_login(self.user)
+        url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/recertify/'
+        before = _tz.now()
+        resp = c.post(url)
+        self.assertEqual(resp.status_code, 302)
+        self.oc.refresh_from_db()
+        self.assertIsNotNone(self.oc.last_recertified_at)
+        self.assertGreaterEqual(self.oc.last_recertified_at, before)
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_mark_recertified_audit_logged(self):
+        from audit.models import AuditLog
+        c = Client()
+        c.force_login(self.user)
+        url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/recertify/'
+        c.post(url)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                description__icontains='Marked recertified',
+                object_type='compliance.OrganizationCompliance',
+            ).exists()
+        )
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_outsider_blocked(self):
+        from django.contrib.auth.models import User
+        outsider = User.objects.create_user('rs-outsider', password='x')
+        c = Client()
+        c.force_login(outsider)
+        url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/recertify/'
+        resp = c.post(url)
+        self.assertEqual(resp.status_code, 404)

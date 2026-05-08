@@ -70,6 +70,81 @@
         </div>
     </div>
 
+    <!-- Recertification settings + manual mark-recertified -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <h6 class="mb-3">
+                <i class="fas fa-arrows-rotate me-1"></i>
+                Recertification
+            </h6>
+
+            <div class="row g-3">
+                <div class="col-md-7">
+                    <form method="post"
+                          action="{% url 'compliance:recert_settings' org_id=organization.pk framework_slug=framework.slug %}">
+                        {% csrf_token %}
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox"
+                                   id="recert-emails" name="emails_enabled"
+                                   {% if enrollment.recertification_emails_enabled %}checked{% endif %}>
+                            <label class="form-check-label small" for="recert-emails">
+                                Send email reminders when recertification is due
+                            </label>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-sm-5">
+                                <label class="form-label small text-muted mb-1">Interval</label>
+                                <select name="interval_days" class="form-select form-select-sm">
+                                    <option value="30" {% if enrollment.recertification_interval_days == 30 %}selected{% endif %}>Monthly (30 days)</option>
+                                    <option value="60" {% if enrollment.recertification_interval_days == 60 %}selected{% endif %}>Bi-monthly (60 days)</option>
+                                    <option value="90" {% if enrollment.recertification_interval_days == 90 %}selected{% endif %}>Quarterly (90 days)</option>
+                                    <option value="180" {% if enrollment.recertification_interval_days == 180 %}selected{% endif %}>Semi-annual (180 days)</option>
+                                    <option value="365" {% if enrollment.recertification_interval_days == 365 %}selected{% endif %}>Annual (365 days)</option>
+                                </select>
+                            </div>
+                            <div class="col-sm-7">
+                                <label class="form-label small text-muted mb-1">Notify email (optional override)</label>
+                                <input type="email" name="notify_email"
+                                       value="{{ enrollment.notify_email }}"
+                                       placeholder="leave blank to use org admin"
+                                       class="form-control form-control-sm">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-outline-secondary btn-sm mt-2">
+                            <i class="fas fa-save me-1"></i> Save settings
+                        </button>
+                    </form>
+                </div>
+
+                <div class="col-md-5 border-start ps-md-4">
+                    <p class="small mb-1 text-muted">Last recertified:</p>
+                    <p class="mb-2">
+                        {% if enrollment.last_recertified_at %}
+                            <strong>{{ enrollment.last_recertified_at|date:"Y-m-d H:i" }}</strong>
+                        {% else %}
+                            <em class="text-muted">never</em>
+                        {% endif %}
+                    </p>
+                    <p class="small text-muted mb-2">
+                        Next reminder in
+                        <strong>{{ enrollment.days_until_recertification }}</strong>
+                        days
+                        ({{ enrollment.recertification_due_at|date:"Y-m-d" }}).
+                    </p>
+                    <form method="post"
+                          action="{% url 'compliance:mark_recertified' org_id=organization.pk framework_slug=framework.slug %}"
+                          onsubmit="return confirm('Mark {{ framework.name|escapejs }} recertified for {{ organization.name|escapejs }}? This stamps last_recertified_at = now and the next reminder fires {{ enrollment.recertification_interval_days }} days from today.');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm">
+                            <i class="fas fa-circle-check me-1"></i>
+                            Mark recertified now
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {% if messages %}
         {% for m in messages %}
             <div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>

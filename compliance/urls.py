@@ -20,4 +20,9 @@ urlpatterns = [
          views.compliance_report_pdf, name='report_pdf'),
     path('organizations/<int:org_id>/<slug:framework_slug>/save/',
          views.checklist_save, name='checklist_save'),
+    # v3.17.443 — recertification settings + manual mark-recertified
+    path('organizations/<int:org_id>/<slug:framework_slug>/settings/',
+         views.recert_settings, name='recert_settings'),
+    path('organizations/<int:org_id>/<slug:framework_slug>/recertify/',
+         views.mark_recertified, name='mark_recertified'),
 ]

@@ -679,3 +679,105 @@ def compliance_report_pdf(request, org_id, framework_slug):
         tables=tables,
         filename=f'{safe_org}-{framework_slug}-{stamp}.pdf',
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 41 v3.17.443 — recertification settings + mark-recertified
+# ---------------------------------------------------------------------------
+
+VALID_INTERVAL_DAYS = {30, 60, 90, 180, 365}
+
+
+@login_required
+@require_POST
+def recert_settings(request, org_id, framework_slug):
+    """Update recertification toggle + interval for an enrollment."""
+    from .models import ComplianceFramework, OrganizationCompliance
+
+    org = get_object_or_404(Organization, pk=org_id)
+    if not _user_can_manage_compliance(request.user, org):
+        raise Http404('Not allowed')
+
+    fw = get_object_or_404(ComplianceFramework, slug=framework_slug)
+    oc = get_object_or_404(OrganizationCompliance, organization=org, framework=fw)
+
+    # Toggle: present if user ticked, absent if unticked.
+    new_enabled = request.POST.get('emails_enabled') == 'on'
+
+    # Interval: validate against the canonical set; default to current value
+    # if the POST contains garbage.
+    try:
+        new_interval = int(request.POST.get('interval_days', oc.recertification_interval_days))
+    except (TypeError, ValueError):
+        new_interval = oc.recertification_interval_days
+    if new_interval not in VALID_INTERVAL_DAYS:
+        new_interval = oc.recertification_interval_days
+
+    new_email = (request.POST.get('notify_email') or '').strip()
+
+    changed = []
+    if oc.recertification_emails_enabled != new_enabled:
+        changed.append(f'emails_enabled: {oc.recertification_emails_enabled} -> {new_enabled}')
+        oc.recertification_emails_enabled = new_enabled
+    if oc.recertification_interval_days != new_interval:
+        changed.append(f'interval_days: {oc.recertification_interval_days} -> {new_interval}')
+        oc.recertification_interval_days = new_interval
+    if oc.notify_email != new_email:
+        changed.append(f'notify_email: {oc.notify_email!r} -> {new_email!r}')
+        oc.notify_email = new_email
+
+    oc.save()
+
+    if changed:
+        AuditLog.log(
+            user=request.user, action='update',
+            organization=org,
+            object_type='compliance.OrganizationCompliance',
+            object_id=oc.pk,
+            object_repr=f'{org.name} :: {fw.name}',
+            description='Recert settings: ' + '; '.join(changed),
+            ip_address=_client_ip(request), path=request.path,
+        )
+        _messages.success(request, 'Recertification settings updated.')
+    else:
+        _messages.info(request, 'No changes.')
+
+    return redirect('compliance:checklist', org_id=org.pk, framework_slug=fw.slug)
+
+
+@login_required
+@require_POST
+def mark_recertified(request, org_id, framework_slug):
+    """Stamp last_recertified_at = now(). User affirms they've reviewed the
+    full checklist and the attestation is current."""
+    from .models import ComplianceFramework, OrganizationCompliance
+
+    org = get_object_or_404(Organization, pk=org_id)
+    if not _user_can_manage_compliance(request.user, org):
+        raise Http404('Not allowed')
+
+    fw = get_object_or_404(ComplianceFramework, slug=framework_slug)
+    oc = get_object_or_404(OrganizationCompliance, organization=org, framework=fw)
+
+    oc.last_recertified_at = timezone.now()
+    oc.save(update_fields=['last_recertified_at'])
+
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=org,
+        object_type='compliance.OrganizationCompliance',
+        object_id=oc.pk,
+        object_repr=f'{org.name} :: {fw.name}',
+        description=(
+            f'Marked recertified. Next reminder due in '
+            f'{oc.recertification_interval_days} days.'
+        ),
+        ip_address=_client_ip(request), path=request.path,
+    )
+    _messages.success(
+        request,
+        f'Marked {fw.name} recertified for {org.name}. '
+        f'Next reminder due in {oc.recertification_interval_days} days.'
+    )
+
+    return redirect('compliance:checklist', org_id=org.pk, framework_slug=fw.slug)
