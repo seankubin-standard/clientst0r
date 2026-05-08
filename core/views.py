@@ -822,6 +822,92 @@ def report_bug(request):
 
 @login_required
 @user_passes_test(lambda u: u.is_staff or u.is_superuser)
+def mobile_app_build_progress(request, app_type):
+    """
+    JSON progress endpoint for the live build status page (v3.17.431).
+    Counts `> Task :` lines in the build log to compute a percentage
+    against an empirical total (~588 for this app on first build).
+    Polled every ~1.5s by the building page's JS so the user sees
+    smooth progress instead of a 5-second-meta-refresh stutter.
+    """
+    import os
+    import json as _json
+    import re as _re
+    import time as _time
+    from django.conf import settings as dj_settings
+    from django.http import JsonResponse
+
+    if app_type not in ('android', 'ios'):
+        return JsonResponse({'error': 'invalid app_type'}, status=400)
+
+    builds_dir = os.path.join(dj_settings.BASE_DIR, 'mobile-app', 'builds')
+    status_path = os.path.join(builds_dir, f'{app_type}_build_status.json')
+    log_path = os.path.join(builds_dir, f'{app_type}_build.log')
+    apk_path = os.path.join(
+        builds_dir, 'clientst0r.apk' if app_type == 'android' else 'clientst0r.ipa'
+    )
+
+    state = {'status': 'idle', 'message': '', 'started_at': None}
+    if os.path.exists(status_path):
+        try:
+            with open(status_path) as fh:
+                sd = _json.load(fh)
+            state['status'] = sd.get('status', 'idle')
+            state['message'] = sd.get('message', '')
+            state['started_at'] = sd.get('timestamp')
+        except (OSError, ValueError):
+            pass
+
+    # APK already exists → done.
+    if os.path.exists(apk_path):
+        state['status'] = 'complete'
+
+    tasks_seen = 0
+    last_task = ''
+    log_tail_lines = []
+    if os.path.exists(log_path):
+        try:
+            with open(log_path) as fh:
+                raw = fh.read()
+            lines = [ln for ln in raw.split('\n') if ln.strip()]
+            for ln in lines:
+                if _re.match(r'^>\s+Task\s+:', ln):
+                    tasks_seen += 1
+                    last_task = ln
+            log_tail_lines = lines[-30:]
+        except OSError:
+            pass
+
+    # Empirical total task count from the v3.17.427 successful build.
+    # If we ever see more, bump expected_total to that.
+    expected_total = max(588, tasks_seen)
+    pct = 0
+    if state['status'] == 'complete':
+        pct = 100
+    elif tasks_seen > 0:
+        pct = min(99, int((tasks_seen / expected_total) * 100))
+
+    elapsed = 0
+    if state.get('started_at'):
+        try:
+            elapsed = max(0, int(_time.time() - float(state['started_at'])))
+        except (TypeError, ValueError):
+            elapsed = 0
+
+    return JsonResponse({
+        'status': state['status'],
+        'message': state['message'],
+        'tasks_seen': tasks_seen,
+        'tasks_total_est': expected_total,
+        'percent': pct,
+        'current_task': last_task,
+        'elapsed_s': elapsed,
+        'log_tail': log_tail_lines,
+    })
+
+
+@login_required
+@user_passes_test(lambda u: u.is_staff or u.is_superuser)
 def mobile_apps_admin(request):
     """
     Admin landing page for mobile-app sideload distribution.
@@ -1031,6 +1117,12 @@ def download_mobile_app(request, app_type):
                             build_log = 'Build in progress…'
 
                 # Build in progress - show status page with live log
+                # v3.17.431 — replaced the 5-second meta-refresh with JS that
+                # polls /core/mobile-apps/build-progress/android/ every 1.5s
+                # and updates the progress bar + log live. Bar is driven by
+                # `> Task :` line count vs an empirical total (~588 for this
+                # app), so the percentage is real, not a striped-only animation.
+                progress_url = '/core/mobile-apps/build-progress/android/'
                 return HttpResponse(f"""
                     <!DOCTYPE html>
                     <html>
@@ -1040,7 +1132,6 @@ def download_mobile_app(request, app_type):
                         <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
                         <meta http-equiv="Pragma" content="no-cache">
                         <meta http-equiv="Expires" content="0">
-                        <meta http-equiv="refresh" content="5">
                         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
                         <style>
                             body {{ background: #0d1117; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
@@ -1053,71 +1144,113 @@ def download_mobile_app(request, app_type):
                             strong {{ color: #ffffff; }}
                             .text-muted {{ color: #8b949e !important; }}
                             h1 {{ color: #58a6ff; }}
-                            .log-container {{ background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 20px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.5; color: #c9d1d9; }}
-                            .log-container::-webkit-scrollbar {{ width: 10px; }}
-                            .log-container::-webkit-scrollbar-track {{ background: #161b22; }}
-                            .log-container::-webkit-scrollbar-thumb {{ background: #30363d; border-radius: 5px; }}
-                            .status-header {{ display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }}
-                            .progress-bar-container {{ width: 100%; height: 8px; background: #30363d; border-radius: 4px; overflow: hidden; margin: 20px 0; }}
-                            .progress-bar {{ height: 100%; background: linear-gradient(90deg, #58a6ff, #79c0ff, #58a6ff); background-size: 200% 100%; animation: progressSlide 2s linear infinite; }}
+                            .log-container {{ background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 18px; max-height: 480px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12.5px; line-height: 1.45; color: #c9d1d9; white-space: pre-wrap; word-break: break-word; }}
+                            .progress-bar-container {{ width: 100%; height: 18px; background: #30363d; border-radius: 6px; overflow: hidden; margin: 20px 0 8px; position: relative; }}
+                            .progress-bar {{ height: 100%; background: linear-gradient(90deg, #2ea043, #3fb950); transition: width 0.5s ease; }}
+                            .progress-bar.indeterminate {{ background: linear-gradient(90deg, #58a6ff, #79c0ff, #58a6ff); background-size: 200% 100%; animation: progressSlide 2s linear infinite; }}
                             @keyframes progressSlide {{ 0% {{ background-position: 100% 0; }} 100% {{ background-position: -100% 0; }} }}
+                            .progress-meta {{ display: flex; justify-content: space-between; font-size: 0.9rem; color: #8b949e; }}
+                            .current-task {{ font-family: 'Courier New', monospace; font-size: 0.85rem; color: #79c0ff; padding: 8px 12px; background: rgba(88,166,255,0.08); border-left: 3px solid #58a6ff; border-radius: 3px; word-break: break-all; }}
                         </style>
-                        <script>
-                            // v3.17.427 — actually calculate elapsed time
-                            // (was stuck on "Calculating…"). Uses the
-                            // status_data['timestamp'] embedded server-side.
-                            var buildStartedAt = {status_data.get('timestamp', 0)} * 1000;
-                            function tickElapsed() {{
-                                var el = document.getElementById('elapsed-time');
-                                if (!el || !buildStartedAt) return;
-                                var s = Math.max(0, Math.floor((Date.now() - buildStartedAt) / 1000));
-                                var m = Math.floor(s / 60);
-                                var ss = s % 60;
-                                el.textContent = m + 'm ' + (ss < 10 ? '0' : '') + ss + 's';
-                            }}
-                            tickElapsed();
-                            setInterval(tickElapsed, 1000);
-
-                            var refreshIn = 5;
-                            setInterval(function() {{
-                                refreshIn--;
-                                if (refreshIn < 0) refreshIn = 5;
-                                var rc = document.getElementById('refresh-countdown');
-                                if (rc) rc.textContent = refreshIn;
-                            }}, 1000);
-
-                            // Auto-scroll to bottom of log
-                            window.onload = function() {{
-                                var logContainer = document.getElementById('log-container');
-                                if (logContainer) {{
-                                    logContainer.scrollTop = logContainer.scrollHeight;
-                                }}
-                            }};
-                        </script>
                     </head>
                     <body>
                         <div class="container">
                             <div class="card">
-                                <div class="status-header">
+                                <div class="status-header" style="display:flex;align-items:center;justify-content:center;">
                                     <div class="spinner"></div>
-                                    <h1 style="margin: 0;">Building Android App...</h1>
+                                    <h1 style="margin: 0;">Building Android App…</h1>
                                 </div>
-                                <p class="lead text-center"><strong>Status:</strong> {status_data['message']}</p>
+                                <p class="lead text-center" id="status-msg"><strong>Status:</strong> <span id="status-text">{status_data['message']}</span></p>
+
                                 <div class="progress-bar-container">
-                                    <div class="progress-bar"></div>
+                                    <div id="progress-bar" class="progress-bar indeterminate" style="width: 0%;"></div>
                                 </div>
-                                <p class="text-center"><strong>Elapsed Time:</strong> <span id="elapsed-time" style="color: #58a6ff; font-size: 1.2em;">Calculating…</span></p>
-                                <p class="text-center text-muted"><small>Page refreshes in <span id="refresh-countdown">5</span> seconds • You can close this tab</small></p>
+                                <div class="progress-meta">
+                                    <span><strong id="progress-pct">0%</strong> · <span id="task-count">0</span> tasks</span>
+                                    <span>Elapsed: <strong id="elapsed-time" style="color:#58a6ff;">0m 00s</strong></span>
+                                </div>
+
+                                <div id="current-task-row" style="margin-top:15px;display:none;">
+                                    <p class="text-muted" style="margin-bottom:6px;font-size:.85rem;">Current task:</p>
+                                    <div id="current-task" class="current-task">—</div>
+                                </div>
+
+                                <p class="text-center text-muted" style="margin-top:15px;"><small>Auto-updates every 1.5s • You can close this tab</small></p>
                             </div>
 
                             <div class="card">
-                                <h3 style="margin-bottom: 15px;">&#x1F4DD; Build Progress Log</h3>
-                                <div id="log-container" class="log-container">
-                                    <pre style="margin: 0; color: #c9d1d9;">{build_log if build_log else 'Waiting for build to start...'}</pre>
-                                </div>
-                                <p class="text-muted text-center" style="margin-top: 15px; margin-bottom: 0;"><small>Showing last 60 lines of build output. <a href="/core/mobile-apps/" style="color: #58a6ff;">View Mobile Apps page</a></small></p>
+                                <h3 style="margin-bottom: 15px;">📝 Build Progress Log</h3>
+                                <div id="log-container" class="log-container">{build_log if build_log else 'Waiting for build to start…'}</div>
+                                <p class="text-muted text-center" style="margin-top: 15px; margin-bottom: 0;"><small>Live tail · <a href="/core/mobile-apps/" style="color: #58a6ff;">View Mobile Apps page</a></small></p>
                             </div>
                         </div>
+
+                        <script>
+                            (function() {{
+                                var progressUrl = '{progress_url}';
+                                var pollInterval = 1500;
+                                var startedAt = null;
+
+                                function fmtElapsed(seconds) {{
+                                    var s = Math.max(0, Math.floor(seconds || 0));
+                                    var m = Math.floor(s / 60);
+                                    var ss = s % 60;
+                                    return m + 'm ' + (ss < 10 ? '0' : '') + ss + 's';
+                                }}
+
+                                function poll() {{
+                                    fetch(progressUrl + '?_=' + Date.now(), {{cache: 'no-store'}})
+                                        .then(function(r) {{ return r.ok ? r.json() : null; }})
+                                        .then(function(d) {{
+                                            if (!d) {{ setTimeout(poll, pollInterval); return; }}
+                                            // Status text
+                                            var st = document.getElementById('status-text');
+                                            if (st) st.textContent = d.message || ('Tasks: ' + d.tasks_seen);
+                                            // Bar
+                                            var bar = document.getElementById('progress-bar');
+                                            var pctEl = document.getElementById('progress-pct');
+                                            var taskEl = document.getElementById('task-count');
+                                            if (bar) {{
+                                                bar.style.width = (d.percent || 0) + '%';
+                                                if (d.percent && d.percent > 0) {{
+                                                    bar.classList.remove('indeterminate');
+                                                }}
+                                            }}
+                                            if (pctEl) pctEl.textContent = (d.percent || 0) + '%';
+                                            if (taskEl) taskEl.textContent = d.tasks_seen + ' / ~' + d.tasks_total_est;
+                                            // Elapsed
+                                            var el = document.getElementById('elapsed-time');
+                                            if (el) el.textContent = fmtElapsed(d.elapsed_s);
+                                            // Current task
+                                            var ctRow = document.getElementById('current-task-row');
+                                            var ct = document.getElementById('current-task');
+                                            if (ct && d.current_task) {{
+                                                ct.textContent = d.current_task;
+                                                if (ctRow) ctRow.style.display = '';
+                                            }}
+                                            // Log tail
+                                            if (d.log_tail && d.log_tail.length) {{
+                                                var lc = document.getElementById('log-container');
+                                                if (lc) {{
+                                                    lc.textContent = d.log_tail.join('\\n');
+                                                    lc.scrollTop = lc.scrollHeight;
+                                                }}
+                                            }}
+                                            // State transitions
+                                            if (d.status === 'complete') {{
+                                                window.location.href = '/core/download-mobile-app/android/';
+                                                return;
+                                            }} else if (d.status === 'failed') {{
+                                                window.location.reload();
+                                                return;
+                                            }}
+                                            setTimeout(poll, pollInterval);
+                                        }})
+                                        .catch(function() {{ setTimeout(poll, pollInterval); }});
+                                }}
+                                poll();
+                            }})();
+                        </script>
                     </body>
                     </html>
                 """, content_type='text/html; charset=utf-8')

@@ -5,6 +5,34 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.431] - 2026-05-08
+
+### Added — Live build progress bar (real percentage, not just animated stripes)
+The Building page used to refresh the entire HTML every 5 seconds via meta-refresh. The progress bar was just a CSS striped animation — it didn't reflect actual progress, so a long step like `:app:minifyDebugWithR8` (which can run 10+ minutes silently on R8) made the page look frozen even when work was happening.
+
+New API endpoint `GET /core/mobile-apps/build-progress/<platform>/` (in `core/views.py::mobile_app_build_progress`) returns:
+- `status` — building / complete / failed
+- `tasks_seen` — count of `> Task :` lines in `<platform>_build.log`
+- `tasks_total_est` — empirical baseline of 588 (the v3.17.427 successful build's task count); auto-bumps if a build exceeds it
+- `percent` — `tasks_seen / tasks_total_est`, capped at 99% until status==complete
+- `current_task` — the most recent `> Task :` line (e.g. `> Task :app:minifyDebugWithR8`)
+- `elapsed_s` — seconds since `status_data['timestamp']`
+- `log_tail` — last 30 non-blank log lines
+
+The Building page (in `download_mobile_app`) replaces the meta-refresh + striped CSS bar with:
+- A real Bootstrap-style green progress bar that smoothly transitions (`transition: width 0.5s ease`) from 0%→99% as Gradle runs through its task list
+- Live "**42%** · 247 / ~588 tasks" counter
+- "Current task: `> Task :app:minifyDebugWithR8`" callout so you can see what's happening RIGHT NOW
+- Live elapsed timer (1s tick)
+- Live log tail (last 30 lines, auto-scrolled)
+- Auto-redirect to download URL when status flips to `complete`
+- Auto-page-reload (which lands on the failed-status page from v3.17.429) when status flips to `failed`
+
+Polls every 1.5s. The endpoint is auth-gated (`@user_passes_test(is_staff or is_superuser)`).
+
+### Tests
+None — frontend polling + JSON endpoint; verified by tracing the count logic and the `> Task :` regex.
+
 ## [3.17.430] - 2026-05-08
 
 ### Fixed — APK build failed on `getDefaultProguardFile()`
