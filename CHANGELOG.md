@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.422] - 2026-05-08
+
+### Fixed — 502s on static files after Apply reload
+After v3.17.421 successfully completed an update, the page reload that follows could fan out CSS/JS/font/manifest requests in parallel and catch a gunicorn worker still in the middle of its post-SIGHUP graceful-restart cycle — that worker 502s. The user saw a broken page with `ERR_ABORTED 502` for `themes.*.css`, `manifest.*.json`, etc. even though gunicorn was up overall.
+
+Root cause: the public edge OpenResty proxies straight to `gunicorn:8000` (no local nginx in the path serving static directly). When systemctl reload replaces workers one at a time, individual workers go through a brief unavailable window. Two consecutive 200 probes from a single connection wasn't enough — page reload uses many parallel connections and any of them can hit a worker in the middle of replacement.
+
+Fix in `templates/core/system_updates.html::waitForServerThenReload()`:
+1. Bumped `consecutiveOk` requirement from 2 → **3** (faster cadence, 400ms between probes).
+2. After 3 consecutive OKs, run a **`warmupAndReload()`** phase: fire **6 parallel probes** in flight at once. If ANY one fails, drop back to single-probe polling. This actively exercises multiple workers in parallel, surfacing any laggard before the page reload does.
+3. After all 6 warmup probes succeed, hold for **3 seconds** of settle time before `location.reload()` — gives any worker still in graceful shutdown time to finish.
+
+The progress bar now flips through "Server responded — confirming health (1/3)…" → "Warming up workers — confirming all responding…" → "All workers responding — reloading in 3 seconds…" so the user sees the extra phase.
+
+### Tests
+None — frontend timing change; verified by tracing the warmup → settle → reload sequence.
+
 ## [3.17.421] - 2026-05-08
 
 ### Fixed — Update hung at "4 of 5 steps complete" forever

@@ -985,20 +985,22 @@ function waitForServerThenReload() {
             .then(function() {
                 consecutiveOk += 1;
                 if (cd) cd.textContent =
-                    'Server responded — confirming health (' + consecutiveOk + '/2)…';
-                if (consecutiveOk >= 2) {
-                    clearInterval(tickInterval);
-                    const barEl = document.getElementById('serverWaitBar');
-                    if (barEl) {
-                        barEl.classList.remove('progress-bar-animated', 'bg-info');
-                        barEl.classList.add('bg-success');
-                        barEl.style.width = '100%';
-                    }
-                    if (cd) cd.textContent = 'Server is back. Reloading…';
-                    setTimeout(function() { location.reload(); }, 800);
+                    'Server responded — confirming health (' + consecutiveOk + '/3)…';
+                if (consecutiveOk >= 3) {
+                    // v3.17.422 — three consecutive 200s isn't enough; the
+                    // public edge proxies straight to gunicorn:8000 with no
+                    // local nginx in the path, so a page reload fans out
+                    // requests across multiple workers and one might still
+                    // be rebooting. Warm up all workers with 6 parallel
+                    // probes — if EVERY one returns 200 we're confident no
+                    // worker will 502 the static-file fan-out on reload.
+                    if (cd) cd.textContent =
+                        'Warming up workers — confirming all responding…';
+                    warmupAndReload();
                     return;
                 }
-                setTimeout(probe, 800);
+                // Faster cadence once we're seeing OKs — 400ms instead of 800.
+                setTimeout(probe, 400);
             })
             .catch(function() {
                 clearTimeout(abortTimer);
@@ -1014,6 +1016,58 @@ function waitForServerThenReload() {
                 const delay = elapsed < 20 ? 1500 : 3000;
                 setTimeout(probe, delay);
             });
+    }
+
+    // v3.17.422 — fan out parallel probes to wake/exercise every gunicorn
+    // worker. Reload only once all 6 return 200 (so the page-reload's
+    // static-file flood won't catch a half-restarted worker and 502).
+    // If any probe fails, drop back to the regular polling loop.
+    function warmupAndReload() {
+        const cd = document.getElementById('serverWaitCountdown');
+        const numProbes = 6;
+        const probes = [];
+        for (let i = 0; i < numProbes; i++) {
+            const ctrl = new AbortController();
+            const t = setTimeout(function() { ctrl.abort(); }, 4000);
+            probes.push(
+                fetch(probeUrl + '?_warmup=' + i + '&_=' + Date.now(), {
+                    cache: 'no-store',
+                    credentials: 'same-origin',
+                    signal: ctrl.signal,
+                })
+                    .then(function(r) {
+                        clearTimeout(t);
+                        return r.ok;
+                    })
+                    .catch(function() {
+                        clearTimeout(t);
+                        return false;
+                    })
+            );
+        }
+        Promise.all(probes).then(function(results) {
+            const allOk = results.every(Boolean);
+            if (!allOk) {
+                if (cd) cd.textContent =
+                    'Warmup found a slow worker — re-checking…';
+                consecutiveOk = 0;
+                setTimeout(probe, 600);
+                return;
+            }
+            // All workers responded. Add a settle delay so any final
+            // worker still in graceful shutdown finishes before the
+            // reload's static-file fan-out hits.
+            clearInterval(tickInterval);
+            const barEl = document.getElementById('serverWaitBar');
+            if (barEl) {
+                barEl.classList.remove('progress-bar-animated', 'bg-info');
+                barEl.classList.add('bg-success');
+                barEl.style.width = '100%';
+            }
+            if (cd) cd.textContent =
+                'All workers responding — reloading in 3 seconds…';
+            setTimeout(function() { location.reload(); }, 3000);
+        });
     }
 
     // Wait a beat before the first probe — gunicorn rarely closes the socket
