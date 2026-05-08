@@ -234,27 +234,41 @@ class Command(BaseCommand):
                     #   151MB → ~40MB.
                     app_gradle = os.path.join(android_dir, 'app', 'build.gradle')
                     abi_marker = '// CST-ABI-FILTER'
+                    minify_marker = '// CST-DEBUG-MINIFY'
                     if os.path.isfile(app_gradle):
                         try:
                             with open(app_gradle, 'r') as fh:
                                 gradle_src = fh.read()
+
+                            patches = []
                             if abi_marker not in gradle_src:
-                                # Append a project-level override after the
-                                # main `android {}` block. Using a separate
-                                # `android.defaultConfig.ndk.abiFilters` line
-                                # at the bottom is cleaner than rewriting
-                                # the existing block.
-                                gradle_src = gradle_src.rstrip() + (
-                                    '\n\n'
+                                patches.append(
                                     f'{abi_marker} — bundle only arm64-v8a (v3.17.425)\n'
-                                    "android.defaultConfig.ndk.abiFilters 'arm64-v8a'\n"
+                                    "android.defaultConfig.ndk.abiFilters 'arm64-v8a'"
                                 )
+
+                            # v3.17.428: enable R8 minification + resource
+                            # shrinking on debug builds. Default Expo debug
+                            # builds skip these (151MB → 49MB on this app).
+                            # Forcing them on (with the standard Android
+                            # proguard-android-optimize rules + the RN/Expo
+                            # proguard-rules.pro) gets us to ~20-25MB without
+                            # needing a release keystore.
+                            if minify_marker not in gradle_src:
+                                patches.append(
+                                    f'{minify_marker} — shrink resources + R8 on debug too (v3.17.428)\n'
+                                    'android.buildTypes.debug.minifyEnabled = true\n'
+                                    'android.buildTypes.debug.shrinkResources = true\n'
+                                    'android.buildTypes.debug.proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"'
+                                )
+
+                            if patches:
+                                gradle_src = gradle_src.rstrip() + '\n\n' + '\n\n'.join(patches) + '\n'
                                 with open(app_gradle, 'w') as fh:
                                     fh.write(gradle_src)
-                                self._log(
-                                    'Patched app/build.gradle with '
-                                    'ndk.abiFilters arm64-v8a\n'
-                                )
+                                for p in patches:
+                                    first_line = p.splitlines()[0]
+                                    self._log(f'Patched build.gradle: {first_line}\n')
                         except OSError as exc:
                             self._log(f'Could not patch build.gradle: {exc}\n')
 

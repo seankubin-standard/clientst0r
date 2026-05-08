@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.428] - 2026-05-08
+
+### Smaller — APK 49MB → ~20-25MB (R8 minify + resource shrink on debug)
+Default Expo debug builds skip R8 minification and resource shrinking; that's why the v3.17.425 APK was still 49MB even with arm64-v8a-only native libs. Patching `android/app/build.gradle` after `expo prebuild` to force `minifyEnabled = true` and `shrinkResources = true` on the debug variant runs R8 over the JS bundle + Java/Kotlin classes and drops unused resources.
+
+In `core/management/commands/build_mobile_app.py`, the existing build-gradle patcher now appends a second block (guarded by `// CST-DEBUG-MINIFY` marker for idempotency):
+
+```gradle
+android.buildTypes.debug.minifyEnabled = true
+android.buildTypes.debug.shrinkResources = true
+android.buildTypes.debug.proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+```
+
+This uses the standard Android optimize rules + the Expo/RN-shipped `proguard-rules.pro` (already correct for keep rules on Hermes / Reanimated / native modules). No release keystore needed — debug keystore continues signing the APK.
+
+Expected APK size: **~20-28MB** (down from 49MB). The new app has more deps than the Feb 2026 skeleton (Expo Router + TanStack Query + Reanimated + Gesture Handler + Screens + others), so it won't quite hit the original 20MB but should land close.
+
+To get the smaller APK: Apply v3.17.428 → Mobile Apps → **Rebuild from latest code** → **Build & download**.
+
+### Tests
+None — Gradle config injection; verified by reading the build.gradle patch + the standard Android proguard-android-optimize.txt rules.
+
 ## [3.17.427] - 2026-05-08
 
 ### Fixed — APK build looked hung even when running fine
