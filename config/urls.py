@@ -10,6 +10,8 @@ from django.conf.urls.static import static
 from django.views.decorators.csrf import csrf_exempt
 from two_factor.urls import urlpatterns as tf_urls
 
+from core.views import privacy_policy as core_privacy_policy
+
 urlpatterns = [
     # Favicon
     path('favicon.ico', RedirectView.as_view(url=settings.STATIC_URL + 'images/favicon.svg', permanent=True)),
@@ -65,6 +67,9 @@ urlpatterns = [
 
     # Mobile API (token-authenticated REST surface for the RN client app)
     path('api/mobile/v1/', include('api_mobile.urls')),
+
+    # Public privacy policy (Play Console + Apple App Store require a public URL)
+    path('privacy-policy/', core_privacy_policy, name='privacy_policy'),
 ]
 
 # Optional: GraphQL API v2 (only if graphene_django is installed)

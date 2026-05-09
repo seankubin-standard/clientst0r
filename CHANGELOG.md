@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.447] - 2026-05-09
+
+### Public privacy policy + Play Console submission docs
+
+Play Console requires a public privacy-policy URL and a completed Data Safety questionnaire before any track (including Internal testing) accepts a release for review. Both shipped here.
+
+**New public route:**
+- `core.views.privacy_policy` — anonymous-accessible view at `GET /privacy-policy/` (mounted at the root in `config/urls.py`, not under `/core/`). Renders `docs/PRIVACY_POLICY.md` server-side via the `markdown` package; same single-source-of-truth pattern as `/core/roadmap/`. Standalone HTML template (no auth chrome) so Play Console reviewers see a clean page.
+- 4 tests in `core/tests/test_privacy_policy.py` covering anonymous-200, named-URL reverse, markdown→HTML, and `Content-Type: text/html`.
+
+**New docs (source of truth):**
+- `docs/PRIVACY_POLICY.md` — what data the app sends, what it stores, what it doesn't collect. Calibrated to the v3.17.446 AAB's actual permissions (no location, no camera, no contacts) and noted that a future GPS timeclock will revise.
+- `docs/PLAY_DATA_SAFETY.md` — pre-filled answers for every question in Play Console's Data Safety form, broken down by section and data type, with the exact wording for the deletion-request free-text field.
+- `docs/PLAY_STORE_LISTING.md` — short description, full description, "what's new" copy, app-content rating answers, and the App-access reviewer-login text.
+
 ## [3.17.446] - 2026-05-09
 
 ### Mobile login fix + signed-AAB build unblock

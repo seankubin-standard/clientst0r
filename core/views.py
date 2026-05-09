@@ -273,6 +273,26 @@ def free_consult(request):
     })
 
 
+def privacy_policy(request):
+    """
+    Public privacy policy page rendered from `docs/PRIVACY_POLICY.md`.
+    Anonymous-accessible so Play Console reviewers and tester users can
+    reach it without an account. Single source of truth is the markdown
+    file; this view renders it server-side.
+    """
+    from pathlib import Path
+    from django.conf import settings
+    from markdown import markdown
+    base = getattr(settings, 'BASE_DIR', Path(__file__).resolve().parent.parent)
+    path = Path(base) / 'docs' / 'PRIVACY_POLICY.md'
+    try:
+        raw = path.read_text(encoding='utf-8')
+    except OSError:
+        raw = '# Privacy Policy\n\nThe privacy policy file could not be loaded.'
+    html = markdown(raw, extensions=['extra', 'tables', 'sane_lists'])
+    return render(request, 'core/privacy_policy.html', {'policy_html': html})
+
+
 @login_required
 @user_passes_test(is_superuser)
 def consult_requests(request):
