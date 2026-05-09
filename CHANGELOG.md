@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.451] - 2026-05-09
+
+### Mobile cleanup pass — remove dead screens, lock down profile, group by org
+
+A round of mobile-only changes that need an AAB rebuild + Play Console upload.
+
+**Removed:**
+- `mobile/app/monitoring/` and `mobile/app/security/` — both had no server endpoints (404), and the user opted to remove them rather than build out the missing API surface.
+- `mobile/src/api/monitoring.ts` and `mobile/src/api/security.ts` — dead hooks.
+- Operations hub no longer links to either; it's just Timeclock for now.
+- Dashboard tile row for Expiring soon / Monitors down / Open alerts removed (they pointed at /operations which only has Timeclock now and was misleading). The "Recent security alerts" card on the dashboard is also gone. Server-side `data.security` and `data.monitors_down` are still returned by `/dashboard/` for any other consumer; the mobile just doesn't render them.
+
+**Profile is now read-only:**
+- `mobile/src/api/profile.ts` — switched from `/profile/` (which never existed on the server, would have been 404) to `/auth/me/`. Dropped `useUpdateProfile`. Tolerates either `{user: {...}}` or flat `{...}` response shape.
+- `mobile/app/settings/index.tsx` — gutted the editable form (TextField for first/last/email + "Save profile" button gone). Profile fields now display as read-only label/value rows. Edits go through the web app.
+
+**Assets and vault lists grouped by organization:**
+- `mobile/app/assets/index.tsx` and `mobile/app/vault/index.tsx` — bucket entries by `organization_name`, render section headers (`ORG NAME · count`) above each bucket. Items with no org fall under a "No organization" section. Sorts alphabetically by org name.
+
+**versionCode 3170450 → 3170451** in `mobile/app.json` so Play Console accepts the new AAB.
+
 ## [3.17.450] - 2026-05-09
 
 ### Mobile ticket status/priority changes now actually persist
