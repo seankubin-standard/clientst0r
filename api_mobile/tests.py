@@ -162,6 +162,69 @@ class MobileAuthTokenLifecycleTests(TestCase):
         self.assertEqual(resp3.status_code, 200)
 
 
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileDashboardShapeTests(TestCase):
+    """
+    v3.17.448: GET /api/mobile/v1/dashboard/ MUST return arrays for
+    `recent_tickets` + `recent_assets` and a nested `security` object.
+    Previously returned counts where the mobile client expected arrays,
+    which crashed the React Native dashboard with "undefined is not a
+    function" on `data.recent_assets.map(...)`.
+    """
+
+    def setUp(self):
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='OrgD-Mobile', slug='orgd-mobile')
+        self.user = User.objects.create_user('duser', password='hunter2', email='d@x.com')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        self.client = Client()
+        resp = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'duser', 'password': 'hunter2',
+        })
+        self.token = resp.json()['token']
+
+    def test_dashboard_returns_expected_shape(self):
+        """All keys the mobile DashboardSummary type expects are present."""
+        resp = _auth_get(self.client, '/api/mobile/v1/dashboard/', self.token)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        # Counts
+        for key in (
+            'open_tickets', 'critical_tickets', 'my_open_tickets',
+            'expiring_soon', 'monitors_down',
+        ):
+            self.assertIn(key, body, f'missing count key: {key}')
+            self.assertIsInstance(body[key], int, f'{key} must be int')
+        # Arrays — the bug was that these were returned as ints
+        self.assertIsInstance(body.get('recent_tickets'), list,
+                              'recent_tickets must be a list (mobile calls .map() on it)')
+        self.assertIsInstance(body.get('recent_assets'), list,
+                              'recent_assets must be a list (mobile calls .map() on it)')
+        # Nested security summary
+        self.assertIsInstance(body.get('security'), dict,
+                              'security must be a dict (mobile reads .open_alert_count)')
+        for sev_key in (
+            'open_alert_count', 'critical_alert_count', 'high_alert_count',
+            'medium_alert_count', 'low_alert_count',
+        ):
+            self.assertIn(sev_key, body['security'])
+        self.assertIsInstance(body['security'].get('recent_alerts'), list)
+
+    def test_dashboard_unauthenticated_blocked(self):
+        resp = Client().get('/api/mobile/v1/dashboard/')
+        self.assertIn(resp.status_code, (401, 403))
+
+    def test_dashboard_arrays_are_jsonable_when_empty(self):
+        """Empty results still have list type (not None), so .map() works."""
+        resp = _auth_get(self.client, '/api/mobile/v1/dashboard/', self.token)
+        body = resp.json()
+        self.assertEqual(body['recent_tickets'], [])
+        self.assertEqual(body['recent_assets'], [])
+        self.assertEqual(body['security']['recent_alerts'], [])
+
+
 # v3.17.347 — dashboard + organizations endpoints
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
 class MobileDashboardOrgsTests(TestCase):

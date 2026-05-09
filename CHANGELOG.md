@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.448] - 2026-05-09
+
+### Mobile dashboard crash fix — server returns the shape the client expects
+
+After completing the MFA challenge the React Native dashboard threw "undefined is not a function" inside `<ErrorBoundary>` because `data.recent_assets.map(...)` was being called on an integer.
+
+**Server/client contract was misaligned since v3.17.347:**
+- `mobile/src/types/api.ts::DashboardSummary` declared `recent_tickets: Ticket[]`, `recent_assets: Asset[]`, `security: SecuritySummary`, plus counts `monitors_down` and `my_open_tickets`.
+- `api_mobile/views_dashboard.py::dashboard_view` returned counts where arrays were expected, used `offline_monitors` instead of `monitors_down`, and never returned `my_open_tickets`, `recent_tickets`, or a `security` object at all. The mismatch only surfaced now because previous releases couldn't get past login.
+
+**Fix:**
+- Rewrote `dashboard_view` to return the shape the type defines:
+  - Counts: `open_tickets`, `critical_tickets`, `my_open_tickets`, `expiring_soon`, `monitors_down`
+  - `recent_tickets`: top 5 non-terminal tickets ordered by `-updated_at`, serialized via the existing `views_tickets._serialize_ticket`
+  - `recent_assets`: top 5 most-recently-created assets, serialized via `views_assets._serialize_asset`
+  - `security`: `{open_alert_count, critical_alert_count, high_alert_count, medium_alert_count, low_alert_count, recent_alerts: [...]}`
+- Each section is wrapped in try/except so a missing optional app (`psa`, `security_alerts`, …) leaves its slice empty rather than 500ing the whole dashboard.
+- 3 new tests in `api_mobile.tests.MobileDashboardShapeTests` lock the contract: 200 + arrays present + auth required + arrays default to `[]` not `None`.
+
+**No mobile rebuild needed** — fix is server-side, ships via Apply.
+
 ## [3.17.447] - 2026-05-09
 
 ### Public privacy policy + Play Console submission docs
