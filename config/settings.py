@@ -508,6 +508,8 @@ REST_FRAMEWORK = {
         'login': '10/hour',
         'password_reset': '5/hour',
         'token': '20/hour',
+        # Mobile vault reveals — mirror the web vault's 30/hour rate.
+        'vault_reveal': '30/hour',
         # AI endpoints - cost protection
         'ai_request': '100/day',
         'ai_burst': '10/minute',

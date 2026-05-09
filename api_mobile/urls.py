@@ -10,6 +10,7 @@ from . import (
     views_field_ops,
     views_kb,
     views_tickets,
+    views_vault,
 )
 
 app_name = 'api_mobile'
@@ -39,6 +40,11 @@ urlpatterns = [
     # KB / docs (v3.17.350)
     path('kb/', views_kb.kb_list_view, name='kb_list'),
     path('kb/<int:pk>/', views_kb.kb_detail_view, name='kb_detail'),
+
+    # Vault (v3.17.449)
+    path('vault/', views_vault.vault_list_view, name='vault_list'),
+    path('vault/<int:pk>/', views_vault.vault_detail_view, name='vault_detail'),
+    path('vault/<int:pk>/reveal/', views_vault.vault_reveal_view, name='vault_reveal'),
 
     # Field Ops — Phase 8 (v3.17.410)
     path('locations/', views_field_ops.location_ping_view, name='location_ping'),

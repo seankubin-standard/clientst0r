@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.449] - 2026-05-09
+
+### Mobile vault endpoints (closes the 404 on the vault tab)
+
+The mobile app's vault tab returned 404 because `/api/mobile/v1/vault/` and friends never landed despite a roadmap annotation suggesting they had. Built the missing surface:
+
+- `views_vault.vault_list_view` — `GET /vault/?search=&organization_id=&page=` paginated, org-scoped via `accessible_org_ids`. Search matches title / username / url / notes. Ordered by org then title so the upcoming mobile org-grouping work has a sensible default. Never returns secrets.
+- `views_vault.vault_detail_view` — `GET /vault/<id>/`. 404 on cross-org reads (no existence leak).
+- `views_vault.vault_reveal_view` — `POST /vault/<id>/reveal/`. Mirrors the web vault's security guarantees:
+  - 30/hour per-user throttle via new `MobileVaultRevealRateThrottle` (scope `vault_reveal` added to `REST_FRAMEWORK.DEFAULT_THROTTLE_RATES`).
+  - Per-credential approval gate honored. If `requires_reveal_approval` is set with no current approval, returns 202 + `request_url` so the mobile UI can deep-link to the web approval flow rather than silently failing.
+  - `vault.access_rules.evaluate` (GeoIP / IP / time-of-day) honored. 403 with reason if denied.
+  - Decrypts via existing `Password.get_password()` → `decrypt_password()` with AAD verification.
+  - Marks the satisfying approval as used so the next reveal needs a fresh request.
+  - Audit log entries on every read attempt and decision (allow / deny / decrypt-failed) tagged `channel='mobile'`.
+
+7 tests in `MobileVaultEndpointTests` cover org scoping (other-org entries are 404), no-secret-in-list/detail, plaintext returned on reveal, search filtering, and unauthenticated rejection.
+
+Server-only change. Mobile already calls these paths; the v3.17.446 AAB on Play Console will start working once Apply lands this on prod — no rebuild needed.
+
 ## [3.17.448] - 2026-05-09
 
 ### Mobile dashboard crash fix — server returns the shape the client expects

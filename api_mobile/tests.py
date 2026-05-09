@@ -225,6 +225,101 @@ class MobileDashboardShapeTests(TestCase):
         self.assertEqual(body['security']['recent_alerts'], [])
 
 
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileVaultEndpointTests(TestCase):
+    """
+    v3.17.449: /api/mobile/v1/vault/{,<id>/,<id>/reveal/} are reachable,
+    org-scoped, never leak the secret on list/detail, and successfully
+    decrypt on reveal.
+    """
+
+    def setUp(self):
+        from vault.models import Password
+        from vault.encryption_v2 import encrypt_password
+        _clear_throttle_cache()
+        # Two orgs — user belongs to one only
+        self.org_a = Organization.objects.create(name='OrgA-Vault', slug='orga-vault')
+        self.org_b = Organization.objects.create(name='OrgB-Vault', slug='orgb-vault')
+        self.user = User.objects.create_user('vuser', password='hunter2', email='v@x.com')
+        Membership.objects.create(
+            user=self.user, organization=self.org_a, role=Role.OWNER, is_active=True,
+        )
+        # Org-A entry the user CAN see
+        self.entry_a = Password.objects.create(
+            organization=self.org_a, title='Router admin', username='admin',
+            encrypted_password=encrypt_password('s3cret-A', org_id=self.org_a.id),
+        )
+        # Org-B entry the user CANNOT see
+        self.entry_b = Password.objects.create(
+            organization=self.org_b, title='Other org switch', username='admin',
+            encrypted_password=encrypt_password('s3cret-B', org_id=self.org_b.id),
+        )
+        self.client = Client()
+        resp = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'vuser', 'password': 'hunter2',
+        })
+        self.token = resp.json()['token']
+
+    def test_list_returns_only_my_org_entries(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/vault/', self.token)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertIn('results', body)
+        ids = {row['id'] for row in body['results']}
+        self.assertIn(self.entry_a.id, ids)
+        self.assertNotIn(self.entry_b.id, ids)
+
+    def test_list_does_not_leak_secret(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/vault/', self.token)
+        body = resp.json()
+        for row in body['results']:
+            self.assertNotIn('secret', row)
+            self.assertNotIn('encrypted_password', row)
+            self.assertNotIn('password', row)
+
+    def test_detail_cross_org_returns_404(self):
+        resp = _auth_get(
+            self.client, f'/api/mobile/v1/vault/{self.entry_b.id}/', self.token,
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_reveal_returns_plaintext_for_my_org(self):
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/vault/{self.entry_a.id}/reveal/',
+            self.token,
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertEqual(body.get('secret'), 's3cret-A')
+
+    def test_reveal_cross_org_blocked(self):
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/vault/{self.entry_b.id}/reveal/',
+            self.token,
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_unauthenticated_blocked(self):
+        c = Client()
+        resp = c.get('/api/mobile/v1/vault/')
+        self.assertIn(resp.status_code, (401, 403))
+
+    def test_search_filters_results(self):
+        resp = self.client.get(
+            '/api/mobile/v1/vault/?search=Router',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 200)
+        ids = {row['id'] for row in resp.json()['results']}
+        self.assertIn(self.entry_a.id, ids)
+
+        resp2 = self.client.get(
+            '/api/mobile/v1/vault/?search=zzznosuchterm',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp2.json()['count'], 0)
+
+
 # v3.17.347 — dashboard + organizations endpoints
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
 class MobileDashboardOrgsTests(TestCase):
