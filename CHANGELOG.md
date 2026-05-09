@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.446] - 2026-05-09
+
+### Mobile login fix + signed-AAB build unblock
+
+Two unrelated mobile blockers shipped together so internal-testing testers can actually log in.
+
+**Mobile login was returning "username and password are required" with credentials clearly entered:**
+- `mobile/src/api/auth.ts` — login `POST /auth/login/` body now sends `{username, password}` instead of `{email, password}`. Backend (`api_mobile/views_auth.py:86`) reads `request.data.get('username')`, so the previous body left `username` empty server-side. The login screen field accepts either email or username (Django `authenticate()` handles both via the email-or-username backend), so no UI change is needed.
+
+**Signed AAB build was failing on `expo-modules-core:compileReleaseKotlin`:**
+- `mobile/patches/expo-modules-core+1.12.26.patch` — adds `?.` null-safe call to `PermissionsService.kt:166`. Android SDK 35 made `PackageInfo.requestedPermissions` nullable; `expo-modules-core@1.12.26` (Expo SDK 51) was written for SDK 34 and accessed it directly. Newer Kotlin compiler rejects this with `Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver`. Cannot downgrade compileSdk because Play Console requires `targetSdk 35` (and `compileSdk` must be ≥ `targetSdk`).
+- `mobile/package.json` — adds `patch-package` devDep + `postinstall` script so the patch survives `npm install`.
+
+**Version bump:**
+- `config/version.py` — 3.17.445 → 3.17.446.
+- `mobile/app.json` — Android `versionCode` 3170445 → 3170446 so Play Console accepts the new internal-testing AAB (it rejects duplicate versionCodes).
+
 ## [3.17.445] - 2026-05-08
 
 ### Documentation sweep, mobile-app trim, Play Console targetSdk 35
