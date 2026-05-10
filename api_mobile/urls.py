@@ -7,6 +7,7 @@ from . import (
     views_assets,
     views_auth,
     views_dashboard,
+    views_dispatch,
     views_field_ops,
     views_kb,
     views_tickets,
@@ -48,6 +49,13 @@ urlpatterns = [
     path('vault/', views_vault.vault_list_view, name='vault_list'),
     path('vault/<int:pk>/', views_vault.vault_detail_view, name='vault_detail'),
     path('vault/<int:pk>/reveal/', views_vault.vault_reveal_view, name='vault_reveal'),
+
+    # Dispatch board + scheduled tasks (v3.17.457)
+    path('dispatch/', views_dispatch.dispatch_board_view, name='dispatch_board'),
+    path('dispatch/assignments/<int:pk>/ack/',
+         views_dispatch.task_acknowledge_view, name='task_acknowledge'),
+    path('dispatch/tasks/<int:pk>/comments/',
+         views_dispatch.task_comment_view, name='task_comment'),
 
     # Vehicles + fuel + damage (v3.17.456)
     path('vehicles/', views_vehicles.my_vehicles_view, name='vehicle_list'),

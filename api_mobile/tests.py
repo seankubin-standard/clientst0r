@@ -1203,3 +1203,98 @@ class MobileVehiclesTests(TestCase):
         c = Client()
         resp = c.get('/api/mobile/v1/vehicles/')
         self.assertIn(resp.status_code, (401, 403))
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileDispatchTests(TestCase):
+    """v3.17.457 — dispatch board buckets + sign-off flow."""
+
+    def setUp(self):
+        from datetime import datetime, timedelta
+        from django.utils import timezone as tz
+        from scheduling.models import ScheduledTask, TaskAssignment
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='OrgD', slug='orgd')
+        self.user = User.objects.create_user('duser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'duser', 'password': 'hunter2',
+        }).json()['token']
+
+        # 3 tasks: overdue (yesterday), today (in a few hrs), upcoming (next week)
+        now = tz.now()
+        self.overdue = ScheduledTask.objects.create(
+            organization=self.org, title='Backup check',
+            due_date=now - timedelta(hours=18), status='pending',
+        )
+        self.today = ScheduledTask.objects.create(
+            organization=self.org, title='Patch deployment',
+            due_date=now.replace(hour=23, minute=0), status='pending',
+        )
+        self.upcoming = ScheduledTask.objects.create(
+            organization=self.org, title='Audit review',
+            due_date=now + timedelta(days=5), status='pending',
+        )
+        for t in (self.overdue, self.today, self.upcoming):
+            TaskAssignment.objects.create(task=t, user=self.user)
+
+    def test_board_buckets_assignments(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/dispatch/', self.token)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        overdue_ids = {a['task_id'] for a in body['overdue']}
+        upcoming_ids = {a['task_id'] for a in body['upcoming']}
+        self.assertIn(self.overdue.id, overdue_ids)
+        self.assertIn(self.upcoming.id, upcoming_ids)
+        self.assertEqual(body['tickets']['open_count'], 0)
+
+    def test_acknowledge_assignment(self):
+        from scheduling.models import TaskAssignment
+        a = TaskAssignment.objects.get(task=self.today, user=self.user)
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/dispatch/assignments/{a.id}/ack/',
+            self.token, {'notes': 'all set'},
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertTrue(body['acknowledged'])
+        self.assertEqual(body['notes'], 'all set')
+        a.refresh_from_db()
+        self.assertTrue(a.acknowledged)
+
+    def test_acknowledge_other_user_assignment_404(self):
+        other = User.objects.create_user('eve', password='x')
+        from scheduling.models import TaskAssignment
+        a = TaskAssignment.objects.create(task=self.today, user=other)
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/dispatch/assignments/{a.id}/ack/',
+            self.token, {},
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_add_task_comment(self):
+        resp = _auth_post(
+            self.client,
+            f'/api/mobile/v1/dispatch/tasks/{self.today.id}/comments/',
+            self.token, {'body': 'On site, starting now'},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        from scheduling.models import TaskComment
+        self.assertEqual(
+            TaskComment.objects.filter(task=self.today).count(), 1,
+        )
+
+    def test_comment_on_unassigned_task_404(self):
+        other_org = Organization.objects.create(name='X', slug='x')
+        from scheduling.models import ScheduledTask
+        unassigned = ScheduledTask.objects.create(
+            organization=other_org, title='Not mine',
+        )
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/dispatch/tasks/{unassigned.id}/comments/',
+            self.token, {'body': 'should fail'},
+        )
+        self.assertEqual(resp.status_code, 404)

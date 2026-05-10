@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.457] - 2026-05-10
+
+### Mobile dispatch board
+
+What's-on-my-plate view for techs in the field. Combines `scheduling.ScheduledTask` assignments with open ticket assignments.
+
+**Server (`api_mobile/views_dispatch.py`):**
+- `GET /dispatch/` — buckets the caller's task assignments into `overdue` / `today` / `upcoming`, plus tickets `{open_count, recent[5]}`. Bucket logic uses each task's `due_date` against the current local day window. No-due-date assignments fall under `today`.
+- `POST /dispatch/assignments/<id>/ack/` — sign off on a single assignment via the existing `TaskAssignment.sign_off` helper. Body `{notes?}`. Triggers the task's completion check (auto-completes when `require_all_signoffs` is satisfied). Other-user assignments return 404.
+- `POST /dispatch/tasks/<id>/comments/` — add a `TaskComment`. Caller must have an assignment on the task or 404.
+
+**Mobile:**
+- `app/dispatch/index.tsx` — sectioned screen (Overdue / Today / Upcoming / My tickets). Each assignment row shows priority pill, title, org, description, due date. Inline "Sign off" expand-to-form on un-acked items.
+- `mobile/src/api/dispatch.ts` — `useDispatchBoard`, `useAcknowledgeTask`, `useAddTaskComment`.
+- "Dispatch" tile added to dashboard `NAV_ITEMS` (front of the row).
+
+**Tests:** 5 in `MobileDispatchTests` — buckets, sign-off happy path, other-user assignment 404, comment create, comment on unassigned task 404.
+
+versionCode 3170456 → 3170457.
+
 ## [3.17.456] - 2026-05-10
 
 ### Vehicle inventory + fuel + damage on mobile
