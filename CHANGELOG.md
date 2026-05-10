@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.460] - 2026-05-10
+
+### Photo capture — damage reports + fuel receipts
+
+Damage reports without photos are weak evidence. Fuel logs without receipts can't be reimbursed. Both the damage and fuel POSTs now accept an optional `photo` field via multipart upload.
+
+**Server (`api_mobile/views_vehicles.py`):**
+- Damage and fuel views switch to mixed parsing: `JSONParser`, `MultiPartParser`, `FormParser`. Plain JSON still works; multipart adds the optional photo path.
+- New `_save_attachment(user, file, entity_type, entity_id)` helper wraps `files.models.Attachment.objects.create`. Vehicles aren't org-scoped, so the attachment is attributed to the uploader's primary accessible org.
+- `Attachment.ENTITY_TYPES` extended with `damage_report` and `fuel_log`. CharField choices change — no migration needed.
+- Response payload includes `photo: {id, original_filename, file_size, content_type, uploaded_at}` when a file was attached.
+
+**Mobile:**
+- New deps: `expo-image-picker ~15.0.7` + `expo-camera ~15.0.16`.
+- `app.json` plugins now include both with explicit, honest purpose strings (camera + media library on Android, NSCameraUsageDescription / NSPhotoLibraryUsageDescription on iOS).
+- New helper `mobile/src/utils/photoPicker.ts` — `takePhoto()` and `pickFromLibrary()` return a `{uri, name, type}` object axios's FormData can append directly.
+- `useLogFuel` and `useLogDamage` switch to multipart automatically when a photo is attached.
+- Vehicle detail screen gets "📷 Take photo" / "🖼 From library" buttons + a thumbnail preview (with Remove ✕) on both fuel and damage forms.
+
+versionCode 3170459 → 3170460. **AAB rebuild required** — both new deps need to land in the manifest via `expo prebuild`.
+
 ## [3.17.459] - 2026-05-10
 
 ### Dashboard reorganization + visual polish

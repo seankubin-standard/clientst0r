@@ -22,10 +22,54 @@ from django.utils import timezone
 from rest_framework import status as drf_status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import (
-    api_view, authentication_classes, permission_classes,
+    api_view, authentication_classes, parser_classes, permission_classes,
 )
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from .scoping import accessible_org_ids
+
+
+def _save_attachment(user, file_obj, *, entity_type: str, entity_id: int):
+    """
+    Persist an uploaded file as an Attachment row. Vehicles aren't org-
+    scoped, so we attribute the attachment to the uploader's primary
+    accessible org. Returns the Attachment instance, or None on failure.
+    """
+    if file_obj is None:
+        return None
+    try:
+        from files.models import Attachment
+        org_ids = list(accessible_org_ids(user))
+        if not org_ids:
+            return None
+        att = Attachment.objects.create(
+            organization_id=org_ids[0],
+            entity_type=entity_type,
+            entity_id=entity_id,
+            file=file_obj,
+            original_filename=getattr(file_obj, 'name', 'photo.jpg')[:255],
+            file_size=getattr(file_obj, 'size', 0) or 0,
+            content_type=getattr(file_obj, 'content_type', 'image/jpeg')[:100],
+            uploaded_by=user,
+        )
+        return att
+    except Exception:
+        return None
+
+
+def _serialize_attachment(att) -> dict:
+    return {
+        'id': att.id,
+        'entity_type': att.entity_type,
+        'entity_id': att.entity_id,
+        'original_filename': att.original_filename,
+        'file_size': att.file_size,
+        'content_type': att.content_type,
+        'uploaded_at': att.created_at.isoformat()
+            if hasattr(att, 'created_at') and att.created_at else None,
+    }
 
 
 def _serialize_vehicle(v, *, detail: bool = False) -> dict:
@@ -166,14 +210,16 @@ def vehicle_inventory_view(request, pk: int):
 @api_view(['GET', 'POST'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
+@parser_classes([JSONParser, MultiPartParser, FormParser])
 def vehicle_fuel_view(request, pk: int):
     """
     GET  /api/mobile/v1/vehicles/<id>/fuel/        — fuel log history (last 50)
     POST /api/mobile/v1/vehicles/<id>/fuel/        — log a fuel fill-up
 
     POST body: `{date?, mileage, gallons, cost_per_gallon, total_cost?,
-                 station?, notes?}`. `total_cost` defaults to gallons *
-    cost_per_gallon when omitted. `date` defaults to today.
+                 station?, notes?, photo?}`. `total_cost` defaults to
+    gallons * cost_per_gallon when omitted. `date` defaults to today.
+    Optional `photo` (multipart/form-data) attaches a receipt image.
     """
     from vehicles.models import VehicleFuelLog
     v = _my_vehicle_or_404(request.user, pk)
@@ -240,21 +286,35 @@ def vehicle_fuel_view(request, pk: int):
         v.save(update_fields=['current_mileage', 'updated_at']
                if any(f.name == 'updated_at' for f in v._meta.fields)
                else ['current_mileage'])
-    return Response(_serialize_fuel(fuel_log),
-                    status=drf_status.HTTP_201_CREATED)
+
+    # Optional receipt photo (v3.17.460)
+    photo = request.FILES.get('photo') if hasattr(request, 'FILES') else None
+    photo_attachment = None
+    if photo is not None:
+        photo_attachment = _save_attachment(
+            request.user, photo,
+            entity_type='fuel_log', entity_id=fuel_log.id,
+        )
+
+    payload = _serialize_fuel(fuel_log)
+    if photo_attachment is not None:
+        payload['photo'] = _serialize_attachment(photo_attachment)
+    return Response(payload, status=drf_status.HTTP_201_CREATED)
 
 
 @api_view(['GET', 'POST'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
+@parser_classes([JSONParser, MultiPartParser, FormParser])
 def vehicle_damage_view(request, pk: int):
     """
     GET  /api/mobile/v1/vehicles/<id>/damage/  — damage report history
     POST /api/mobile/v1/vehicles/<id>/damage/  — file a damage report
 
     POST body: `{description, severity?, damage_location?, incident_date?,
-                 estimated_cost?}`. Severity defaults to 'minor';
-    incident_date defaults to today.
+                 estimated_cost?, photo?}`. Severity defaults to 'minor';
+    incident_date defaults to today. Optional `photo` (multipart/form-data)
+    attaches an evidence image.
     """
     from vehicles.models import VehicleDamageReport
     v = _my_vehicle_or_404(request.user, pk)
@@ -304,5 +364,17 @@ def vehicle_damage_view(request, pk: int):
         estimated_cost=estimated_cost,
         condition_before=v.condition,
     )
-    return Response(_serialize_damage(report),
-                    status=drf_status.HTTP_201_CREATED)
+
+    # Optional evidence photo (v3.17.460)
+    photo = request.FILES.get('photo') if hasattr(request, 'FILES') else None
+    photo_attachment = None
+    if photo is not None:
+        photo_attachment = _save_attachment(
+            request.user, photo,
+            entity_type='damage_report', entity_id=report.id,
+        )
+
+    payload = _serialize_damage(report)
+    if photo_attachment is not None:
+        payload['photo'] = _serialize_attachment(photo_attachment)
+    return Response(payload, status=drf_status.HTTP_201_CREATED)
