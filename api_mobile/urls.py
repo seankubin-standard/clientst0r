@@ -11,6 +11,7 @@ from . import (
     views_kb,
     views_tickets,
     views_vault,
+    views_workflows,
 )
 
 app_name = 'api_mobile'
@@ -46,6 +47,15 @@ urlpatterns = [
     path('vault/', views_vault.vault_list_view, name='vault_list'),
     path('vault/<int:pk>/', views_vault.vault_detail_view, name='vault_detail'),
     path('vault/<int:pk>/reveal/', views_vault.vault_reveal_view, name='vault_reveal'),
+
+    # Workflows / processes (v3.17.455)
+    path('workflows/', views_workflows.workflow_list_view, name='workflow_list'),
+    path('workflows/<int:pk>/', views_workflows.workflow_detail_view, name='workflow_detail'),
+    path('workflows/<int:pk>/start/', views_workflows.workflow_start_view, name='workflow_start'),
+    path('workflows/executions/', views_workflows.my_executions_view, name='execution_list'),
+    path('workflows/executions/<int:pk>/', views_workflows.execution_detail_view, name='execution_detail'),
+    path('workflows/executions/<int:pk>/stages/<int:stage_id>/complete/',
+         views_workflows.execution_complete_stage_view, name='execution_stage_complete'),
 
     # Field Ops — Phase 8 (v3.17.410)
     path('locations/', views_field_ops.location_ping_view, name='location_ping'),

@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.455] - 2026-05-10
+
+### Workflows on mobile (Process runner)
+
+Surfaces the existing `processes` app as a mobile feature. Tech can browse available workflows for their org (plus globals), open one, and start a run that creates a `ProcessExecution` assigned to themselves. From the run screen they tap "Mark done" on each stage; when every stage has a completion row, the execution auto-finishes.
+
+**Server (`api_mobile/views_workflows.py`):**
+- `GET /workflows/` — published, non-archived processes scoped to user's accessible orgs ∪ globals. Search + category + organization_id filters.
+- `GET /workflows/<id>/` — with stages.
+- `POST /workflows/<id>/start/` — creates `ProcessExecution` (status=in_progress, assigned_to=caller). Globals require explicit `organization_id`; org-scoped processes default to their own org.
+- `GET /workflows/executions/?status=` — caller's executions.
+- `GET /workflows/executions/<id>/` — with stage state (each stage carries `is_completed`, `completed_at`, etc.).
+- `POST /workflows/executions/<id>/stages/<stage_id>/complete/` — idempotent. Auto-completes the execution when all stages are done.
+
+**Mobile:**
+- New screens: `app/workflows/index.tsx` (library + my in-progress runs), `app/workflows/[id].tsx` (process detail + start), `app/workflows/exec/[id].tsx` (run detail with per-stage Mark done buttons + notes).
+- `mobile/src/api/workflows.ts` — typed hooks `useWorkflows`, `useWorkflow`, `useStartWorkflow`, `useMyExecutions`, `useExecution`, `useCompleteStage`.
+- "Workflows" tile added to dashboard `NAV_ITEMS`.
+
+**Tests:** 5 in `MobileWorkflowsTests` — list visibility, detail with stages, start creates execution, complete-all auto-finishes, idempotent stage complete.
+
+versionCode 3170454 → 3170455.
+
 ## [3.17.454] - 2026-05-10
 
 ### Asset create from mobile + ticket time logging + asset list org filter

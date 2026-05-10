@@ -995,3 +995,98 @@ class MobileTicketTimeEntryTests(TestCase):
             self.token, {'duration_minutes': 10},
         )
         self.assertEqual(resp.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileWorkflowsTests(TestCase):
+    """v3.17.455 — workflow list/detail/start + execution stage completion."""
+
+    def setUp(self):
+        from processes.models import Process, ProcessStage
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='OrgW', slug='orgw')
+        self.user = User.objects.create_user('wuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        self.proc = Process.objects.create(
+            organization=self.org, title='Onboard tech',
+            slug='onboard-tech', description='Welcome packet',
+            category='onboarding', is_published=True,
+        )
+        for i, t in enumerate(['Issue laptop', 'Email setup', 'Tour']):
+            ProcessStage.objects.create(
+                process=self.proc, order=i, title=t,
+                description=f'Step {i}',
+            )
+        self.client = Client()
+        resp = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'wuser', 'password': 'hunter2',
+        })
+        self.token = resp.json()['token']
+
+    def test_list_workflows_includes_org_process(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/workflows/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        ids = [w['id'] for w in resp.json()['results']]
+        self.assertIn(self.proc.id, ids)
+
+    def test_workflow_detail_returns_stages(self):
+        resp = _auth_get(
+            self.client, f'/api/mobile/v1/workflows/{self.proc.id}/', self.token,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()['stages']), 3)
+
+    def test_start_workflow_creates_execution(self):
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/workflows/{self.proc.id}/start/',
+            self.token, {'notes': 'first run'},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['process_id'], self.proc.id)
+        self.assertEqual(body['status'], 'in_progress')
+        self.assertEqual(len(body['stages']), 3)
+
+    def test_complete_stage_then_finish_workflow(self):
+        # Start
+        start_resp = _auth_post(
+            self.client, f'/api/mobile/v1/workflows/{self.proc.id}/start/',
+            self.token, {},
+        )
+        exe_id = start_resp.json()['id']
+        stage_ids = [s['stage_id'] for s in start_resp.json()['stages']]
+
+        # Complete first two stages — execution still in_progress
+        for sid in stage_ids[:2]:
+            url = f'/api/mobile/v1/workflows/executions/{exe_id}/stages/{sid}/complete/'
+            r = _auth_post(self.client, url, self.token, {})
+            self.assertEqual(r.status_code, 200)
+
+        body = _auth_get(
+            self.client, f'/api/mobile/v1/workflows/executions/{exe_id}/', self.token,
+        ).json()
+        self.assertEqual(body['status'], 'in_progress')
+
+        # Complete last → execution flips to completed
+        last_url = f'/api/mobile/v1/workflows/executions/{exe_id}/stages/{stage_ids[2]}/complete/'
+        last = _auth_post(self.client, last_url, self.token, {'notes': 'done'})
+        self.assertEqual(last.json()['status'], 'completed')
+
+    def test_complete_stage_idempotent(self):
+        start = _auth_post(
+            self.client, f'/api/mobile/v1/workflows/{self.proc.id}/start/',
+            self.token, {},
+        )
+        exe_id = start.json()['id']
+        sid = start.json()['stages'][0]['stage_id']
+        url = f'/api/mobile/v1/workflows/executions/{exe_id}/stages/{sid}/complete/'
+        r1 = _auth_post(self.client, url, self.token, {'notes': 'first'})
+        r2 = _auth_post(self.client, url, self.token, {'notes': 'second'})
+        self.assertEqual(r1.status_code, 200)
+        self.assertEqual(r2.status_code, 200)
+        # Second wins
+        for s in r2.json()['stages']:
+            if s['stage_id'] == sid:
+                self.assertEqual(s['notes'], 'second')
