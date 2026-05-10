@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.461] - 2026-05-10
+
+### QR / barcode scanner + Play Console public-release docs
+
+**QR / barcode scanner (`mobile/app/scan.tsx`):**
+- Full-screen camera screen using `expo-camera`'s `CameraView` + `onBarcodeScanned`. Recognizes QR, Code 128 / 39, EAN 13 / 8, UPC A / E.
+- New endpoint `GET /api/mobile/v1/scan/?code=<text>` (`api_mobile/views_scan.py`) resolves the decoded string in this order, all org-scoped:
+  1. `InventoryItem.qr_code` (exact)
+  2. `Asset.asset_tag` (case-insensitive exact)
+  3. `Asset.serial_number` (exact)
+  4. `VehicleInventoryItem.qr_code` for vehicles assigned to the caller
+- On match: server returns `{kind, id, name, route}`; mobile deep-links via `router.replace(route)`. On miss: 404 + the scanner re-arms after 1.5 s with the unmatched code shown.
+- "📷 Scan" button added to the Inventory and Assets list headers, opening the modal scanner.
+- Modal presentation in `_layout.tsx` (no header chrome).
+
+**Public-release prep:**
+- New `docs/PUBLIC_RELEASE_CHECKLIST.md` consolidates everything needed for a Play Console production release: visual assets you still need to provide, every form to fill out (with pointers to which doc has which copy), and the sequence to flip from internal-testing to production.
+- `docs/PLAY_DATA_SAFETY.md` updated to cover **photos** (v3.17.460) and **precise location** (v3.17.452) — both now collected and need declaration.
+- `docs/PRIVACY_POLICY.md` rewritten "What the app collects" section: explicit treatment of `CAMERA`, `READ_MEDIA_IMAGES` / `READ_EXTERNAL_STORAGE`, and `ACCESS_FINE_LOCATION` purpose strings. Permission table refreshed.
+
+versionCode 3170460 → 3170461. **AAB rebuild required** — `expo-camera` plugin needs to land in the manifest via `expo prebuild`.
+
 ## [3.17.460] - 2026-05-10
 
 ### Photo capture — damage reports + fuel receipts

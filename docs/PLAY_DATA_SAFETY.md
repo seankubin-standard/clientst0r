@@ -1,6 +1,12 @@
 # Play Console — Data Safety Form Answers
 
-This is a fill-in guide for Play Console's **App content → Data safety** questionnaire. Answers are based on what the current AAB (`v3.17.446` / `versionCode 3170446`) actually does. If you ship a future version that adds GPS, camera, or push notifications, revisit this doc and update the form.
+This is a fill-in guide for Play Console's **App content → Data safety** questionnaire. Answers reflect the current AAB (`v3.17.461` / `versionCode 3170461`) which collects more data than the v1 internal-testing build:
+
+- **Precise location** — captured at user-initiated clock-in for geofence verification (added v3.17.452)
+- **Camera + Photos** — capture damage report photos, fuel receipt photos, scan inventory QR codes (added v3.17.460 + v3.17.461)
+- **Authentication credentials, app activity, device IDs** — same as v1
+
+Update this doc and re-fill the Play Console form whenever the app starts collecting a new data type or stops collecting one.
 
 The questionnaire is six sections in Play Console; this doc mirrors them.
 
@@ -11,10 +17,8 @@ The questionnaire is six sections in Play Console; this doc mirrors them.
 > Does your app collect or share any of the required user data types?
 **Answer: Yes.**
 
-(The app sends auth credentials and basic profile info to the user-configured server, so even though *you* don't centrally collect anything, Play Console counts that as "collected.")
-
 > Is all of the user data collected by your app encrypted in transit?
-**Answer: Yes.** All API traffic uses TLS (HTTPS) to the user-configured server.
+**Answer: Yes.** All API traffic uses TLS (HTTPS) to the user-configured server. Multipart uploads (photos) use the same channel.
 
 > Do you provide a way for users to request that their data is deleted?
 **Answer: Yes — through their Client St0r administrator.**
@@ -30,7 +34,7 @@ For each row below, mark **Collected** if listed, **Not collected** otherwise. A
 ### Personal info
 | Type | Status | Notes |
 |---|---|---|
-| Name | **Collected** | User's full name returned by the server's `/auth/me/` endpoint, cached locally |
+| Name | **Collected** | Full name returned by `/auth/me/`, cached locally |
 | Email address | **Collected** | Used for login (sent to server), cached locally |
 | User IDs | **Collected** | Auth token + user ID returned by server, cached locally |
 | Address | Not collected | |
@@ -41,12 +45,7 @@ For each row below, mark **Collected** if listed, **Not collected** otherwise. A
 | Other personal info | Not collected | |
 
 ### Financial info
-| Type | Status |
-|---|---|
-| User payment info | Not collected |
-| Purchase history | Not collected |
-| Credit score | Not collected |
-| Other financial info | Not collected |
+All **Not collected.** Fuel receipt totals are stored as numbers but are not personal financial data — they're per-vehicle business expenses.
 
 ### Health and fitness
 All **Not collected**.
@@ -56,10 +55,13 @@ All **Not collected**.
 |---|---|---|
 | Emails | Not collected | |
 | SMS or MMS | Not collected | |
-| Other in-app messages | **Collected** | Ticket comments the user types are sent to the server |
+| Other in-app messages | **Collected** | Ticket comments + scheduled-task comments the user types are sent to the server |
 
 ### Photos and videos
-All **Not collected**.
+| Type | Status | Notes |
+|---|---|---|
+| Photos | **Collected** | v3.17.460 — damage report photos and fuel receipt photos. Camera and library access requested at use time. |
+| Videos | Not collected | |
 
 ### Audio files
 All **Not collected**.
@@ -80,10 +82,10 @@ All **Not collected**.
 ### App activity
 | Type | Status | Notes |
 |---|---|---|
-| App interactions | **Collected** | The server's audit log records actions like ticket views, vault reveals |
-| In-app search history | **Collected** | KB and ticket search queries are sent to the server |
+| App interactions | **Collected** | Audit log records actions like ticket views, vault reveals, dispatch sign-offs, stock adjustments |
+| In-app search history | **Collected** | KB / ticket / inventory / asset / vault search queries |
 | Installed apps | Not collected | |
-| Other user-generated content | **Collected** | Ticket comments and updates the user creates |
+| Other user-generated content | **Collected** | Ticket comments, time entries, fuel logs, damage reports, inventory transactions, workflow stage notes, dispatch task comments |
 | Other actions | Not collected | |
 
 ### Web browsing
@@ -92,44 +94,53 @@ All **Not collected**.
 ### App info and performance
 | Type | Status | Notes |
 |---|---|---|
-| Crash logs | **Collected** | Google Play collects these from signed AABs by default; we ship R8 mapping for symbolication |
-| Diagnostics | **Collected** | Same — collected by Play Console, not by the app code |
+| Crash logs | **Collected** | Google Play collects from signed AABs; we ship R8 mapping for symbolication |
+| Diagnostics | **Collected** | Same — collected by Play Console, not by app code |
 | Other app performance data | Not collected | |
 
 ### Device or other IDs
 | Type | Status | Notes |
 |---|---|---|
-| Device or other IDs | **Collected** | The server's audit log records the request IP address (treated as a device identifier under Play's broad definition) |
+| Device or other IDs | **Collected** | Audit log records request IP address (treated as a device identifier under Play's broad definition) |
 
-### Authentication info (covered separately below — note: not in the standard "user data" categories but Play asks)
+### Location (v3.17.452+)
+| Type | Status | Notes |
+|---|---|---|
+| Approximate location | Not collected | |
+| Precise location | **Collected** | At user-initiated clock-in only, attached to the timeclock entry for geofence verification. NOT collected in the background. NOT collected continuously. |
+
+### Authentication info
 - Passwords: **transmitted to user-configured server**, **not stored on device**
 
 ---
 
 ## Section 3 — For each "Collected" data type
 
-Play Console asks the same four questions per type. The answers below apply to **every** collected type unless noted:
+Play Console asks the same four questions per type. Defaults that apply to **every** collected type unless noted:
 
 | Question | Answer |
 |---|---|
-| Is this data collected, shared, or both? | **Collected** (the app does not share with third parties; it sends data only to the server URL the user enters, which is the user's own infrastructure) |
-| Is this data processed ephemerally? | **No** (it's stored on the user's server) |
-| Is this data required or optional for the user? | **Required** (the app does not function without authentication) |
-| Why is this data collected? | **App functionality** + **Account management** for personal info / IDs / messages / app activity. **Analytics** is also OK to check for crash logs and diagnostics. **Do not** check Advertising, Personalization, Fraud prevention, Compliance, or Developer communications — none of those apply. |
+| Is this data collected, shared, or both? | **Collected** (the app does not share with third parties; data goes only to the server URL the user enters, which is the user's own infrastructure) |
+| Is this data processed ephemerally? | **No** (stored on the user's server) |
+| Is this data required or optional for the user? | **Required** (without auth the app does nothing) — except where noted below |
+| Why is this data collected? | **App functionality** + **Account management** for personal info / IDs / messages / app activity / photos / location. **Analytics** also OK for crash logs / diagnostics. **Do not** check Advertising, Personalization, or Developer communications — none apply. |
 
 ### Specifically for Crash logs and Diagnostics
-- Collected: **Yes**
-- Shared: **No**
-- Processed ephemerally: **No**
-- Required or optional: **Optional** (Play allows users to opt out of usage and diagnostics in Android Settings)
+- Required or optional: **Optional** (Play allows users to opt out in Android Settings)
 - Why collected: **App functionality** + **Analytics**
 
 ### Specifically for Device or other IDs (IP address)
-- Collected: **Yes**
-- Shared: **No**
-- Processed ephemerally: **No**
-- Required or optional: **Required**
-- Why collected: **App functionality** + **Fraud prevention, security, and compliance** (the audit log exists for security/compliance purposes)
+- Why collected: **App functionality** + **Fraud prevention, security, and compliance** (audit log)
+
+### Specifically for Photos (v3.17.460)
+- Required or optional: **Optional** — damage reports and fuel logs can be filed without a photo. Photo upload is user-initiated per record.
+- Why collected: **App functionality** (evidence + reimbursement records).
+- Mention in free-text: *"Photos are captured by the user and uploaded to their organization's server only when filing a damage report or fuel receipt. The app does not access the photo library or camera otherwise."*
+
+### Specifically for Precise location (v3.17.452)
+- Required or optional: **Optional** — clock-in works without GPS; the absence just disables geofence verification.
+- Why collected: **App functionality** (geofence verification of timeclock entries) + **Fraud prevention, security, and compliance** (preventing falsified clock-ins).
+- Mention in free-text: *"Location is captured only at the moment a user taps Clock In. The app does NOT track location in the background, does NOT track between clock-in and clock-out, and does NOT request the ALWAYS location permission."*
 
 ---
 
@@ -137,10 +148,10 @@ Play Console asks the same four questions per type. The answers below apply to *
 
 | Question | Answer |
 |---|---|
-| Is all data encrypted in transit? | **Yes** (TLS/HTTPS to the user-configured server) |
+| Is all data encrypted in transit? | **Yes** (TLS/HTTPS to the user-configured server, including multipart photo uploads) |
 | Do you provide a way for users to request data deletion? | **Yes** (deletion request flow described in Section 1 above) |
 | Have you committed to following Google Play's Families Policy? | **No** (the app is not directed at children) |
-| Has your app been independently validated against a global security standard? | **No** (leave unchecked unless you actually have a SOC 2 / ISO 27001 attestation specifically for this app) |
+| Has your app been independently validated against a global security standard? | **No** (leave unchecked unless you have a SOC 2 / ISO 27001 attestation specifically for this app) |
 
 ---
 
@@ -149,7 +160,7 @@ Play Console asks the same four questions per type. The answers below apply to *
 > Does your app share any of the required user data with third parties?
 **Answer: No.**
 
-The app sends data only to the server URL the user enters at login. That server is operated by the user's organization, not by a third party. The app does not include any third-party SDKs that exfiltrate data (no analytics, no advertising, no crash reporting beyond what Google Play provides automatically).
+The app sends data only to the server URL the user enters at login. That server is operated by the user's organization, not by a third party. The app does not include any third-party SDKs that exfiltrate data (no analytics, no advertising, no crash reporting beyond what Google Play provides automatically). Google Play's automatic crash + diagnostics is governed by Google's own policies; Play Console does not require it to be disclosed as data sharing.
 
 ---
 
@@ -164,23 +175,20 @@ The app sends data only to the server URL the user enters at login. That server 
 
 ## What to paste into "Privacy policy URL"
 
-If you wire up the privacy policy as a Django route on huduglue (next step), use:
 ```
 https://huduglue.agit8or.net/privacy-policy/
 ```
 
-If you host it elsewhere (GitHub Pages, static site, Notion public page), paste that URL instead. The URL must:
-- Be reachable without authentication
-- Be reachable from outside your network
-- Stay live for as long as the app is on Play Store
+The route was shipped in v3.17.447. Verify it loads anonymously before submitting.
 
 ---
 
 ## When you have to revisit this
 
 Update this doc and re-fill the Play Console questionnaire whenever:
-- You ship a build that adds **location** (GPS-based timeclock — Sub-phase 8.2)
-- You ship a build that adds **camera** (asset-photo capture, signature capture, etc.)
-- You ship a build that adds **push notifications** (FCM)
+
+- You ship a build that adds **background location** (currently foreground-only at clock-in time)
+- You ship a build that adds **push notifications** (planned — will need to declare device IDs disclosure differently)
 - You add a third-party SDK (analytics, error tracking like Sentry, ad networks)
+- You ship a build that adds receipt OCR sent to a third-party service (Cloud Vision / Textract)
 - The app starts collecting any of the "Not collected" data types above

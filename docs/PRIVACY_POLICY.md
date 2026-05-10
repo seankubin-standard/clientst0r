@@ -1,7 +1,7 @@
 # Privacy Policy — Client St0r Mobile
 
 **Effective:** 2026-05-09
-**Last updated:** 2026-05-09
+**Last updated:** 2026-05-10
 
 This policy describes how the **Client St0r Mobile** Android app handles user data. Client St0r Mobile is a companion app for the Client St0r IT service-management platform. It is intended for use by IT technicians and staff at organizations that have deployed Client St0r on their own infrastructure.
 
@@ -37,16 +37,25 @@ The app does **not** store passwords on the device. Vault secrets retrieved thro
 
 Signing out (or uninstalling the app) clears all on-device storage.
 
+## What the app collects when you opt in
+
+Since v3.17.452, the app may also capture the following data when you take specific actions. Each capture happens only at the moment of that action — not in the background, not continuously.
+
+- **Precise location** (Android `ACCESS_FINE_LOCATION`) — captured *only* at the moment you tap **Clock in** in the Timeclock screen. The single GPS reading is sent to your server with the clock-in event so it can be checked against your organization's geofence configuration. The app does NOT request the `ACCESS_BACKGROUND_LOCATION` permission, does NOT record location between clock-in and clock-out, and does NOT track movement.
+- **Camera** (`CAMERA`) — used for damage report photos, fuel receipt photos, and scanning inventory QR codes / asset barcodes. The camera is opened only when you tap a "Take photo" or "Scan" button, and closes when you complete or cancel the action.
+- **Photo library** (`READ_MEDIA_IMAGES` on Android 13+) — used for the "From library" option on damage and fuel forms when you'd rather attach an existing photo than take a new one.
+
+Photos you capture or select are uploaded to your configured server as part of the damage report / fuel log they are attached to, and stored alongside that record. They are not uploaded anywhere else and not used by the app for any other purpose.
+
 ## What the app does not collect
 
-The current version of the app does **not** request or collect:
-- Precise or approximate location
-- Camera, microphone, photo library, or media access
+The app does **not** request or collect:
+- Approximate location, location in the background, or continuous location tracking
+- Microphone audio
 - Contacts, calendar, or call/SMS data
 - Health, fitness, or financial data
 - Advertising IDs
-
-Future versions of the app may add an optional GPS-based timeclock feature for field technicians; that will be opt-in, will request the relevant Android location permission at runtime with an explanation, and will be governed by your organization's working-hours configuration on the server.
+- Information about other apps installed on your device
 
 ## Crash reporting
 
@@ -70,7 +79,9 @@ The app is not intended for users under 13. We do not knowingly collect data fro
 | Android permission | Why |
 |---|---|
 | `INTERNET` | To reach the server URL you configured |
-| `READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE` | Required by some Expo modules; the app does not read your photos or files |
+| `ACCESS_FINE_LOCATION` | A single GPS reading at clock-in for geofence verification. Not requested at any other time. |
+| `CAMERA` | Damage report photos, fuel receipt photos, and inventory QR / barcode scanning. Camera is opened only at the moment you tap a "Take photo" or "Scan" button. |
+| `READ_MEDIA_IMAGES` (Android 13+) / `READ_EXTERNAL_STORAGE` (Android 12 and below) | Used by the "From library" option on damage and fuel forms when you'd rather attach an existing photo than take a new one. |
 | `SYSTEM_ALERT_WINDOW` | Required by some Expo modules; the app does not draw over other apps |
 | `VIBRATE` | Haptic feedback on UI interactions |
 

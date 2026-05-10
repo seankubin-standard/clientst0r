@@ -11,6 +11,7 @@ from . import (
     views_field_ops,
     views_inventory,
     views_kb,
+    views_scan,
     views_tickets,
     views_vault,
     views_vehicles,
@@ -50,6 +51,9 @@ urlpatterns = [
     path('vault/', views_vault.vault_list_view, name='vault_list'),
     path('vault/<int:pk>/', views_vault.vault_detail_view, name='vault_detail'),
     path('vault/<int:pk>/reveal/', views_vault.vault_reveal_view, name='vault_reveal'),
+
+    # Code scan resolver (v3.17.461)
+    path('scan/', views_scan.scan_resolve_view, name='scan_resolve'),
 
     # Inventory (v3.17.458)
     path('inventory/', views_inventory.inventory_list_view, name='inventory_list'),
