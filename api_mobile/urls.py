@@ -63,6 +63,7 @@ urlpatterns = [
 
     # Dispatch board + scheduled tasks (v3.17.457)
     path('dispatch/', views_dispatch.dispatch_board_view, name='dispatch_board'),
+    path('dispatch/calendar/', views_dispatch.dispatch_calendar_view, name='dispatch_calendar'),
     path('dispatch/assignments/<int:pk>/ack/',
          views_dispatch.task_acknowledge_view, name='task_acknowledge'),
     path('dispatch/tasks/<int:pk>/comments/',

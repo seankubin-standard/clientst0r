@@ -98,6 +98,62 @@ def dispatch_board_view(request):
     })
 
 
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def dispatch_calendar_view(request):
+    """
+    GET /api/mobile/v1/dispatch/calendar/?month=YYYY-MM
+
+    Calendar grouping for the caller's `TaskAssignment` rows whose task
+    has a `due_date` inside the requested month. Returns a flat map
+    `{YYYY-MM-DD: [assignment dicts], ...}` so the mobile calendar can
+    render dots / counts per day. Days with no assignments are omitted
+    rather than returned as empty lists.
+
+    `month` defaults to the current local month. Format YYYY-MM.
+    """
+    from datetime import date, timedelta
+    from django.utils import timezone
+    from scheduling.models import TaskAssignment
+
+    month_raw = (request.query_params.get('month') or '').strip()
+    today = timezone.localdate()
+    if month_raw:
+        try:
+            year, mon = month_raw.split('-')
+            start = date(int(year), int(mon), 1)
+        except (ValueError, IndexError):
+            return Response({'detail': 'month must be YYYY-MM'}, status=400)
+    else:
+        start = today.replace(day=1)
+
+    # End: first day of next month.
+    if start.month == 12:
+        end = date(start.year + 1, 1, 1)
+    else:
+        end = date(start.year, start.month + 1, 1)
+
+    qs = (TaskAssignment.objects
+          .filter(user=request.user,
+                  task__due_date__gte=start,
+                  task__due_date__lt=end)
+          .select_related('task', 'task__organization'))
+
+    bucketed: dict[str, list[dict]] = {}
+    for a in qs:
+        d = a.task.due_date.date().isoformat() if a.task.due_date else None
+        if not d:
+            continue
+        bucketed.setdefault(d, []).append(_serialize_assignment(a))
+
+    return Response({
+        'month': start.strftime('%Y-%m'),
+        'today': today.isoformat(),
+        'days': bucketed,
+    })
+
+
 @api_view(['POST'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])

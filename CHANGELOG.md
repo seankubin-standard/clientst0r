@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.462] - 2026-05-10
+
+### Dispatch calendar view
+
+Month-grid calendar of the caller's scheduled-task assignments. Tap a day → see that day's assignments in a list below. Server returns a flat `{YYYY-MM-DD: [assignments]}` map for the requested month so the grid can render dot-counts without per-day requests.
+
+**Server (`api_mobile/views_dispatch.dispatch_calendar_view`):**
+- `GET /api/mobile/v1/dispatch/calendar/?month=YYYY-MM` — defaults to current local month. Returns `{month, today, days}` where `days` is keyed by date string and contains the same `_serialize_assignment(a)` payload the board uses (so the tap-through can render the existing assignment card layout).
+- Empty days are omitted rather than returned as empty lists (smaller payload, simpler client check).
+
+**Mobile (`mobile/app/dispatch/calendar.tsx`):**
+- Hand-rolled month grid (no external calendar library — keeps the AAB lean). 7-col × 5–6-row layout. Today gets a blue border; selected day gets a filled blue background.
+- Dots per day with assignment count badge (capped at "9+").
+- < and > navigate months; state resets to current-day selection when changing months.
+- "📅 Calendar" button on the dispatch board header opens the screen.
+
+versionCode 3170461 → 3170462.
+
 ## [3.17.461] - 2026-05-10
 
 ### QR / barcode scanner + Play Console public-release docs
