@@ -41,7 +41,8 @@ Signing out (or uninstalling the app) clears all on-device storage.
 
 Since v3.17.452, the app may also capture the following data when you take specific actions. Each capture happens only at the moment of that action — not in the background, not continuously.
 
-- **Precise location** (Android `ACCESS_FINE_LOCATION`) — captured *only* at the moment you tap **Clock in** in the Timeclock screen. The single GPS reading is sent to your server with the clock-in event so it can be checked against your organization's geofence configuration. The app does NOT request the `ACCESS_BACKGROUND_LOCATION` permission, does NOT record location between clock-in and clock-out, and does NOT track movement.
+- **Precise location** (Android `ACCESS_FINE_LOCATION`) — captured at the moment you tap **Clock in** in the Timeclock screen. The single GPS reading is sent to your server with the clock-in event so it can be checked against your organization's geofence configuration.
+- **Background location** (Android `ACCESS_BACKGROUND_LOCATION`, iOS "Always" location) — **off by default**. If you turn it on in Settings, your location is sampled every 5 minutes (and only when you've moved at least 50 meters) and sent to your server while you're on shift. Off-shift pings are dropped at the API layer by the server and never stored. You can turn this off at any time in Settings. When background tracking is active, Android shows a persistent foreground notification labeled "Client St0r is tracking your shift."
 - **Camera** (`CAMERA`) — used for damage report photos, fuel receipt photos, and scanning inventory QR codes / asset barcodes. The camera is opened only when you tap a "Take photo" or "Scan" button, and closes when you complete or cancel the action.
 - **Photo library** (`READ_MEDIA_IMAGES` on Android 13+) — used for the "From library" option on damage and fuel forms when you'd rather attach an existing photo than take a new one.
 
@@ -50,12 +51,19 @@ Photos you capture or select are uploaded to your configured server as part of t
 ## What the app does not collect
 
 The app does **not** request or collect:
-- Approximate location, location in the background, or continuous location tracking
+- Approximate location
+- Continuous location tracking when background location is off (the default)
 - Microphone audio
 - Contacts, calendar, or call/SMS data
 - Health, fitness, or financial data
 - Advertising IDs
 - Information about other apps installed on your device
+
+## Push notifications
+
+If you grant notification permission at first login, the app registers an Expo push token with your server. Your server uses this to notify you when a ticket is assigned to you (and, in the future, for other events your administrator configures). Push payloads contain only the notification text and a deep-link route within the app — they do not contain credential or vault data.
+
+You can revoke notifications at any time by signing out (the server forgets your push token) or by disabling notifications for the app in Android Settings.
 
 ## Crash reporting
 
@@ -79,9 +87,12 @@ The app is not intended for users under 13. We do not knowingly collect data fro
 | Android permission | Why |
 |---|---|
 | `INTERNET` | To reach the server URL you configured |
-| `ACCESS_FINE_LOCATION` | A single GPS reading at clock-in for geofence verification. Not requested at any other time. |
+| `ACCESS_FINE_LOCATION` | A single GPS reading at clock-in for geofence verification. |
+| `ACCESS_BACKGROUND_LOCATION` | Requested only if you turn on background-location tracking in Settings (off by default). Used to record on-shift visits to client sites. |
+| `POST_NOTIFICATIONS` | Show push notifications you've explicitly enabled (e.g. when a ticket is assigned to you). |
 | `CAMERA` | Damage report photos, fuel receipt photos, and inventory QR / barcode scanning. Camera is opened only at the moment you tap a "Take photo" or "Scan" button. |
 | `READ_MEDIA_IMAGES` (Android 13+) / `READ_EXTERNAL_STORAGE` (Android 12 and below) | Used by the "From library" option on damage and fuel forms when you'd rather attach an existing photo than take a new one. |
+| `FOREGROUND_SERVICE_LOCATION` | When background location is on, Android requires a persistent foreground service so you can see that the app is tracking you. |
 | `SYSTEM_ALERT_WINDOW` | Required by some Expo modules; the app does not draw over other apps |
 | `VIBRATE` | Haptic feedback on UI interactions |
 

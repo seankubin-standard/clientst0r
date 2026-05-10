@@ -107,7 +107,7 @@ All **Not collected**.
 | Type | Status | Notes |
 |---|---|---|
 | Approximate location | Not collected | |
-| Precise location | **Collected** | At user-initiated clock-in only, attached to the timeclock entry for geofence verification. NOT collected in the background. NOT collected continuously. |
+| Precise location | **Collected** | At user-initiated clock-in always. ALSO collected every 5 minutes in the background IF the user opts in via Settings → Background location (default OFF). Off-shift pings are dropped at the API layer. |
 
 ### Authentication info
 - Passwords: **transmitted to user-configured server**, **not stored on device**
@@ -137,10 +137,10 @@ Play Console asks the same four questions per type. Defaults that apply to **eve
 - Why collected: **App functionality** (evidence + reimbursement records).
 - Mention in free-text: *"Photos are captured by the user and uploaded to their organization's server only when filing a damage report or fuel receipt. The app does not access the photo library or camera otherwise."*
 
-### Specifically for Precise location (v3.17.452)
-- Required or optional: **Optional** — clock-in works without GPS; the absence just disables geofence verification.
-- Why collected: **App functionality** (geofence verification of timeclock entries) + **Fraud prevention, security, and compliance** (preventing falsified clock-ins).
-- Mention in free-text: *"Location is captured only at the moment a user taps Clock In. The app does NOT track location in the background, does NOT track between clock-in and clock-out, and does NOT request the ALWAYS location permission."*
+### Specifically for Precise location (v3.17.452 + v3.17.464)
+- Required or optional: **Optional** — clock-in works without GPS; the absence just disables geofence verification. Background tracking is opt-in and off by default.
+- Why collected: **App functionality** (geofence verification of timeclock entries, on-shift visit logging) + **Fraud prevention, security, and compliance** (preventing falsified clock-ins).
+- Mention in free-text: *"At clock-in time, the app captures a single GPS reading to verify the user is inside a client geofence. If the user explicitly enables 'Background location' in Settings (default OFF), the app also samples location every 5 minutes during their working hours via a foreground service with a persistent notification. Off-shift pings are dropped at the API layer and never stored. The user can turn background tracking off at any time."*
 
 ---
 

@@ -76,7 +76,7 @@ These can't ship from the repo. Each is filled in at `play.google.com/console` �
 
 | Issue | Likelihood | Mitigation |
 |---|---|---|
-| **"Permission misuse — background location"** | Low. We don't request `ACCESS_BACKGROUND_LOCATION`. | If asked, point at `mobile/app/timeclock/index.tsx` — `Location.requestForegroundPermissionsAsync()` only. |
+| **"Permission misuse — background location"** | **High once you enable background tracking by default.** As of v3.17.464 the app declares `ACCESS_BACKGROUND_LOCATION` so the opt-in toggle works, but it's OFF by default. **Play Console will require a 30-second sample video showing your in-app opt-in flow** and an `Allowed by Google` declaration confirming the feature is core to the app. Submit those before the production release reviews. |
 | **"Photo library purpose unclear"** | Medium. The image-picker plugin's purpose string is honest. | Privacy policy v3.17.461 explicitly addresses photo handling. |
 | **"Sensitive data — financial info"** | Low. Fuel receipts have totals but those aren't personal financial data. | If flagged, declare them under App activity, not Financial info. |
 | **"Functionality concern — backend required"** | Possible. App requires a self-hosted server URL to do anything. | App access section + reviewer test account answers this. The `play-reviewer` account on huduglue gives them a working demo. |

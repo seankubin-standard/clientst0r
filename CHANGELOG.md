@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.464] - 2026-05-10
+
+### Background location tracking (opt-in) — Sub-phase 8.2 completes
+
+The deferred Sub-phase 8.2 (background GPS for shift visit logging) ships. **Off by default**, explicit opt-in via Settings, foreground service with visible notification while running.
+
+**Mobile:**
+- New dep: `expo-task-manager ~11.8.2`. `expo-location` plugin block now declares `isAndroidBackgroundLocationEnabled` + `isIosBackgroundLocationEnabled`. Permission strings updated to be honest about background usage.
+- New `mobile/src/utils/backgroundLocation.ts`:
+  - `defineTask(BG_LOCATION_TASK)` at module scope so the OS-wake handler is registered before any background event fires.
+  - `enableBackgroundLocation()` requests foreground → then background permission (errors clearly if denied), starts `Location.startLocationUpdatesAsync` with `timeInterval=5min`, `distanceInterval=50m`, Balanced accuracy, foreground service notification "Client St0r is tracking your shift."
+  - `disableBackgroundLocation()` stops the task and clears the AsyncStorage flag.
+  - State persisted in AsyncStorage so the toggle survives app restarts.
+- Settings screen gains a "Background location" card with explanatory note + Turn on / Turn off button. The card flips to a green-tone (success border) when active.
+- The task posts `{lat, lon, accuracy, timestamp}` to the existing `POST /locations/` endpoint — server already drops off-shift pings per `WorkingHours` (v3.17.410 behavior).
+
+**Docs:**
+- `docs/PRIVACY_POLICY.md`: new paragraph explicitly explaining background tracking (off by default, 5-min cadence, foreground service notification, off-shift pings dropped at server). Permission table adds `ACCESS_BACKGROUND_LOCATION`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE_LOCATION`.
+- `docs/PLAY_DATA_SAFETY.md`: precise-location section updated for the optional background flow with the wording Play wants in the free-text justification field.
+- `docs/PUBLIC_RELEASE_CHECKLIST.md`: flagged the **High** Play Console review impact — production submission will require a 30-second sample video of the in-app opt-in flow and an "Allowed by Google" declaration.
+
+versionCode 3170463 → 3170464.
+
 ## [3.17.463] - 2026-05-10
 
 ### Push notifications via Expo
