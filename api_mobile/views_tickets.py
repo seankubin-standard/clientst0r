@@ -282,3 +282,106 @@ def ticket_comment_view(request, pk: int):
         'author_id': comment.author_id,
         'created_at': comment.created_at.isoformat() if comment.created_at else None,
     }, status=201)
+
+
+@api_view(['GET', 'POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def ticket_time_view(request, pk: int):
+    """
+    GET  /api/mobile/v1/tickets/<id>/time/  — list time entries on this ticket
+    POST /api/mobile/v1/tickets/<id>/time/  — log time on this ticket (v3.17.454)
+
+    POST body (one of two shapes):
+      * Manual entry: `{duration_minutes, notes?, is_billable?, started_at?}`
+        — `started_at` defaults to (now - duration). `ended_at` set to now.
+      * Running timer: `{started_at, ended_at?, notes?, is_billable?}`
+        — if `ended_at` omitted, server computes from `started_at` and now.
+    """
+    from psa.models import Ticket, TicketTimeEntry
+    from django.utils import timezone
+    from datetime import datetime, timedelta
+
+    org_ids = accessible_org_ids(request.user)
+    try:
+        ticket = Ticket.objects.get(pk=pk, organization_id__in=org_ids)
+    except Ticket.DoesNotExist:
+        return Response({'detail': 'Not found'}, status=404)
+
+    if request.method == 'GET':
+        entries = (TicketTimeEntry.objects
+                   .filter(ticket=ticket)
+                   .order_by('-started_at')[:50])
+        return Response({
+            'count': entries.count() if hasattr(entries, 'count')
+                     else len(list(entries)),
+            'results': [_serialize_time_entry(t) for t in entries],
+        })
+
+    # POST
+    data = request.data or {}
+
+    def _parse_dt(raw):
+        if raw is None:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(raw).replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            return None
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed, timezone.utc)
+        return parsed
+
+    started_at = _parse_dt(data.get('started_at'))
+    ended_at = _parse_dt(data.get('ended_at'))
+
+    duration_minutes = data.get('duration_minutes')
+    if duration_minutes is not None:
+        try:
+            duration_minutes = max(0, int(duration_minutes))
+        except (TypeError, ValueError):
+            return Response({'detail': 'invalid duration_minutes'}, status=400)
+
+    if duration_minutes is None and started_at is None:
+        return Response(
+            {'detail': 'provide either duration_minutes or started_at'},
+            status=400,
+        )
+
+    now = timezone.now()
+    if started_at is None:
+        started_at = now - timedelta(minutes=duration_minutes or 0)
+    if ended_at is None:
+        if duration_minutes is not None:
+            ended_at = started_at + timedelta(minutes=duration_minutes)
+        else:
+            ended_at = now
+    if duration_minutes is None:
+        duration_minutes = max(0, int((ended_at - started_at).total_seconds() // 60))
+
+    is_billable = bool(data.get('is_billable', True))
+    notes = (data.get('notes') or '').strip()[:2000]
+
+    entry = TicketTimeEntry.objects.create(
+        ticket=ticket,
+        user=request.user,
+        started_at=started_at,
+        ended_at=ended_at,
+        duration_minutes=duration_minutes,
+        is_billable=is_billable,
+        notes=notes,
+    )
+    return Response(_serialize_time_entry(entry), status=201)
+
+
+def _serialize_time_entry(t):
+    return {
+        'id': t.id,
+        'ticket_id': t.ticket_id,
+        'user_id': t.user_id,
+        'started_at': t.started_at.isoformat() if t.started_at else None,
+        'ended_at': t.ended_at.isoformat() if t.ended_at else None,
+        'duration_minutes': t.duration_minutes,
+        'is_billable': t.is_billable,
+        'notes': t.notes,
+    }

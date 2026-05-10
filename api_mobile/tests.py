@@ -851,3 +851,147 @@ class MobileFieldOpsTests(TestCase):
              'lat': 'not-a-number', 'lon': '-73.0'},
         )
         self.assertEqual(resp.status_code, 400)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileAssetCreateTests(TestCase):
+    """v3.17.454 — POST /api/mobile/v1/assets/ creates an asset, org-scoped."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        self.org_a = Organization.objects.create(name='OrgA-Acreate', slug='orga-acreate')
+        self.org_b = Organization.objects.create(name='OrgB-Acreate', slug='orgb-acreate')
+        self.user = User.objects.create_user('auser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org_a, role=Role.OWNER, is_active=True,
+        )
+        self.client = Client()
+        resp = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'auser', 'password': 'hunter2',
+        })
+        self.token = resp.json()['token']
+
+    def test_create_asset_in_my_org(self):
+        resp = _auth_post(self.client, '/api/mobile/v1/assets/', self.token, {
+            'organization_id': self.org_a.id,
+            'name': 'srv-01',
+            'asset_type': 'server',
+            'hostname': 'srv-01.local',
+            'ip_address': '10.0.0.5',
+        })
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['name'], 'srv-01')
+        self.assertEqual(body['organization_id'], self.org_a.id)
+        from assets.models import Asset
+        self.assertEqual(Asset.objects.filter(name='srv-01').count(), 1)
+
+    def test_create_asset_other_org_forbidden(self):
+        resp = _auth_post(self.client, '/api/mobile/v1/assets/', self.token, {
+            'organization_id': self.org_b.id, 'name': 'cross',
+        })
+        self.assertEqual(resp.status_code, 403)
+
+    def test_create_asset_missing_org_400(self):
+        resp = _auth_post(self.client, '/api/mobile/v1/assets/', self.token, {
+            'name': 'no-org',
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_asset_missing_name_400(self):
+        resp = _auth_post(self.client, '/api/mobile/v1/assets/', self.token, {
+            'organization_id': self.org_a.id,
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_drops_unknown_fields(self):
+        resp = _auth_post(self.client, '/api/mobile/v1/assets/', self.token, {
+            'organization_id': self.org_a.id, 'name': 'q',
+            'evil_field': 'pwn', 'organization_id_actual': 999,
+        })
+        self.assertEqual(resp.status_code, 201)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileTicketTimeEntryTests(TestCase):
+    """v3.17.454 — POST /api/mobile/v1/tickets/<id>/time/ logs time."""
+
+    def setUp(self):
+        from psa.models import Queue, Ticket, TicketPriority, TicketStatus, TicketType
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='OrgT-Time', slug='orgt-time')
+        self.user = User.objects.create_user('tuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        sn = TicketStatus.objects.create(name='New', slug='new', sort_order=1)
+        pr = TicketPriority.objects.create(code='P3', name='Normal')
+        tt = TicketType.objects.create(name='Incident', slug='incident')
+        qu = Queue.objects.create(name='Default', slug='default')
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Time test', status=sn,
+            priority=pr, ticket_type=tt, queue=qu,
+        )
+        self.client = Client()
+        resp = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'tuser', 'password': 'hunter2',
+        })
+        self.token = resp.json()['token']
+
+    def test_log_time_by_duration(self):
+        url = f'/api/mobile/v1/tickets/{self.ticket.id}/time/'
+        resp = _auth_post(self.client, url, self.token, {
+            'duration_minutes': 30, 'notes': 'phone troubleshoot',
+            'is_billable': True,
+        })
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['duration_minutes'], 30)
+        self.assertTrue(body['is_billable'])
+        from psa.models import TicketTimeEntry
+        entry = TicketTimeEntry.objects.get(pk=body['id'])
+        self.assertEqual(entry.user_id, self.user.id)
+        self.assertEqual(entry.duration_minutes, 30)
+
+    def test_log_time_by_started_ended(self):
+        url = f'/api/mobile/v1/tickets/{self.ticket.id}/time/'
+        resp = _auth_post(self.client, url, self.token, {
+            'started_at': '2026-05-09T09:00:00Z',
+            'ended_at':   '2026-05-09T10:30:00Z',
+        })
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['duration_minutes'], 90)
+
+    def test_log_time_missing_inputs_400(self):
+        url = f'/api/mobile/v1/tickets/{self.ticket.id}/time/'
+        resp = _auth_post(self.client, url, self.token, {'notes': 'no data'})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_list_time_entries(self):
+        url = f'/api/mobile/v1/tickets/{self.ticket.id}/time/'
+        _auth_post(self.client, url, self.token, {'duration_minutes': 15})
+        _auth_post(self.client, url, self.token, {'duration_minutes': 45})
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertGreaterEqual(len(body['results']), 2)
+
+    def test_log_time_cross_org_404(self):
+        other_org = Organization.objects.create(name='Other', slug='other')
+        from psa.models import (
+            Queue, Ticket, TicketPriority, TicketStatus, TicketType,
+        )
+        sn = TicketStatus.objects.filter(slug='new').first()
+        pr = TicketPriority.objects.first()
+        tt = TicketType.objects.first()
+        qu = Queue.objects.first()
+        other_ticket = Ticket.objects.create(
+            organization=other_org, subject='Other org', status=sn,
+            priority=pr, ticket_type=tt, queue=qu,
+        )
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/tickets/{other_ticket.id}/time/',
+            self.token, {'duration_minutes': 10},
+        )
+        self.assertEqual(resp.status_code, 404)

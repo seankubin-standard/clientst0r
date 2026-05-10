@@ -36,6 +36,7 @@ urlpatterns = [
     path('tickets/', views_tickets.ticket_list_view, name='ticket_list'),
     path('tickets/<int:pk>/', views_tickets.ticket_detail_view, name='ticket_detail'),
     path('tickets/<int:pk>/comments/', views_tickets.ticket_comment_view, name='ticket_comment'),
+    path('tickets/<int:pk>/time/', views_tickets.ticket_time_view, name='ticket_time'),
 
     # KB / docs (v3.17.350)
     path('kb/', views_kb.kb_list_view, name='kb_list'),

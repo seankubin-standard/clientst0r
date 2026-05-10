@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.454] - 2026-05-10
+
+### Asset create from mobile + ticket time logging + asset list org filter
+
+Three coupled mobile additions plus their server endpoints. Bundled into one AAB rebuild as v3.17.454.
+
+**Asset creation from the field (`POST /api/mobile/v1/assets/`):**
+- `views_assets.asset_list_view` now also handles POST.  Required: `organization_id` (must be accessible — 403 otherwise) and `name`. Optional fields whitelisted: `asset_type`, `asset_tag`, `serial_number`, `hostname`, `ip_address`, `mac_address`, `os_name`, `os_version`, `manufacturer`, `model`, `notes`. Anything else is dropped.
+- New mobile screen at `mobile/app/assets/new.tsx` — org chip picker, identity card (name + asset_type chips), network card (hostname + IP), hardware card (serial + model), notes. "+ New" button on the asset list header opens it. Auto-selects the user's only org if there's one.
+- 5 tests in `MobileAssetCreateTests`: own-org create, cross-org 403, missing org 400, missing name 400, unknown fields silently dropped.
+
+**Ticket time logging (`POST /api/mobile/v1/tickets/<id>/time/`):**
+- New `views_tickets.ticket_time_view` accepts both shapes: `{duration_minutes, notes?, is_billable?}` for manual entries (sets `started_at = now - duration`), or `{started_at, ended_at?, notes?, is_billable?}` for explicit ranges (computes duration). 404 on cross-org.
+- GET on the same path returns the most recent 50 entries.
+- Mobile ticket detail (`tickets/[id].tsx`) gets a new "Time" card above Comments — minutes input, optional notes, billable toggle, list of prior entries.
+- 5 tests in `MobileTicketTimeEntryTests`: by-duration, by-range, missing inputs 400, list, cross-org 404.
+
+**Asset list filter by organization:**
+- Horizontal chip row above the asset list, sourced from `/organizations/`. "All orgs" + one chip per org. State driven; server already supported `?organization_id=`. Hidden when the user has access to ≤ 1 org.
+
+versionCode 3170452 → 3170454.
+
 ## [3.17.453] - 2026-05-10
 
 ### Vault decrypt: handle legacy Fernet entries
