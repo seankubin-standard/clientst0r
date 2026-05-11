@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.472] - 2026-05-11
+
+### Visible build number on the app + server version probe
+
+You asked: "how do I know if 3170471 is actually pushed out?" — fair question, the app had no way to tell you. Now it does.
+
+**Mobile (`mobile/app/dashboard.tsx`):**
+- Tiny build footer at the bottom of every dashboard render: `v3.17.472 · build 3170472 · server v3.17.472 ✓`. Tap to jump to the full About card in Settings. The `✓` flips to `⚠` when app and server versions differ.
+
+**Mobile (`mobile/app/settings/index.tsx`):**
+- About card now shows:
+  - **App version** — from `Constants.expoConfig.version` (the marketing version, e.g. `3.17.472`)
+  - **Build number** — from `Application.nativeBuildVersion` (the Android versionCode / iOS CFBundleVersion — this is the canonical "which AAB is this" identifier)
+  - **Bundle ID** — `com.clientstor.mspreboot` so you can confirm you're on the right app
+  - **Server version** — fetched live from the new `/version/` endpoint
+  - Card tone flips to **success** (green border) when they match, **warning** (orange) when they differ. Mismatch text tells the user whether the phone is older (update Play Store) or newer (admin click Apply).
+
+**Server (`api_mobile/views_version.py`):**
+- `GET /api/mobile/v1/version/` — anonymous, returns `{version, version_info, api}`. Anonymous so it works on the login screen too.
+
+**Build script (`local_apps/play_publish/scripts/build-aab.sh`):**
+- Now syncs `app.json::expo.version` with `config/version.py::VERSION` at build time. Previously only `versionCode` got auto-bumped; the marketing version stayed at `0.1.0` forever, which is why the app footer was lying. From v3.17.472 onwards, both fields update on every build.
+- `mobile/app.json` `version` bumped from `0.1.0` to `3.17.472` in this commit so the change is visible without a build (for the next manual edit).
+
+versionCode 3170471 → 3170472. **AAB rebuild required** for the build-footer + Settings card to land on the phone.
+
 ## [3.17.471] - 2026-05-11
 
 ### Receipt OCR via the configured LLM (Anthropic / OpenAI / Ollama)

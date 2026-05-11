@@ -18,12 +18,17 @@ from . import (
     views_tickets,
     views_vault,
     views_vehicles,
+    views_version,
     views_workflows,
 )
 
 app_name = 'api_mobile'
 
+
 urlpatterns = [
+    # Version probe (v3.17.472) — anonymous, mobile compares app vs server
+    path('version/', views_version.version_view, name='version'),
+
     # Auth (v3.17.346)
     path('auth/login/', views_auth.login_view, name='login'),
     path('auth/mfa/', views_auth.mfa_view, name='mfa'),
