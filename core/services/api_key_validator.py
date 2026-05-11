@@ -25,12 +25,19 @@ class APIKeyValidator:
         if not api_key or not api_key.strip():
             return False, "API key is required", {}
 
+        # v3.17.468 (issue #130) — `claude-3-5-haiku-20241022` was
+        # retired by Anthropic and now returns 404. Test with the
+        # current Haiku model. If even that's been retired by the time
+        # someone hits this, fall through to a generic "model not
+        # found" message rather than crashing.
+        test_model = "claude-haiku-4-5-20251001"
+
         try:
             client = anthropic.Anthropic(api_key=api_key.strip())
 
             # Try a minimal API call to test the key
             response = client.messages.create(
-                model="claude-3-5-haiku-20241022",  # Use cheapest model for testing
+                model=test_model,  # Cheapest current model for validation
                 max_tokens=10,
                 messages=[
                     {"role": "user", "content": "Hello"}
@@ -38,7 +45,7 @@ class APIKeyValidator:
             )
 
             return True, "API key is valid", {
-                "model_tested": "claude-3-5-haiku-20241022",
+                "model_tested": test_model,
                 "response_id": response.id
             }
 

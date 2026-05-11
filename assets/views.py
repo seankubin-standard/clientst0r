@@ -722,6 +722,11 @@ def asset_ai_doc(request, pk):
     """
     Generate AI-powered documentation for an asset using a selected template.
     AJAX POST — returns JSON {success, url, title} or {success:false, error}.
+
+    v3.17.468: top-level try/except so an unexpected exception never
+    returns an HTML 500 page (issue #130 — Ollama caller was getting
+    "Unexpected token '<', '<html>'... is not valid JSON" because the
+    Django debug HTML was reaching the frontend's JSON.parse).
     """
     from django.http import JsonResponse
     from django.utils.text import slugify
@@ -730,9 +735,31 @@ def asset_ai_doc(request, pk):
     from docs.services.ai_documentation_generator import AIDocumentationGenerator
     from docs.services.llm_providers import is_llm_configured
     import json
+    import logging as _logging
+    _ai_log = _logging.getLogger('assets')
 
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'POST required'}, status=405)
+
+    try:
+        return _asset_ai_doc_inner(request, pk)
+    except Exception as exc:  # noqa: BLE001 — last-resort JSON catcher
+        _ai_log.exception('asset_ai_doc unhandled: %s', exc)
+        return JsonResponse(
+            {'success': False, 'error': f'AI generation failed: {exc}'},
+            status=500,
+        )
+
+
+def _asset_ai_doc_inner(request, pk):
+    """Body of `asset_ai_doc` — split out so the outer wrapper can
+    always return JSON even when this raises."""
+    from django.http import JsonResponse
+    from django.utils.text import slugify
+    from docs.models import Document
+    from docs.services.ai_documentation_generator import AIDocumentationGenerator
+    from docs.services.llm_providers import is_llm_configured
+    import json
 
     has_ai, provider_name = is_llm_configured()
     if not has_ai:
@@ -741,6 +768,7 @@ def asset_ai_doc(request, pk):
             'error': f'LLM provider not configured. Go to Settings → AI to configure {provider_name}.',
         }, status=400)
 
+    from django.shortcuts import get_object_or_404
     org = get_request_organization(request)
     if org:
         asset = get_object_or_404(Asset, pk=pk, organization=org)

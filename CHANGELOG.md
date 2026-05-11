@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.468] - 2026-05-11
+
+### Fix issues #130 + #131
+
+**Issue #131 — fresh-install migration fails on MySQL:**
+
+Migration `psa.0027_email_message_threading` was raising `MySQLdb.OperationalError: (1071, 'Specified key was too long; max key length is 3072 bytes')` on fresh installs. Root cause: the unique constraint on `(organization_id, message_id)` had `message_id` at `max_length=998`. On MySQL utf8mb4 that's `4 + 998*4 = 3996` bytes — over the 3072-byte InnoDB index limit.
+
+Fix: shortened the indexed fields in both the migration and the model:
+- `EmailMessage.message_id`: 998 → 255 (RFC 5322 allows 998 but real-world Message-IDs are well under 200).
+- `EmailMessage.in_reply_to`: 998 → 255.
+- `EmailMessage.subject`: 998 → 512 (display field, never indexed; trimmed for storage hygiene).
+- `Ticket.last_inbound_message_id`: 998 → 255.
+
+Migration 0027 is edited in place. Anyone whose install already got past 0027 successfully (they were on a non-utf8mb4 charset or had `innodb_large_prefix=ON`) is unaffected — their column is already wider than the new schema declares. Fresh installs now complete cleanly.
+
+**Issue #130 — Anthropic test 404 + Ollama "Unexpected token '<'":**
+
+Two separate bugs:
+
+1. `core/services/api_key_validator.validate_anthropic` hardcoded `claude-3-5-haiku-20241022` for the test call. Anthropic retired that model — every test against a valid key was returning `404 not_found_error`. Updated to `claude-haiku-4-5-20251001` (the current Haiku).
+
+2. `assets.views.asset_ai_doc` had no top-level try/except, so any uncaught exception during AI generation returned Django's HTML 500 page. The frontend `fetch(...).then(r => r.json())` then choked with `Unexpected token '<', "<html> <"...`. Wrapped the entire view body in `_asset_ai_doc_inner` + outer try/except that always returns a JSON error response.
+
+**Note:** the Ollama JSON parse error path is now visible — the underlying Ollama provider call (in `docs/services/llm_providers.OllamaProvider.generate`) catches its own errors and returns `{success: False, error: str(e)}`. The JSON now reaches the frontend cleanly. If users still see Ollama failures, the actual error message comes through and we can iterate from there.
+
 ## [3.17.467] - 2026-05-11
 
 ### Expanded push triggers + OCR setup scaffolding + signal weak-ref bug fix

@@ -12,23 +12,31 @@ class Migration(migrations.Migration):
         ('psa', '0026_ticketshare'),
     ]
 
+    # v3.17.468 (issue #131) — MySQL's InnoDB max key length is 3072 bytes
+    # on utf8mb4 (4 bytes per char). Original max_length=998 on
+    # `message_id` put the unique key on (organization_id, message_id)
+    # at 4 + 998*4 = 3996 bytes — over the limit — and migration failed
+    # on fresh MySQL installs with "Specified key was too long; max key
+    # length is 3072 bytes". 255 chars (1020 bytes utf8mb4) is plenty:
+    # RFC 5322 allows Message-IDs up to 998 chars but every real-world
+    # Message-ID is `<id@domain>` well under 200 chars.
     operations = [
         migrations.AddField(
             model_name='ticket',
             name='last_inbound_message_id',
-            field=models.CharField(blank=True, max_length=998),
+            field=models.CharField(blank=True, max_length=255),
         ),
         migrations.CreateModel(
             name='EmailMessage',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('direction', models.CharField(choices=[('in', 'Inbound'), ('out', 'Outbound')], max_length=3)),
-                ('message_id', models.CharField(db_index=True, help_text='RFC 5322 Message-ID, including angle brackets', max_length=998)),
-                ('in_reply_to', models.CharField(blank=True, db_index=True, help_text='Header value if this message replied to another', max_length=998)),
+                ('message_id', models.CharField(db_index=True, help_text='RFC 5322 Message-ID, including angle brackets', max_length=255)),
+                ('in_reply_to', models.CharField(blank=True, db_index=True, help_text='Header value if this message replied to another', max_length=255)),
                 ('references', models.TextField(blank=True, help_text='Whitespace-separated chain of parent Message-IDs')),
                 ('from_email', models.CharField(blank=True, max_length=320)),
                 ('to_emails', models.JSONField(blank=True, default=list)),
-                ('subject', models.CharField(blank=True, max_length=998)),
+                ('subject', models.CharField(blank=True, max_length=512)),
                 ('headers_raw', models.TextField(blank=True, help_text='Full raw headers; useful for debugging threading + DMARC later')),
                 ('body_text', models.TextField(blank=True)),
                 ('body_html', models.TextField(blank=True)),

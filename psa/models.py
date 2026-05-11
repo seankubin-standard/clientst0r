@@ -307,7 +307,9 @@ class Ticket(models.Model):
     # outbound replies (Phase 10.4) to set the In-Reply-To header so the
     # client's mail client threads the conversation correctly. Updated by
     # the email poller on every inbound match/create.
-    last_inbound_message_id = models.CharField(max_length=998, blank=True)
+    # v3.17.468 — was 998, reduced to 255 to keep the InnoDB key under
+    # 3072 bytes on MySQL utf8mb4 (see migration 0027).
+    last_inbound_message_id = models.CharField(max_length=255, blank=True)
 
     # Phase 12 v6 (v3.17.236) — customer escalation workflow.
     escalated_at = models.DateTimeField(null=True, blank=True)
@@ -4300,16 +4302,19 @@ class EmailMessage(models.Model):
     )
 
     direction = models.CharField(max_length=3, choices=DIRECTION_CHOICES)
-    message_id = models.CharField(max_length=998, db_index=True,
+    # v3.17.468 — message_id + in_reply_to reduced from 998 to 255 chars
+    # to fit MySQL InnoDB's 3072-byte key limit (see migration 0027).
+    # subject reduced to 512 — display fields don't need 998.
+    message_id = models.CharField(max_length=255, db_index=True,
         help_text='RFC 5322 Message-ID, including angle brackets')
-    in_reply_to = models.CharField(max_length=998, blank=True, db_index=True,
+    in_reply_to = models.CharField(max_length=255, blank=True, db_index=True,
         help_text='Header value if this message replied to another')
     references = models.TextField(blank=True,
         help_text='Whitespace-separated chain of parent Message-IDs')
 
     from_email = models.CharField(max_length=320, blank=True)
     to_emails = models.JSONField(default=list, blank=True)
-    subject = models.CharField(max_length=998, blank=True)
+    subject = models.CharField(max_length=512, blank=True)
 
     headers_raw = models.TextField(blank=True,
         help_text='Full raw headers; useful for debugging threading + DMARC later')
