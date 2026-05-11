@@ -5,6 +5,35 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.471] - 2026-05-11
+
+### Receipt OCR via the configured LLM (Anthropic / OpenAI / Ollama)
+
+Replaces the Cloud Vision-only OCR path. Whatever LLM the user has configured under **Settings → AI** now does the vision extraction. No separate Google Cloud service account needed — if you already have Claude / GPT-4o / Ollama-with-llava working for AI doc generation, receipt extraction works too.
+
+**Vision implementations added to `docs/services/llm_providers.py`:**
+- `AnthropicProvider.extract_receipt_fields()` — multimodal `messages.create` with base64 image block. All Claude 3+ models support vision.
+- `OpenAIProvider.extract_receipt_fields()` — `/chat/completions` with `image_url` data URL + `response_format: json_object`. Needs a vision-capable model (`gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`).
+- `OllamaProvider.extract_receipt_fields()` — `/api/chat` with `images:[b64]` + `format: 'json'`. Needs a vision model (`llava`, `llava-llama3`, `llama3.2-vision`, `bakllava`).
+- Base class `LLMProvider.extract_receipt_fields()` default returns `success:false` — Moonshot / MiniMax fall through gracefully (those providers are text-only at this point).
+- Shared `_RECEIPT_SYSTEM_PROMPT` + `_RECEIPT_USER_PROMPT` at module scope so prompt tuning is one edit, not five.
+- Shared `_parse_receipt_json()` strips ```json fences and slack from model output before `json.loads`.
+
+**Configured-provider resolver:**
+- New `get_configured_provider()` returns an instantiated `LLMProvider` built from `LLM_PROVIDER` + `*_API_KEY` / `*_MODEL` Django settings — same selection logic `AIDocumentationGenerator._init_provider` uses, so receipt OCR and AI doc generation always hit the same backend.
+
+**Receipt upload (`api_mobile/views_receipts.py`):**
+- `_ocr_image_bytes()` removed. Replaced with `_extract_with_llm()` that calls the configured provider first, then falls back to the legacy Cloud Vision path (`views_ocr._run_ocr`) for deployments that wired that up already.
+- `category` is now passed as `hint` to the provider so a "fuel" upload primes the model to look for gallons / cpg.
+
+**Tests (2 new):**
+- LLM provider returns parsed fields → receipt populated + `VehicleFuelLog` auto-created with the right values.
+- No LLM configured + no Cloud Vision fallback → receipt still saved with image, just no extraction (`ai_processed=false`).
+
+**Operationally:** Apply lands this and receipt uploads start using whatever LLM you've configured. If Settings → AI shows "Anthropic Claude (claude-sonnet-4-5-20250929)" — that's what does the extraction. No env vars to set.
+
+versionCode 3170470 → 3170471.
+
 ## [3.17.470] - 2026-05-11
 
 ### Receipt upload — server-keeps-image + OCR + auto-create downstream records

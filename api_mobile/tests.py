@@ -1905,6 +1905,111 @@ class MobilePushSignalsTests(TestCase):
         self.assertTrue(resp.json()['duplicate'])
         self.assertEqual(VehicleReceipt.objects.count(), before)
 
+    def test_receipt_llm_extraction_fills_fields(self):
+        """v3.17.471 — when the configured LLM provider returns parsed
+        receipt fields, the upload flow uses them to populate the
+        VehicleReceipt + auto-create a VehicleFuelLog."""
+        from datetime import date
+        from unittest.mock import patch, MagicMock
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from vehicles.models import ServiceVehicle, VehicleAssignment, VehicleReceipt, VehicleFuelLog
+
+        vehicle = ServiceVehicle.objects.create(
+            name='Van LLM', vehicle_type='van', make='Ford', model='Transit',
+            year=2024, license_plate='LLM1', current_mileage=10000,
+        )
+        VehicleAssignment.objects.create(
+            vehicle=vehicle, user=self.assignee,
+            start_date=date.today(), starting_mileage=9900,
+        )
+        token = _post(Client(), '/api/mobile/v1/auth/login/', {
+            'username': 'assignee', 'password': 'x',
+        }).json()['token']
+
+        fake_provider = MagicMock()
+        fake_provider.extract_receipt_fields.return_value = {
+            'success': True,
+            'extracted': {
+                'vendor': 'Shell Station #4499',
+                'amount_total': 47.49,
+                'amount_tax': 3.50,
+                'date': '2026-05-11',
+                'gallons': 12.5,
+                'cost_per_gallon': 3.799,
+                'odometer': 10250,
+                'category_hint': 'fuel',
+                'line_items': ['Regular gasoline 12.5 gal'],
+                'raw_text': 'SHELL\nGallons: 12.5\nTotal $47.49',
+            },
+        }
+        with patch(
+            'docs.services.llm_providers.get_configured_provider',
+            return_value=fake_provider,
+        ):
+            client = Client()
+            resp = client.post(
+                '/api/mobile/v1/receipts/',
+                data={
+                    'photo': SimpleUploadedFile('r.jpg', b'\xff\xd8\xff\xe0fake', 'image/jpeg'),
+                    'vehicle_id': str(vehicle.id),
+                    'category': 'fuel',
+                },
+                HTTP_AUTHORIZATION=f'Token {token}',
+            )
+
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['receipt']['vendor'], 'Shell Station #4499')
+        self.assertEqual(body['receipt']['amount'], '47.49')
+        self.assertEqual(body['receipt']['receipt_date'], '2026-05-11')
+        self.assertIn(body['receipt']['ai_confidence'], ('low', 'medium', 'high'))
+        self.assertIsNotNone(body['fuel_log_id'])
+        # The fuel log row was actually created
+        fl = VehicleFuelLog.objects.get(pk=body['fuel_log_id'])
+        self.assertEqual(str(fl.gallons), '12.50')
+        self.assertEqual(str(fl.cost_per_gallon), '3.799')
+        self.assertEqual(fl.station, 'Shell Station #4499')
+
+    def test_receipt_llm_no_provider_still_saves(self):
+        """No LLM configured → receipt still saved with image; just no
+        extracted fields. Falls through gracefully."""
+        from datetime import date
+        from unittest.mock import patch
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from vehicles.models import ServiceVehicle, VehicleAssignment, VehicleReceipt
+
+        vehicle = ServiceVehicle.objects.create(
+            name='Van Nollm', vehicle_type='van', make='X', model='Y',
+            year=2023, license_plate='NLM', current_mileage=0,
+        )
+        VehicleAssignment.objects.create(
+            vehicle=vehicle, user=self.assignee,
+            start_date=date.today(), starting_mileage=0,
+        )
+        token = _post(Client(), '/api/mobile/v1/auth/login/', {
+            'username': 'assignee', 'password': 'x',
+        }).json()['token']
+
+        with patch('docs.services.llm_providers.get_configured_provider',
+                   return_value=None), \
+             patch('api_mobile.views_ocr._ocr_provider', return_value=''):
+            client = Client()
+            resp = client.post(
+                '/api/mobile/v1/receipts/',
+                data={
+                    'photo': SimpleUploadedFile('x.jpg', b'unique-bytes-nollm', 'image/jpeg'),
+                    'vehicle_id': str(vehicle.id),
+                    'category': 'other',
+                },
+                HTTP_AUTHORIZATION=f'Token {token}',
+            )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        # Receipt persisted but no extraction
+        self.assertFalse(body['receipt']['ai_processed'])
+        self.assertEqual(body['receipt']['vendor'], '')
+        self.assertIsNone(body['fuel_log_id'])
+
     def test_receipt_other_vehicle_404(self):
         """Receipt for someone else's vehicle is rejected."""
         from datetime import date

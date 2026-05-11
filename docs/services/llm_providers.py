@@ -42,6 +42,100 @@ class LLMProvider(ABC):
         """
         pass
 
+    def extract_receipt_fields(
+        self,
+        image_bytes: bytes,
+        image_mime: str = 'image/jpeg',
+        hint: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        v3.17.471 — vision extraction of receipt fields.
+
+        Default impl returns success=False so providers that don't
+        support vision (Moonshot text, MiniMax text) degrade
+        gracefully to the manual entry path on the mobile side.
+
+        Returns:
+            {
+              'success': True,
+              'extracted': {
+                'vendor': str|None,
+                'amount_total': float|None,
+                'amount_tax': float|None,
+                'date': 'YYYY-MM-DD'|None,
+                'gallons': float|None,
+                'cost_per_gallon': float|None,
+                'odometer': int|None,
+                'category_hint': str|None,
+                'line_items': [str, ...],
+                'raw_text': str
+              }
+            }
+            or
+            {'success': False, 'error': '...', 'raw': '...optional model output...'}
+        """
+        return {
+            'success': False,
+            'error': f'{type(self).__name__} does not implement vision extraction.',
+        }
+
+
+# Shared system prompt + JSON schema used by every vision-capable
+# implementation below. Keeping them at module scope so they're
+# trivially editable when a model gets confused by the wording.
+_RECEIPT_SYSTEM_PROMPT = (
+    "You are a receipt-extraction service. Look at the image and respond with "
+    "ONLY a single JSON object — no preamble, no markdown fences, no commentary. "
+    "Use null for any field you cannot read."
+)
+
+_RECEIPT_USER_PROMPT = (
+    'Extract fields from this receipt. Respond with ONLY this JSON object:\n'
+    '{\n'
+    '  "vendor": string or null,           // store / shop name on the receipt\n'
+    '  "amount_total": number or null,      // total paid, in dollars\n'
+    '  "amount_tax": number or null,        // tax portion\n'
+    '  "date": "YYYY-MM-DD" or null,        // receipt date, ISO format\n'
+    '  "gallons": number or null,           // only for fuel receipts\n'
+    '  "cost_per_gallon": number or null,   // only for fuel receipts\n'
+    '  "odometer": integer or null,         // mileage if visible on receipt\n'
+    '  "category_hint": "fuel"|"maintenance"|"repair"|"insurance"|"registration"|"toll"|"cleaning"|"inspection"|"other" or null,\n'
+    '  "line_items": [string, ...] or [],   // brief list of items / services\n'
+    '  "raw_text": string                    // full visible text\n'
+    '}\n'
+    'If the receipt is not legible or not actually a receipt, return all fields as null and raw_text as best-effort.'
+)
+
+
+def _parse_receipt_json(text: str) -> Dict[str, Any]:
+    """
+    Parse an LLM's JSON output. Tolerates ```json fences, leading/trailing
+    whitespace, and small junk before/after the JSON object.
+    """
+    text = (text or '').strip()
+    # Strip markdown fences if model added them
+    if text.startswith('```'):
+        # Drop the first line ```json (or whatever) and the trailing ```
+        lines = text.split('\n')
+        if lines and lines[0].startswith('```'):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == '```':
+            lines = lines[:-1]
+        text = '\n'.join(lines).strip()
+    # Find the first `{` and last `}` and slice — handles "Here's the JSON: {...}"
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        text = text[start:end + 1]
+    try:
+        return {'success': True, 'extracted': json.loads(text)}
+    except json.JSONDecodeError as e:
+        return {
+            'success': False,
+            'error': f'Model returned non-JSON: {e}',
+            'raw': text[:500],
+        }
+
 
 class AnthropicProvider(LLMProvider):
     """Anthropic Claude provider."""
@@ -111,6 +205,35 @@ class AnthropicProvider(LLMProvider):
                 'success': False,
                 'error': str(e)
             }
+
+    def extract_receipt_fields(self, image_bytes, image_mime='image/jpeg', hint=None):
+        """v3.17.471 — Anthropic multimodal vision. All Claude 3+ models support it."""
+        import base64
+        b64 = base64.standard_b64encode(image_bytes).decode('ascii')
+        user_blocks = [
+            {
+                'type': 'image',
+                'source': {'type': 'base64', 'media_type': image_mime, 'data': b64},
+            },
+            {'type': 'text', 'text': (
+                _RECEIPT_USER_PROMPT
+                + (f'\n\nUser-supplied hint: this is a {hint} receipt.' if hint else '')
+            )},
+        ]
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=2048,
+                system=_RECEIPT_SYSTEM_PROMPT,
+                messages=[{'role': 'user', 'content': user_blocks}],
+            )
+            text = ''.join(b.text for b in response.content if hasattr(b, 'text'))
+            return _parse_receipt_json(text)
+        except Exception as exc:
+            error_msg = str(exc)
+            if hasattr(exc, 'status_code'):
+                error_msg = f'API Error {exc.status_code}: {error_msg}'
+            return {'success': False, 'error': error_msg}
 
 
 class MiniMaxCodingProvider(LLMProvider):
@@ -481,6 +604,48 @@ class OpenAIProvider(LLMProvider):
                 'error': str(e)
             }
 
+    def extract_receipt_fields(self, image_bytes, image_mime='image/jpeg', hint=None):
+        """v3.17.471 — OpenAI vision via data URL. Requires a vision-capable model
+        (gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-4-vision-preview).
+        Older text-only models will return an error from OpenAI."""
+        import base64
+        b64 = base64.standard_b64encode(image_bytes).decode('ascii')
+        data_url = f'data:{image_mime};base64,{b64}'
+        user_text = _RECEIPT_USER_PROMPT + (
+            f'\n\nUser-supplied hint: this is a {hint} receipt.' if hint else ''
+        )
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json',
+        }
+        body = {
+            'model': self.model,
+            'max_tokens': 2048,
+            'response_format': {'type': 'json_object'},
+            'messages': [
+                {'role': 'system', 'content': _RECEIPT_SYSTEM_PROMPT},
+                {'role': 'user', 'content': [
+                    {'type': 'text', 'text': user_text},
+                    {'type': 'image_url', 'image_url': {'url': data_url}},
+                ]},
+            ],
+        }
+        try:
+            resp = requests.post(
+                f'{self.base_url}/chat/completions',
+                headers=headers, json=body, timeout=60,
+            )
+            if resp.status_code != 200:
+                return {
+                    'success': False,
+                    'error': f'API error: {resp.status_code} - {resp.text[:300]}',
+                }
+            data = resp.json()
+            text = data['choices'][0]['message']['content']
+            return _parse_receipt_json(text)
+        except Exception as exc:
+            return {'success': False, 'error': str(exc)}
+
 
 class OllamaProvider(LLMProvider):
     """Ollama on-premises LLM provider. No API key required — just a base URL."""
@@ -527,6 +692,41 @@ class OllamaProvider(LLMProvider):
         except Exception as e:
             return {'success': False, 'error': str(e)}
 
+    def extract_receipt_fields(self, image_bytes, image_mime='image/jpeg', hint=None):
+        """v3.17.471 — Ollama vision. Requires a vision-capable model
+        (llava, llava-llama3, llama3.2-vision, bakllava, etc.). Text-only
+        models will refuse / hallucinate."""
+        import base64
+        b64 = base64.standard_b64encode(image_bytes).decode('ascii')
+        user_text = _RECEIPT_USER_PROMPT + (
+            f'\n\nUser-supplied hint: this is a {hint} receipt.' if hint else ''
+        )
+        body = {
+            'model': self.model,
+            'messages': [
+                {'role': 'system', 'content': _RECEIPT_SYSTEM_PROMPT},
+                {'role': 'user', 'content': user_text, 'images': [b64]},
+            ],
+            'stream': False,
+            'format': 'json',  # Ollama JSON-mode — forces parseable output
+            'options': {'temperature': 0.1, 'num_predict': 2048},
+        }
+        try:
+            resp = requests.post(
+                f'{self.base_url}/api/chat', json=body, timeout=120,
+            )
+            if resp.status_code != 200:
+                return {
+                    'success': False,
+                    'error': f'Ollama HTTP {resp.status_code}: {resp.text[:300]}',
+                }
+            text = resp.json().get('message', {}).get('content', '')
+            return _parse_receipt_json(text)
+        except requests.exceptions.ConnectionError:
+            return {'success': False, 'error': f'Cannot reach Ollama at {self.base_url}'}
+        except Exception as exc:
+            return {'success': False, 'error': str(exc)}
+
 
 def get_llm_provider(provider_name: str, **kwargs) -> Optional[LLMProvider]:
     """
@@ -551,6 +751,67 @@ def get_llm_provider(provider_name: str, **kwargs) -> Optional[LLMProvider]:
     provider_class = providers.get(provider_name.lower())
     if provider_class:
         return provider_class(**kwargs)
+    return None
+
+
+def get_configured_provider() -> Optional[LLMProvider]:
+    """
+    v3.17.471 — return an instantiated LLMProvider built from Django
+    settings, or None if the configured provider is missing credentials.
+
+    Mirrors the provider selection in `AIDocumentationGenerator._init_provider`
+    so receipt OCR and AI doc generation hit the same backend.
+    """
+    from django.conf import settings
+
+    provider_name = (getattr(settings, 'LLM_PROVIDER', 'anthropic') or '').lower()
+
+    if provider_name == 'anthropic':
+        key = getattr(settings, 'ANTHROPIC_API_KEY', '')
+        if not key:
+            return None
+        return get_llm_provider('anthropic',
+            api_key=key,
+            model=getattr(settings, 'CLAUDE_MODEL', 'claude-sonnet-4-5-20250929'),
+        )
+
+    if provider_name == 'openai':
+        key = getattr(settings, 'OPENAI_API_KEY', '')
+        if not key:
+            return None
+        return get_llm_provider('openai',
+            api_key=key,
+            model=getattr(settings, 'OPENAI_MODEL', 'gpt-4o-mini'),
+        )
+
+    if provider_name == 'ollama':
+        base = getattr(settings, 'OLLAMA_BASE_URL', '')
+        if not base:
+            return None
+        return get_llm_provider('ollama',
+            base_url=base,
+            model=getattr(settings, 'OLLAMA_MODEL', 'llava'),
+        )
+
+    if provider_name == 'moonshot':
+        key = getattr(settings, 'MOONSHOT_API_KEY', '')
+        if not key:
+            return None
+        return get_llm_provider('moonshot',
+            api_key=key,
+            model=getattr(settings, 'MOONSHOT_MODEL', 'moonshot-v1-8k'),
+        )
+
+    if provider_name in ('minimax', 'minimax_coding'):
+        key = getattr(settings, 'MINIMAX_API_KEY', '')
+        if not key:
+            return None
+        return get_llm_provider(provider_name,
+            api_key=key,
+            group_id=getattr(settings, 'MINIMAX_GROUP_ID', ''),
+            model=getattr(settings, 'MINIMAX_MODEL', 'abab6.5-chat'),
+        )
+
     return None
 
 

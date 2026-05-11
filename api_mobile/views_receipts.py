@@ -61,18 +61,67 @@ def _my_vehicle_or_none(user, vehicle_id):
     return v
 
 
-def _ocr_image_bytes(image_bytes):
-    """Run OCR if configured, return (raw_text, parsed_dict). Both empty
-    when OCR is off or the SDK fails — caller treats that as 'no extras'."""
+def _extract_with_llm(image_bytes, image_mime='image/jpeg', hint=None):
+    """
+    v3.17.471 — extract receipt fields using the LLM provider currently
+    configured in Settings → AI. Whatever the user picked (Anthropic
+    Claude, OpenAI GPT-4o, Ollama llava, etc.) does the OCR + parsing
+    in one vision call.
+
+    Returns `(raw_text, parsed_dict)` where parsed_dict uses the same
+    keys the regex parser used so the rest of the upload flow doesn't
+    have to care which path produced them. Both empty on failure /
+    no-LLM-configured.
+    """
     try:
-        from .views_ocr import _run_ocr, _parse_receipt_text, _ocr_provider
-        if not _ocr_provider():
-            return ('', {})
-        text = _run_ocr(image_bytes) or ''
-        return (text, _parse_receipt_text(text)) if text else ('', {})
+        from docs.services.llm_providers import get_configured_provider
+        provider = get_configured_provider()
     except Exception as exc:
-        logger.warning('receipt OCR failed: %s', exc)
+        logger.warning('LLM provider load failed: %s', exc)
         return ('', {})
+
+    if provider is None:
+        # Fall back to legacy Cloud Vision path (OCR_PROVIDER env) so
+        # deployments that already wired that up still work.
+        try:
+            from .views_ocr import _run_ocr, _parse_receipt_text, _ocr_provider
+            if _ocr_provider():
+                text = _run_ocr(image_bytes) or ''
+                return (text, _parse_receipt_text(text)) if text else ('', {})
+        except Exception as exc:
+            logger.warning('fallback Cloud Vision OCR failed: %s', exc)
+        return ('', {})
+
+    try:
+        result = provider.extract_receipt_fields(image_bytes, image_mime, hint=hint)
+    except Exception as exc:
+        logger.warning('LLM receipt extract raised: %s', exc)
+        return ('', {})
+
+    if not result.get('success'):
+        logger.info('LLM receipt extract returned not-success: %s',
+                    result.get('error'))
+        return ('', {})
+
+    ex = result.get('extracted') or {}
+    raw_text = (ex.get('raw_text') or '')[:5000]
+
+    # Map LLM's friendlier field names onto the keys the rest of
+    # views_receipts already speaks.
+    def _str_or_empty(v):
+        return '' if v is None else str(v)
+
+    return (raw_text, {
+        'gallons':         _str_or_empty(ex.get('gallons')),
+        'cost_per_gallon': _str_or_empty(ex.get('cost_per_gallon')),
+        'total_cost':      _str_or_empty(ex.get('amount_total')),
+        'amount_tax':      _str_or_empty(ex.get('amount_tax')),
+        'station':         ex.get('vendor') or '',
+        'date_raw':        ex.get('date') or '',
+        'odometer':        _str_or_empty(ex.get('odometer')),
+        'category_hint':   ex.get('category_hint') or '',
+        'line_items':      ex.get('line_items') or [],
+    })
 
 
 def _serialize_receipt(r):
@@ -182,8 +231,12 @@ def receipt_list_view(request):
             'duplicate': True,
         }, status=200)
 
-    # OCR (no-op if OCR_PROVIDER unset)
-    raw_text, extracted = _ocr_image_bytes(image_bytes)
+    # AI receipt extraction (LLM vision via the configured provider).
+    # No-op if no LLM is set up; receipt still saved with image.
+    image_mime = (getattr(photo, 'content_type', None) or 'image/jpeg').split(';')[0]
+    raw_text, extracted = _extract_with_llm(
+        image_bytes, image_mime=image_mime, hint=category if category != 'other' else None,
+    )
 
     # Extract date from raw_text or default to today
     parsed_date = None
