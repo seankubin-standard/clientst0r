@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.470] - 2026-05-11
+
+### Receipt upload — server-keeps-image + OCR + auto-create downstream records
+
+Reversed the v3.17.465 design. **The mobile app just uploads the receipt photo**; the server keeps the image, OCRs it, parses the structured fields, and auto-creates the appropriate downstream record (`VehicleFuelLog` or `VehicleMaintenanceRecord`) based on category.
+
+Endpoints: `POST /api/mobile/v1/receipts/` (multipart) + `GET /receipts/` + `GET /receipts/<id>/`. New mobile screen `app/receipts/upload.tsx` with category grid and photo capture. SHA-256 dedup on `image_hash`. `Attachment.ENTITY_TYPES` extended for `vehicle_receipt` / `damage_report` / `fuel_log` (admin-UI cleanup; choices are form-level only).
+
+versionCode 3170469 → 3170470. **AAB rebuild required** — the new receipts/upload screen ships in the bundle.
+
 ## [3.17.469] - 2026-05-11
 
 ### Patch urllib3 to fix CVE-2026-44432 (Dependabot alert #7)
