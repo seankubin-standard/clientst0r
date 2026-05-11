@@ -85,7 +85,8 @@ _DATE_RE = re.compile(
 )
 # Station name: a heuristic — uppercase brand on its own line near top
 _STATION_RE = re.compile(
-    r'^(SHELL|BP|EXXON|CHEVRON|MOBIL|TEXACO|MARATHON|SUNOCO|CITGO|CONOCO|VALERO|76|PHILLIPS\s*66|SPEEDWAY|WAWA|COSTCO|SAM\'S\s*CLUB|KROGER|7-?ELEVEN)\b',
+    # Leading whitespace tolerant — OCR output often has indentation.
+    r'^\s*(SHELL|BP|EXXON|CHEVRON|MOBIL|TEXACO|MARATHON|SUNOCO|CITGO|CONOCO|VALERO|76|PHILLIPS\s*66|SPEEDWAY|WAWA|COSTCO|SAM\'S\s*CLUB|KROGER|7-?ELEVEN)\b',
     re.IGNORECASE | re.MULTILINE,
 )
 

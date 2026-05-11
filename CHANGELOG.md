@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.466] - 2026-05-11
+
+### Test coverage for v3.17.461–465 endpoints + stale-test fix
+
+Audit of the completion pass — the four newest endpoints had no test coverage. Added 15 focused tests plus fixed one stale assertion from before v3.17.448.
+
+**New tests:**
+- `MobileScanTests` (6 tests) — QR resolves to inventory; cross-org inventory 404s; asset_tag and serial_number both resolve to asset; unknown code 404; missing `?code=` 400.
+- `MobileDispatchCalendarTests` (2 tests) — month bucketing groups same-day assignments correctly and excludes out-of-month; `?month=bogus` 400.
+- `MobileNotificationRegisterTests` (4 tests) — registration creates a `MobileDevice` row; missing token 400; second `register` with the same `device_id` updates in place (idempotent, returns 200 instead of 201); `deregister` flips `revoked` + clears the token.
+- `MobileOcrEndpointTests` (3 tests) — endpoint 503s when `OCR_PROVIDER` unset; the receipt regex parser extracts the full field set from synthetic OCR text; the parser leaves missing fields out instead of guessing.
+
+**Stale-test fix:**
+- `MobileDashboardTests.test_dashboard_returns_counts` was still checking for `offline_monitors` / `security_alerts_open` / `organization_count` — keys that v3.17.448 renamed or removed. Updated to the current top-level keys; the exhaustive shape check still lives in `MobileDashboardShapeTests`.
+
+**Minor:**
+- `views_ocr._STATION_RE` now tolerates leading whitespace in OCR'd receipt text (`^\s*(SHELL|BP|...)`). Without this, indented OCR output failed station-name matching.
+
+**Full suite:** 110/110 api_mobile tests pass.
+
 ## [3.17.465] - 2026-05-10
 
 ### Receipt OCR pre-fill for fuel logs (opt-in via env)

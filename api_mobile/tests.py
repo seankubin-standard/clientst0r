@@ -345,14 +345,19 @@ class MobileDashboardOrgsTests(TestCase):
         self.assertIn(c.get('/api/mobile/v1/dashboard/').status_code, (401, 403))
 
     def test_dashboard_returns_counts(self):
+        """v3.17.448 reshaped the dashboard payload — `offline_monitors`
+        became `monitors_down`, `security_alerts_open` became
+        `security.open_alert_count`, and `recent_assets` flipped from
+        an int count to an array. `MobileDashboardShapeTests` covers
+        the new shape exhaustively; this one just sanity-checks the
+        endpoint responds 200 with the expected top-level keys."""
         resp = _auth_get(self.client, '/api/mobile/v1/dashboard/', self.token)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         for key in ('open_tickets', 'critical_tickets', 'expiring_soon',
-                    'offline_monitors', 'recent_assets', 'security_alerts_open',
-                    'organization_count'):
+                    'monitors_down', 'recent_assets', 'recent_tickets',
+                    'security', 'my_open_tickets'):
             self.assertIn(key, body)
-        self.assertEqual(body['organization_count'], 1)
 
     def test_org_list_requires_auth(self):
         c = Client()
@@ -1409,3 +1414,282 @@ class MobileInventoryTests(TestCase):
             'quantity_change': 1,
         })
         self.assertEqual(resp.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileScanTests(TestCase):
+    """v3.17.461 — /api/mobile/v1/scan/?code=X resolves to inventory / asset."""
+
+    def setUp(self):
+        from inventory.models import InventoryItem
+        from assets.models import Asset
+        _clear_throttle_cache()
+        self.org_a = Organization.objects.create(name='OrgA-Scan', slug='orga-scan')
+        self.org_b = Organization.objects.create(name='OrgB-Scan', slug='orgb-scan')
+        self.user = User.objects.create_user('suser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org_a, role=Role.OWNER, is_active=True,
+        )
+        self.inv = InventoryItem.objects.create(
+            organization=self.org_a, name='Cable spool', qr_code='INV-CABLE-001',
+            quantity=10, unit='ea',
+        )
+        self.inv_other = InventoryItem.objects.create(
+            organization=self.org_b, name='Other org spool', qr_code='INV-OTHER-001',
+            quantity=5,
+        )
+        self.asset = Asset.objects.create(
+            organization=self.org_a, name='Server 01', asset_tag='SRV-01',
+            serial_number='SN12345',
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'suser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_scan_inventory_qr(self):
+        resp = self.client.get(
+            '/api/mobile/v1/scan/?code=INV-CABLE-001',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertEqual(body['kind'], 'inventory')
+        self.assertEqual(body['id'], self.inv.id)
+        self.assertEqual(body['route'], f'/inventory/{self.inv.id}')
+
+    def test_scan_inventory_cross_org_404(self):
+        resp = self.client.get(
+            '/api/mobile/v1/scan/?code=INV-OTHER-001',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_scan_asset_tag(self):
+        resp = self.client.get(
+            '/api/mobile/v1/scan/?code=SRV-01',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertEqual(body['kind'], 'asset')
+        self.assertEqual(body['id'], self.asset.id)
+
+    def test_scan_asset_serial(self):
+        resp = self.client.get(
+            '/api/mobile/v1/scan/?code=SN12345',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['kind'], 'asset')
+
+    def test_scan_unknown_404(self):
+        resp = self.client.get(
+            '/api/mobile/v1/scan/?code=NOPE',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_scan_missing_code_400(self):
+        resp = self.client.get(
+            '/api/mobile/v1/scan/',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 400)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileDispatchCalendarTests(TestCase):
+    """v3.17.462 — /dispatch/calendar/ buckets assignments by date."""
+
+    def setUp(self):
+        from datetime import datetime, timezone as stdlib_tz
+        from scheduling.models import ScheduledTask, TaskAssignment
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='OrgC', slug='orgc')
+        self.user = User.objects.create_user('cuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        # 2 tasks in May 2026, 1 in June (out of month)
+        may1 = datetime(2026, 5, 5, 14, 0, tzinfo=stdlib_tz.utc)
+        may2 = datetime(2026, 5, 5, 17, 0, tzinfo=stdlib_tz.utc)
+        may3 = datetime(2026, 5, 20, 9, 0, tzinfo=stdlib_tz.utc)
+        jun1 = datetime(2026, 6, 1, 9, 0, tzinfo=stdlib_tz.utc)
+        for d in (may1, may2, may3, jun1):
+            t = ScheduledTask.objects.create(
+                organization=self.org, title=f'Task at {d}', due_date=d,
+            )
+            TaskAssignment.objects.create(task=t, user=self.user)
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'cuser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_calendar_returns_month(self):
+        resp = self.client.get(
+            '/api/mobile/v1/dispatch/calendar/?month=2026-05',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertEqual(body['month'], '2026-05')
+        days = body['days']
+        self.assertEqual(len(days['2026-05-05']), 2)  # two same-day tasks
+        self.assertIn('2026-05-20', days)
+        self.assertNotIn('2026-06-01', days)  # out of month
+
+    def test_calendar_invalid_month_400(self):
+        resp = self.client.get(
+            '/api/mobile/v1/dispatch/calendar/?month=bogus',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 400)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileNotificationRegisterTests(TestCase):
+    """v3.17.463 — push token registration + deregistration."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='OrgN', slug='orgn')
+        self.user = User.objects.create_user('nuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'nuser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_register_creates_device(self):
+        from field_ops.models import MobileDevice
+        device_id = 'a' * 8 + '-' + 'b' * 4 + '-4cdb-' + '9' + 'c' * 3 + '-' + 'd' * 12
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/notifications/register/', self.token,
+            {
+                'token': 'ExponentPushToken[xxxxxxxx]',
+                'platform': 'android',
+                'device_id': device_id,
+                'name': 'Pixel 8',
+            },
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['device_id'], device_id)
+        self.assertTrue(body['created'])
+        device = MobileDevice.objects.get(device_id=device_id)
+        self.assertEqual(device.user_id, self.user.id)
+        self.assertEqual(device.expo_push_token, 'ExponentPushToken[xxxxxxxx]')
+
+    def test_register_missing_token_400(self):
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/notifications/register/', self.token,
+            {'platform': 'android'},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_register_idempotent(self):
+        # Same device_id twice → second call updates in place, not created
+        device_id = 'a' * 8 + '-' + 'b' * 4 + '-4cdb-' + '9' + 'c' * 3 + '-' + 'd' * 12
+        r1 = _auth_post(
+            self.client, '/api/mobile/v1/notifications/register/', self.token,
+            {'token': 'ExponentPushToken[a]', 'device_id': device_id},
+        )
+        r2 = _auth_post(
+            self.client, '/api/mobile/v1/notifications/register/', self.token,
+            {'token': 'ExponentPushToken[b]', 'device_id': device_id},
+        )
+        self.assertEqual(r1.status_code, 201)
+        self.assertEqual(r2.status_code, 200)
+        self.assertFalse(r2.json()['created'])
+        from field_ops.models import MobileDevice
+        self.assertEqual(
+            MobileDevice.objects.get(device_id=device_id).expo_push_token,
+            'ExponentPushToken[b]',
+        )
+
+    def test_deregister_revokes(self):
+        from field_ops.models import MobileDevice
+        device_id = 'a' * 8 + '-' + 'b' * 4 + '-4cdb-' + '9' + 'c' * 3 + '-' + 'd' * 12
+        _auth_post(
+            self.client, '/api/mobile/v1/notifications/register/', self.token,
+            {'token': 'ExponentPushToken[x]', 'device_id': device_id},
+        )
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/notifications/deregister/', self.token,
+            {'device_id': device_id},
+        )
+        self.assertEqual(resp.status_code, 200)
+        d = MobileDevice.objects.get(device_id=device_id)
+        self.assertTrue(d.revoked)
+        self.assertEqual(d.expo_push_token, '')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileOcrEndpointTests(TestCase):
+    """
+    v3.17.465 — /api/mobile/v1/ocr/receipt/ returns 503 unless
+    OCR_PROVIDER is set. The actual OCR pipeline isn't tested here
+    (requires a Cloud Vision SDK + credentials); we only verify the
+    "off by default" contract and the regex parser.
+    """
+
+    def setUp(self):
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='OrgO', slug='orgo')
+        self.user = User.objects.create_user('ouser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'ouser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_ocr_disabled_returns_503(self):
+        import os
+        old = os.environ.pop('OCR_PROVIDER', None)
+        try:
+            from django.core.files.uploadedfile import SimpleUploadedFile
+            photo = SimpleUploadedFile('receipt.jpg', b'fake-bytes',
+                                       content_type='image/jpeg')
+            resp = self.client.post(
+                '/api/mobile/v1/ocr/receipt/',
+                data={'photo': photo},
+                HTTP_AUTHORIZATION=f'Token {self.token}',
+            )
+            self.assertEqual(resp.status_code, 503)
+            self.assertIn('OCR not configured', resp.json()['detail'])
+        finally:
+            if old is not None:
+                os.environ['OCR_PROVIDER'] = old
+
+    def test_regex_parser_extracts_fuel_fields(self):
+        """Direct test of the receipt parser against synthetic OCR text."""
+        from api_mobile.views_ocr import _parse_receipt_text
+        text = """
+        SHELL
+        123 Main St
+        Date: 2026-05-09
+        Gallons: 12.5
+        Price/gal: $3.799
+        Total: $47.49
+        """
+        out = _parse_receipt_text(text)
+        self.assertEqual(out.get('gallons'), '12.5')
+        self.assertEqual(out.get('cost_per_gallon'), '3.799')
+        self.assertEqual(out.get('total_cost'), '47.49')
+        self.assertEqual(out.get('station'), 'Shell')
+        self.assertEqual(out.get('date_raw'), '2026-05-09')
+
+    def test_regex_parser_handles_partial_receipt(self):
+        from api_mobile.views_ocr import _parse_receipt_text
+        # Only gallons + total — no price-per-gal, no station match
+        text = "Gallons 8.0  Total $24.00"
+        out = _parse_receipt_text(text)
+        self.assertEqual(out.get('gallons'), '8.0')
+        self.assertEqual(out.get('total_cost'), '24.00')
+        self.assertNotIn('station', out)
+        self.assertNotIn('cost_per_gallon', out)
