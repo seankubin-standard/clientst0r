@@ -5,6 +5,35 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.473] - 2026-05-11
+
+### Beta-tester sign-up flow + visible app version (combined with v3.17.472)
+
+**Beta tester request form** at `/core/beta-test/`:
+- Public form (no login). Anonymous visitors submit name + Gmail (the Play Store account on their phone) + optional company / role / message / source.
+- New `core.BetaTesterRequest` model + migration `0061_betatesterrequest`.
+- Captures IP + UA at submit for abuse triage.
+
+**Top-nav links:**
+- Anonymous users see a "📱 Beta test the app" link in the right-side nav alongside Login.
+- Authenticated users get it under Account → Mobile & Browser Access → "Beta test the Android app".
+- Superusers additionally see "Beta tester requests" → the admin page.
+
+**Admin triage** at `/core/beta-testers/` (superuser-only):
+- Pending list with one-click ✓ Approve / ✕ Reject buttons.
+- Approved-but-not-yet-added section with a copy-to-clipboard textarea of all approved Gmail addresses — paste straight into Play Console → Internal testing → Testers → email list.
+- Shows the `PLAY_INTERNAL_TEST_URL` setting (env-configurable) so admin can copy the opt-in URL to share with testers.
+- "Mark as added" button moves a request from approved → added_to_play once you've pasted the email into Play Console.
+- Recent rejected + added rows at the bottom for audit.
+
+**App version visibility** (was queued as v3.17.472 but the version bump didn't actually land — combined here):
+- New `GET /api/mobile/v1/version/` anonymous endpoint returns the server's version.
+- Mobile Settings → About card now shows: App version (marketing), Build number (versionCode / CFBundleVersion), Bundle ID, Server version (fetched live). Card tone flips success/warning based on match.
+- Tiny build footer at the bottom of every dashboard render: `v3.17.473 · build 3170473 · server v3.17.473 ✓`. Tap → Settings.
+- Build script now syncs `app.json::expo.version` from `config/version.py::VERSION` (previously only `versionCode` got auto-bumped; the marketing version stayed at `0.1.0`).
+
+versionCode 3170472 → 3170473. **AAB rebuild required** for the build footer + version probe to land on the phone.
+
 ## [3.17.472] - 2026-05-11
 
 ### Visible build number on the app + server version probe

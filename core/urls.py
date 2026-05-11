@@ -27,6 +27,9 @@ urlpatterns = [
     path('free-consult/', views.free_consult, name='free_consult'),
     path('free-consult/requests/', views.consult_requests, name='consult_requests'),
     path('install/', views.install_app, name='install_app'),
+    # v3.17.473 — beta-tester sign-up + admin
+    path('beta-test/', views.beta_test_signup, name='beta_test_signup'),
+    path('beta-testers/', views.beta_test_admin, name='beta_test_admin'),
 
     # Help & Documentation
     path('help/', help_views.help_index, name='help_index'),

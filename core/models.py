@@ -221,6 +221,58 @@ class Organization(models.Model):
         super().save(*args, **kwargs)
 
 
+class BetaTesterRequest(models.Model):
+    """
+    v3.17.473 — anonymous sign-up to beta-test the mobile app.
+    Submitted from a public form; superuser approves; the admin page
+    shows the opt-in URL + the emails to paste into Play Console's
+    Internal Testing tester list.
+    """
+    from django.conf import settings as _django_settings
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending review'),
+        ('approved', 'Approved (give me the URL)'),
+        ('added_to_play', 'Added to Play Console'),
+        ('rejected', 'Rejected'),
+    ]
+
+    name = models.CharField(max_length=200)
+    google_account_email = models.EmailField(
+        help_text='The Gmail address signed into Play Store on the device '
+                  'that will install the beta.',
+    )
+    company = models.CharField(max_length=200, blank=True)
+    role = models.CharField(max_length=200, blank=True)
+    message = models.TextField(blank=True)
+    heard_from = models.CharField(max_length=200, blank=True)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        _django_settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='beta_tester_decisions',
+    )
+    decision_note = models.CharField(max_length=500, blank=True)
+
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        db_table = 'core_beta_tester_requests'
+        ordering = ['-submitted_at']
+        indexes = [
+            models.Index(fields=['status', '-submitted_at']),
+            models.Index(fields=['google_account_email']),
+        ]
+
+    def __str__(self):
+        return f'{self.name} <{self.google_account_email}> [{self.status}]'
+
+
 class ConsultRequest(models.Model):
     """
     Free consultation request submitted via the About / MSP Reboot page.

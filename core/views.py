@@ -273,6 +273,95 @@ def free_consult(request):
     })
 
 
+# v3.17.473 — beta tester sign-up + admin approval.
+def beta_test_signup(request):
+    """
+    Public form (no login required). Anonymous beta testers fill in their
+    name + Gmail (the one signed into their Play Store) and submit. Admin
+    approves at /core/beta-testers/.
+    """
+    from core.models import BetaTesterRequest
+    submitted = False
+    error = None
+    if request.method == 'POST':
+        name = (request.POST.get('name') or '').strip()
+        email = (request.POST.get('google_account_email') or '').strip()
+        if not name or not email:
+            error = 'Name and Google account email are required.'
+        else:
+            BetaTesterRequest.objects.create(
+                name=name,
+                google_account_email=email,
+                company=(request.POST.get('company') or '').strip()[:200],
+                role=(request.POST.get('role') or '').strip()[:200],
+                message=(request.POST.get('message') or '').strip(),
+                heard_from=(request.POST.get('heard_from') or '').strip()[:200],
+                ip_address=request.META.get('REMOTE_ADDR'),
+                user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:500],
+            )
+            submitted = True
+    return render(request, 'core/beta_test_signup.html', {
+        'submitted': submitted,
+        'error': error,
+    })
+
+
+@user_passes_test(lambda u: u.is_superuser)
+def beta_test_admin(request):
+    """
+    Superuser-only triage page. List pending requests, one-click approve /
+    reject / mark-added. Shows the opt-in URL + a copy-to-clipboard list
+    of approved emails for paste-into-Play-Console.
+    """
+    from core.models import BetaTesterRequest
+    from django.conf import settings
+    from django.utils import timezone
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        pk = request.POST.get('pk')
+        note = (request.POST.get('note') or '').strip()[:500]
+        try:
+            req = BetaTesterRequest.objects.get(pk=int(pk))
+        except (BetaTesterRequest.DoesNotExist, ValueError, TypeError):
+            messages.error(request, 'Request not found.')
+            return redirect('core:beta_test_admin')
+        if action == 'approve':
+            req.status = 'approved'
+        elif action == 'mark_added':
+            req.status = 'added_to_play'
+        elif action == 'reject':
+            req.status = 'rejected'
+        else:
+            messages.error(request, 'Unknown action.')
+            return redirect('core:beta_test_admin')
+        req.decided_at = timezone.now()
+        req.decided_by = request.user
+        if note:
+            req.decision_note = note
+        req.save()
+        messages.success(
+            request, f'{req.name} ({req.google_account_email}) → {req.get_status_display()}',
+        )
+        return redirect('core:beta_test_admin')
+
+    pending = BetaTesterRequest.objects.filter(status='pending')
+    approved = BetaTesterRequest.objects.filter(status='approved')
+    added = BetaTesterRequest.objects.filter(status='added_to_play')[:50]
+    rejected = BetaTesterRequest.objects.filter(status='rejected')[:30]
+    opt_in_url = getattr(settings, 'PLAY_INTERNAL_TEST_URL', '')
+
+    return render(request, 'core/beta_test_admin.html', {
+        'pending': pending,
+        'approved': approved,
+        'added': added,
+        'rejected': rejected,
+        'opt_in_url': opt_in_url,
+        # Emails ready to paste into Play Console's tester list field
+        'emails_to_add': ' '.join(r.google_account_email for r in approved),
+    })
+
+
 def privacy_policy(request):
     """
     Public privacy policy page rendered from `docs/PRIVACY_POLICY.md`.
