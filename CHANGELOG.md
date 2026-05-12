@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.476] - 2026-05-12
+
+### Mobile: asset detail full info + vault linkage + tickets filter fix
+
+**Asset detail screen (`mobile/app/assets/[id].tsx`):**
+- Renders the full asset record across four cards: Identity (org, hostname, IP, MAC, asset tag, serial, warranty pill), Hardware & software (manufacturer, model, OS, CPU, RAM, storage, firmware), Lifecycle (purchase date, warranty expiry, lifespan, primary contact), Metadata (created/updated/asset ID).
+- New "Stored secrets" card lists every Vault entry linked to the asset via `PasswordRelation` (relation_type=`'asset'`). Each row is tappable and routes to `/vault/<id>` for the full reveal flow.
+- Notes are surfaced in their own selectable card.
+
+**Server (`api_mobile/views_assets.py`):**
+- `_serialize_asset(detail=True)` now returns the wider field set: `organization_name`, `cpu`, `ram_gb`, `storage`, `firmware_version`, `firmware_latest`, `purchase_date`, `warranty_expiry`, `lifespan_years`, `notes`, `primary_contact_name`, `updated_at`.
+- `asset_detail_view` now joins `select_related('organization', 'primary_contact')` and appends `vault_entries` (id, title, username, url, password_type — no encrypted blob) filtered by accessible orgs.
+
+**Mobile tickets list filter bug:**
+- `useTickets` (`mobile/src/api/tickets.ts`): the **Mine** and **Critical** chips now also send `status=open` to the server. Before, those filters only narrowed by assignee or priority, so closed-but-critical tickets and closed-but-mine tickets would still appear. The explicit **Closed** chip is still the only way to see terminal-status tickets.
+
+versionCode 3170475 → 3170476. **AAB rebuild required** — mobile screen + API client changes ship in the bundle.
+
 ## [3.17.475] - 2026-05-12
 
 ### Mobile app supports auto-rotation (portrait + landscape)

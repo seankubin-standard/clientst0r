@@ -36,6 +36,7 @@ def _serialize_asset(asset, *, detail=False):
         'hostname': asset.hostname,
         'ip_address': asset.ip_address,
         'organization_id': asset.organization_id,
+        'organization_name': asset.organization.name if asset.organization_id else None,
     }
     if detail:
         out.update({
@@ -44,10 +45,54 @@ def _serialize_asset(asset, *, detail=False):
             'os_version': asset.os_version,
             'manufacturer': asset.manufacturer,
             'model': asset.model,
+            'cpu': asset.cpu,
+            'ram_gb': asset.ram_gb,
+            'storage': asset.storage,
+            'firmware_version': asset.firmware_version,
+            'firmware_latest': asset.firmware_latest,
+            'purchase_date': asset.purchase_date.isoformat() if asset.purchase_date else None,
             'warranty_status': getattr(asset, 'warranty_status', '') or '',
+            'warranty_expiry': asset.warranty_expiry.isoformat() if asset.warranty_expiry else None,
+            'lifespan_years': asset.lifespan_years,
+            'notes': asset.notes,
+            'primary_contact_name': asset.primary_contact.full_name if asset.primary_contact_id else None,
             'created_at': asset.created_at.isoformat() if asset.created_at else None,
+            'updated_at': asset.updated_at.isoformat() if asset.updated_at else None,
         })
     return out
+
+
+def _vault_entries_for_asset(asset, request_user):
+    """Return Vault Password rows linked to this asset via PasswordRelation.
+
+    Only returns metadata needed for a tappable list — title, username,
+    URL, password_type — never the encrypted blob. The mobile app
+    navigates to /vault/<id>/ for the full reveal flow.
+    """
+    try:
+        from vault.models import Password, PasswordRelation
+    except Exception:
+        return []
+    rel_ids = list(
+        PasswordRelation.objects
+        .filter(relation_type='asset', relation_id=asset.id)
+        .values_list('password_id', flat=True)
+    )
+    if not rel_ids:
+        return []
+    org_ids = accessible_org_ids(request_user)
+    pw_qs = (
+        Password.objects
+        .filter(id__in=rel_ids, organization_id__in=org_ids)
+        .order_by('title')
+    )
+    return [{
+        'id': p.id,
+        'title': p.title,
+        'username': p.username or '',
+        'url': p.url or '',
+        'password_type': p.password_type or '',
+    } for p in pw_qs]
 
 
 @api_view(['GET', 'POST'])
@@ -129,11 +174,15 @@ def asset_detail_view(request, pk: int):
 
     org_ids = accessible_org_ids(request.user)
     try:
-        asset = Asset.objects.get(pk=pk, organization_id__in=org_ids)
+        asset = Asset.objects.select_related(
+            'organization', 'primary_contact',
+        ).get(pk=pk, organization_id__in=org_ids)
     except Asset.DoesNotExist:
         return Response({'detail': 'Not found'}, status=404)
 
-    return Response(_serialize_asset(asset, detail=True))
+    payload = _serialize_asset(asset, detail=True)
+    payload['vault_entries'] = _vault_entries_for_asset(asset, request.user)
+    return Response(payload)
 
 
 def _create_asset(request):
