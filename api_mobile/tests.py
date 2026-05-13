@@ -2402,3 +2402,98 @@ class MobileTicketSerializerFieldsTests(TestCase):
         self.assertIsNotNone(row['updated_at'])
         # `number` should be a copy of ticket_number.
         self.assertEqual(row['number'], row['ticket_number'])
+
+
+# === v3.17.478 follow-up tests ====================================
+# Calendar + upcoming endpoints now mix scheduled tasks and tickets.
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileDispatchCalendarMixedTests(TestCase):
+    """v3.17.478 — `/dispatch/calendar/` includes both tasks and tickets;
+    `/dispatch/upcoming/` returns N day buckets mixing both."""
+
+    def setUp(self):
+        from datetime import datetime, time as dtime, timedelta, timezone as stdlib_tz
+        from django.utils import timezone
+        from psa.models import Ticket
+        from scheduling.models import ScheduledTask, TaskAssignment
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='CalMixOrg', slug='calmix')
+        self.user = User.objects.create_user('caluser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        today = timezone.localdate()
+        # A task due today.
+        task_today = ScheduledTask.objects.create(
+            organization=self.org, title='Patch firewall',
+            description='', priority='high', status='pending',
+            due_date=datetime.combine(today, dtime(9, 0), tzinfo=stdlib_tz.utc),
+        )
+        TaskAssignment.objects.create(
+            task=task_today, user=self.user,
+        )
+        # A ticket due tomorrow.
+        status_new, _p1, p3, ttype, queue = _seed_psa_baseline()
+        tomorrow = today + timedelta(days=1)
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Onsite visit',
+            status=status_new, priority=p3, ticket_type=ttype, queue=queue,
+            assigned_to=self.user,
+            resolution_due_at=datetime.combine(tomorrow, dtime(14, 0),
+                                               tzinfo=stdlib_tz.utc),
+        )
+        self.today_iso = today.isoformat()
+        self.tomorrow_iso = tomorrow.isoformat()
+        self.month_str = today.strftime('%Y-%m')
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'caluser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_calendar_includes_tasks_and_tickets(self):
+        resp = _auth_get(
+            self.client,
+            f'/api/mobile/v1/dispatch/calendar/?month={self.month_str}',
+            self.token,
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        days = resp.json()['days']
+        # Today's bucket has the task; tomorrow's has the ticket — but
+        # only if both fall in the same month (cross-month tomorrow is
+        # skipped from this assertion).
+        today_items = days.get(self.today_iso, [])
+        self.assertTrue(any(it.get('kind') == 'task' for it in today_items),
+                        f'expected a task entry for {self.today_iso}, got {today_items}')
+        if self.tomorrow_iso[:7] == self.month_str:
+            tom_items = days.get(self.tomorrow_iso, [])
+            self.assertTrue(
+                any(it.get('kind') == 'ticket' for it in tom_items),
+                f'expected a ticket entry for {self.tomorrow_iso}, got {tom_items}',
+            )
+
+    def test_upcoming_returns_seven_day_window_mixed(self):
+        resp = _auth_get(
+            self.client, '/api/mobile/v1/dispatch/upcoming/', self.token,
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertEqual(body['today'], self.today_iso)
+        self.assertEqual(len(body['days']), 7)
+        # Day 0 = today should contain the task.
+        day0 = body['days'][0]
+        self.assertEqual(day0['date'], self.today_iso)
+        self.assertTrue(any(it.get('kind') == 'task' for it in day0['items']))
+        # Day 1 = tomorrow should contain the ticket.
+        day1 = body['days'][1]
+        self.assertEqual(day1['date'], self.tomorrow_iso)
+        self.assertTrue(any(it.get('kind') == 'ticket' for it in day1['items']))
+
+    def test_upcoming_clamps_days_param(self):
+        resp = _auth_get(
+            self.client, '/api/mobile/v1/dispatch/upcoming/?days=999', self.token,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()['days']), 14)

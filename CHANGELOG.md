@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.478] - 2026-05-13
+
+### Mobile dashboard: 7-day agenda strip mixing scheduled tasks + tickets
+
+**Mobile dashboard (`mobile/app/dashboard.tsx`):**
+- New **Upcoming** card under the three-tile row showing the next 7 days. Each non-empty day renders the date label ("Today" / "Tomorrow" / "Mon 5/19" …), a count badge, and up to three item titles with `+N more` for the rest. Tapping the card opens the full month at `/dispatch/calendar`.
+- Items mix scheduled-task assignments (the caller's `TaskAssignment` rows due that day) and tickets (the caller's accessible tickets with a `resolution_due_at` due that day). Each row carries an emoji prefix — 📋 for tasks, 🎫 for tickets — so the source is glanceable.
+
+**Backend (`api_mobile/views_dispatch.py`):**
+- `GET /api/mobile/v1/dispatch/calendar/?month=YYYY-MM` now folds tickets into the per-day buckets alongside tasks. Rows carry a `kind` discriminator (`'task'` or `'ticket'`) and ticket rows alias `resolution_due_at` to `task_due_date` so existing calendar UI keeps rendering without branching.
+- New `GET /api/mobile/v1/dispatch/upcoming/?days=N` returns an N-day (default 7, clamp [1, 14]) ordered list with empty days included. Feeds the dashboard agenda strip.
+
+**Mobile dispatch calendar (`mobile/app/dispatch/calendar.tsx`):**
+- Selected-day list now renders both tasks and tickets, distinguished by emoji + tap target. Tickets route to `/tickets/<id>`; tasks route to `/dispatch` (matches prior behavior).
+
+versionCode 3170477 → 3170478. **AAB rebuild required.**
+
 ## [3.17.477] - 2026-05-13
 
 ### Mobile: client picker on new ticket, assignee picker on detail, three-tile dashboard, vehicles unscoped, ticket permissions

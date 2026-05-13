@@ -22,6 +22,9 @@ from .scoping import accessible_org_ids
 def _serialize_assignment(a) -> dict:
     t = a.task
     return {
+        # v3.17.478 — `kind` discriminator so the mobile calendar /
+        # agenda can render tasks and tickets in one list.
+        'kind': 'task',
         'assignment_id': a.id,
         'task_id': t.id,
         'task_title': t.title,
@@ -35,6 +38,31 @@ def _serialize_assignment(a) -> dict:
         'acknowledged_at': a.acknowledged_at.isoformat() if a.acknowledged_at else None,
         'notes': a.notes or '',
         'recurrence': t.recurrence,
+    }
+
+
+def _serialize_ticket_calendar(t) -> dict:
+    """
+    v3.17.478 — compact ticket payload for the calendar / agenda. We keep
+    the same shape as `_serialize_assignment` so a single ListRow can
+    render either without branching: same field names where possible,
+    `kind='ticket'` discriminator, and the ticket's `resolution_due_at`
+    aliased as `task_due_date` so existing calendar UI code keeps working.
+    """
+    org_name = None
+    if t.organization_id and getattr(t, 'organization', None) is not None:
+        org_name = getattr(t.organization, 'name', None)
+    return {
+        'kind': 'ticket',
+        'ticket_id': t.id,
+        'ticket_number': t.ticket_number,
+        'task_title': t.subject,
+        'task_priority': t.priority.code if t.priority_id else None,
+        'task_status': t.status.name if t.status_id else None,
+        'task_due_date': t.resolution_due_at.isoformat()
+            if t.resolution_due_at else None,
+        'organization_id': t.organization_id,
+        'organization_name': org_name,
     }
 
 
@@ -147,10 +175,105 @@ def dispatch_calendar_view(request):
             continue
         bucketed.setdefault(d, []).append(_serialize_assignment(a))
 
+    # v3.17.478 — also fold tickets assigned to the caller whose
+    # `resolution_due_at` lands inside the month. Same per-day bucket
+    # shape; rows carry a `kind='ticket'` discriminator. Skipped silently
+    # if PSA isn't installed (matches the dashboard pattern).
+    try:
+        from psa.models import Ticket
+        from django.db.models import Q
+        from datetime import datetime, time as dtime
+        # Restrict to tickets the caller can see: assigned to them
+        # OR they have tickets_view_all. Membership-scoped reads aren't
+        # filtered here because the calendar payload is per-user noise,
+        # not cross-org leakage.
+        ticket_qs = (Ticket.objects
+                     .filter(resolution_due_at__gte=datetime.combine(start, dtime.min),
+                             resolution_due_at__lt=datetime.combine(end, dtime.min))
+                     .filter(Q(assigned_to=request.user)
+                             | Q(organization_id__in=accessible_org_ids(request.user)))
+                     .filter(status__is_terminal=False)
+                     .select_related('status', 'priority', 'organization')
+                     .distinct())
+        for t in ticket_qs:
+            d = t.resolution_due_at.date().isoformat()
+            bucketed.setdefault(d, []).append(_serialize_ticket_calendar(t))
+    except Exception:
+        pass
+
     return Response({
         'month': start.strftime('%Y-%m'),
         'today': today.isoformat(),
         'days': bucketed,
+    })
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def dispatch_upcoming_view(request):
+    """
+    GET /api/mobile/v1/dispatch/upcoming/?days=7
+
+    v3.17.478 — compact agenda for the mobile dashboard widget. Returns
+    one row per day from today through today + N-1, each carrying a
+    flattened mix of `TaskAssignment` rows (caller's assignments) and
+    `Ticket` rows (caller's accessible tickets with a
+    `resolution_due_at`) due that day. `days` is clamped to [1, 14].
+    """
+    from datetime import date, timedelta, datetime, time as dtime
+    from scheduling.models import TaskAssignment
+
+    try:
+        n = int(request.query_params.get('days', 7))
+    except (TypeError, ValueError):
+        n = 7
+    n = max(1, min(n, 14))
+
+    today = timezone.localdate()
+    end = today + timedelta(days=n)
+
+    # Empty buckets for every day in range so the mobile UI can render a
+    # uniform N-row strip without filling in gaps.
+    buckets: list[dict] = [
+        {'date': (today + timedelta(days=i)).isoformat(), 'items': []}
+        for i in range(n)
+    ]
+    by_date = {b['date']: b for b in buckets}
+
+    # Tasks
+    task_qs = (TaskAssignment.objects
+               .filter(user=request.user,
+                       task__due_date__gte=datetime.combine(today, dtime.min),
+                       task__due_date__lt=datetime.combine(end, dtime.min))
+               .select_related('task', 'task__organization'))
+    for a in task_qs:
+        d = a.task.due_date.date().isoformat() if a.task.due_date else None
+        if d and d in by_date:
+            by_date[d]['items'].append(_serialize_assignment(a))
+
+    # Tickets
+    try:
+        from psa.models import Ticket
+        from django.db.models import Q
+        ticket_qs = (Ticket.objects
+                     .filter(resolution_due_at__gte=datetime.combine(today, dtime.min),
+                             resolution_due_at__lt=datetime.combine(end, dtime.min))
+                     .filter(Q(assigned_to=request.user)
+                             | Q(organization_id__in=accessible_org_ids(request.user)))
+                     .filter(status__is_terminal=False)
+                     .select_related('status', 'priority', 'organization')
+                     .distinct())
+        for t in ticket_qs:
+            d = t.resolution_due_at.date().isoformat()
+            if d in by_date:
+                by_date[d]['items'].append(_serialize_ticket_calendar(t))
+    except Exception:
+        pass
+
+    return Response({
+        'today': today.isoformat(),
+        'days': buckets,
     })
 
 
