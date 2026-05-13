@@ -208,6 +208,111 @@ def dispatch_calendar_view(request):
     })
 
 
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def create_scheduled_task_view(request):
+    """
+    POST /api/mobile/v1/dispatch/tasks/   (v3.17.479)
+
+    Body: `{organization_id, title, due_at, description?, priority?,
+            assignee_id?}`. `due_at` is ISO 8601. `priority` ∈ {low,
+    normal, high, urgent} (default 'normal'). `assignee_id` defaults
+    to the caller — pass `null` to leave the task unassigned.
+
+    Used by the mobile calendar's "Schedule on this day" action so a
+    tech can drop a new ScheduledTask onto a calendar day without
+    leaving the app.
+    """
+    from datetime import datetime
+    from django.utils import timezone as _tz
+    from django.contrib.auth.models import User
+    from scheduling.models import ScheduledTask, TaskAssignment
+
+    data = request.data or {}
+    org_id = data.get('organization_id')
+    try:
+        org_id = int(org_id) if org_id is not None else None
+    except (TypeError, ValueError):
+        return Response({'detail': 'organization_id must be an integer'},
+                        status=drf_status.HTTP_400_BAD_REQUEST)
+    if not org_id or org_id not in list(accessible_org_ids(request.user)):
+        return Response(
+            {'detail': 'organization_id required and must be accessible'},
+            status=drf_status.HTTP_403_FORBIDDEN,
+        )
+
+    title = (data.get('title') or '').strip()
+    if not title:
+        return Response({'detail': 'title is required'},
+                        status=drf_status.HTTP_400_BAD_REQUEST)
+
+    due_raw = data.get('due_at') or data.get('due_date')
+    due_at = None
+    if due_raw:
+        try:
+            due_at = datetime.fromisoformat(str(due_raw).replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            return Response({'detail': 'due_at must be ISO 8601'},
+                            status=drf_status.HTTP_400_BAD_REQUEST)
+        if _tz.is_naive(due_at):
+            due_at = _tz.make_aware(due_at)
+
+    priority = (data.get('priority') or 'normal').strip().lower()
+    if priority not in {'low', 'normal', 'high', 'urgent'}:
+        priority = 'normal'
+
+    task = ScheduledTask.objects.create(
+        organization_id=org_id,
+        title=title[:255],
+        description=(data.get('description') or '')[:5000],
+        priority=priority,
+        due_date=due_at,
+        created_by=request.user,
+        status='pending',
+    )
+
+    # Default assignee is the caller. Pass `assignee_id=null` to skip;
+    # pass an explicit id to assign someone else.
+    if 'assignee_id' in data:
+        raw = data.get('assignee_id')
+        if raw not in (None, '', 0):
+            try:
+                assignee = User.objects.get(pk=int(raw))
+                TaskAssignment.objects.create(task=task, user=assignee)
+            except (User.DoesNotExist, ValueError, TypeError):
+                # The task was already created; just skip the assignment
+                # rather than 500ing.
+                pass
+    else:
+        TaskAssignment.objects.create(task=task, user=request.user)
+
+    # Re-fetch with org so the serializer can render organization_name.
+    task = (ScheduledTask.objects
+            .select_related('organization').get(pk=task.pk))
+    # Return as a calendar-shaped row + the created assignment id (if any)
+    # so the mobile client can drop it into the calendar bucket directly.
+    assignment = TaskAssignment.objects.filter(
+        task=task, user=request.user,
+    ).first()
+    if assignment is None:
+        assignment = TaskAssignment.objects.filter(task=task).first()
+    if assignment is not None:
+        return Response(_serialize_assignment(assignment),
+                        status=drf_status.HTTP_201_CREATED)
+    # Edge case: task created but no assignment (caller passed null + no fallback)
+    return Response({
+        'kind': 'task',
+        'task_id': task.id,
+        'task_title': task.title,
+        'task_due_date': task.due_date.isoformat() if task.due_date else None,
+        'task_priority': task.priority,
+        'task_status': task.status,
+        'organization_id': task.organization_id,
+        'organization_name': task.organization.name if task.organization_id else None,
+    }, status=drf_status.HTTP_201_CREATED)
+
+
 @api_view(['GET'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])

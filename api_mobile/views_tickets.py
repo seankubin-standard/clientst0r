@@ -45,11 +45,57 @@ def _serialize_ticket(t, *, detail=False):
             if getattr(t, 'updated_at', None) else None,
     }
     if detail:
+        # v3.17.479 — bill rollup. Sum all TicketTimeEntry rows for this
+        # ticket and surface total / billable / non-billable minutes so
+        # the mobile detail screen can render the totals card without a
+        # second round trip. When the client has an active block_hours
+        # contract, also include a `contract` sub-object with used /
+        # remaining / type so the techs can see how much bucket is left.
+        total_minutes = 0
+        billable_minutes = 0
+        try:
+            for e in t.time_entries.all():
+                total_minutes += e.duration_minutes or 0
+                if e.is_billable:
+                    billable_minutes += e.duration_minutes or 0
+        except Exception:
+            pass
+
+        contract_obj = None
+        try:
+            from psa.models import Contract
+            c = Contract.for_ticket(t)
+            if c is not None:
+                total_alw = c.effective_total_minutes()
+                used = c.hours_used_minutes or 0
+                # Unlimited contracts (total_hours == 0) get remaining=None.
+                if total_alw:
+                    remaining = max(0, total_alw - used)
+                else:
+                    total_alw = None
+                    remaining = None
+                contract_obj = {
+                    'id': c.id,
+                    'name': c.name,
+                    'type': c.contract_type,
+                    'total_minutes': total_alw,
+                    'used_minutes': used,
+                    'remaining_minutes': remaining,
+                }
+        except Exception:
+            contract_obj = None
+
         out.update({
             'description': t.description,
             'requester_name': t.requester_name,
             'requester_email': t.requester_email,
             'is_terminal': t.status.is_terminal if t.status_id else False,
+            'resolution_due_at': t.resolution_due_at.isoformat()
+                if getattr(t, 'resolution_due_at', None) else None,
+            'total_minutes': total_minutes,
+            'billable_minutes': billable_minutes,
+            'non_billable_minutes': max(0, total_minutes - billable_minutes),
+            'contract': contract_obj,
             'comments': [
                 {
                     'id': c.id,
@@ -283,6 +329,33 @@ def ticket_detail_view(request, pk: int):
         if match is None:
             return Response({'detail': f'unknown priority: {raw}'}, status=400)
         ticket.priority = match
+    # v3.17.479 — accept `resolution_due_at` (and the convenience alias
+    # `due_at`) so users can schedule a ticket on a calendar day from
+    # mobile. Pass `null` / empty to clear. ISO 8601 input; gated on
+    # tickets_edit.
+    if 'resolution_due_at' in data or 'due_at' in data:
+        if not user_has_perm(request.user, 'tickets_edit'):
+            return Response(
+                {'detail': "You don't have permission to edit tickets."},
+                status=403,
+            )
+        raw = data.get('resolution_due_at', data.get('due_at'))
+        if raw in (None, ''):
+            ticket.resolution_due_at = None
+        else:
+            from datetime import datetime
+            from django.utils import timezone as _tz
+            try:
+                parsed = datetime.fromisoformat(str(raw).replace('Z', '+00:00'))
+            except (ValueError, TypeError):
+                return Response(
+                    {'detail': 'resolution_due_at must be ISO 8601'},
+                    status=400,
+                )
+            if _tz.is_naive(parsed):
+                parsed = _tz.make_aware(parsed)
+            ticket.resolution_due_at = parsed
+
     if 'assigned_to_id' in data:
         # v3.17.477 — gate re-assignment on tickets_assign. Self-claim
         # (assigning to yourself) is allowed even without the perm so

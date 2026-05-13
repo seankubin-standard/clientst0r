@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.479] - 2026-05-13
+
+### Mobile: vault editing + ticket billing rollup + schedule-on-calendar
+
+**Mobile vault (`mobile/app/vault/`):**
+- New `/vault/new` screen — create a vault item from the app. Required: organization, title, password. Optional: username, URL, notes, category. Gated on `vault_create`. Plaintext password is held in component state only and wiped on unmount; the server encrypts via `Password.set_password()`.
+- `/vault/<id>` gains **Edit** and **Rotate password** actions (gated on `vault_edit`). Edit covers title/username/URL/notes inline. Rotate prompts for a new plaintext in a modal and re-encrypts the ciphertext server-side. Both emit audit-log rows with `channel: mobile`.
+
+**Mobile ticket detail (`mobile/app/tickets/[id].tsx`):**
+- New **Billing** card above the time-entries list: three big totals (Total / Billable / Non-billable) for the ticket. When the client has an active contract (any type), surfaces the contract name + type plus, for block-hours contracts, a progress bar of `used / remaining / total` minutes. Bar tone goes green → amber → red as the bucket empties.
+- Backend (`api_mobile/views_tickets.py`): `_serialize_ticket(detail=True)` now returns `total_minutes`, `billable_minutes`, `non_billable_minutes`, `resolution_due_at`, and a `contract` sub-object (`{id, name, type, total_minutes, used_minutes, remaining_minutes}`). PATCH also accepts `resolution_due_at` / `due_at` so users can schedule a ticket on a calendar day.
+
+**Mobile calendar — schedule on this day (`mobile/app/dispatch/calendar.tsx`):**
+- New **+ Schedule on this day** button on the selected-day section. Opens a modal: client picker, title, description, priority chips. Submits to the new `POST /api/mobile/v1/dispatch/tasks/` endpoint which creates a `ScheduledTask` anchored at 09:00 local on the selected date and auto-assigns the caller (`TaskAssignment` row).
+
+**Backend (`api_mobile/views_vault.py`, `views_dispatch.py`, `views_auth.py`):**
+- `POST /api/mobile/v1/vault/` (create — gated on `vault_create`).
+- `PATCH /api/mobile/v1/vault/<id>/` (edit + rotate — gated on `vault_edit`; only-rotate sets a fresh ciphertext via `set_password()`).
+- `POST /api/mobile/v1/dispatch/tasks/` (create scheduled task).
+- `/auth/me/` permission map gains the five `vault_*` flags so the mobile UI can gate Edit / New / Rotate / Reveal-password affordances.
+
+versionCode 3170478 → 3170479. **AAB rebuild required.**
+
 ## [3.17.478] - 2026-05-13
 
 ### Mobile dashboard: 7-day agenda strip mixing scheduled tasks + tickets

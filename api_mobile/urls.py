@@ -91,6 +91,8 @@ urlpatterns = [
     path('dispatch/calendar/', views_dispatch.dispatch_calendar_view, name='dispatch_calendar'),
     # 7-day agenda strip for the mobile dashboard (v3.17.478)
     path('dispatch/upcoming/', views_dispatch.dispatch_upcoming_view, name='dispatch_upcoming'),
+    # Schedule-on-calendar — create a ScheduledTask from the mobile app (v3.17.479)
+    path('dispatch/tasks/', views_dispatch.create_scheduled_task_view, name='dispatch_create_task'),
     path('dispatch/assignments/<int:pk>/ack/',
          views_dispatch.task_acknowledge_view, name='task_acknowledge'),
     path('dispatch/tasks/<int:pk>/comments/',

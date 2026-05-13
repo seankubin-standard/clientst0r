@@ -2497,3 +2497,273 @@ class MobileDispatchCalendarMixedTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()['days']), 14)
+
+
+# === v3.17.479 follow-up tests ====================================
+# Vault create / edit / rotate, ticket billing rollup, schedule-on-day.
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileVaultEditTests(TestCase):
+    """v3.17.479 — POST /vault/ + PATCH /vault/<id>/ gated on perms."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        from vault.models import Password
+        from vault.encryption_v2 import encrypt_password
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='VaultEditOrg', slug='vedit')
+        # Two users: one with vault_create + vault_edit, one with neither.
+        tpl_full = RoleTemplate.objects.create(
+            name='Vault-Full', is_system_template=False,
+            vault_view=True, vault_create=True, vault_edit=True,
+        )
+        tpl_view = RoleTemplate.objects.create(
+            name='Vault-View', is_system_template=False,
+            vault_view=True, vault_create=False, vault_edit=False,
+        )
+        self.editor = User.objects.create_user('veditor', password='hunter2')
+        self.viewer = User.objects.create_user('vviewer', password='hunter2')
+        Membership.objects.create(
+            user=self.editor, organization=self.org, role=Role.ADMIN,
+            role_template=tpl_full, is_active=True,
+        )
+        Membership.objects.create(
+            user=self.viewer, organization=self.org, role=Role.READONLY,
+            role_template=tpl_view, is_active=True,
+        )
+        self.entry = Password.objects.create(
+            organization=self.org, title='Router',
+            encrypted_password=encrypt_password('s3cret', org_id=self.org.id),
+        )
+        self.client = Client()
+        self.editor_tok = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'veditor', 'password': 'hunter2',
+        }).json()['token']
+        self.viewer_tok = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'vviewer', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_create_with_perm_201(self):
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/vault/', self.editor_tok,
+            {
+                'organization_id': self.org.id,
+                'title': 'New API key',
+                'password': 'super-secret',
+                'category': 'api_key',
+                'username': 'admin',
+            },
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['title'], 'New API key')
+        self.assertEqual(body['username'], 'admin')
+        self.assertEqual(body['category'], 'api_key')
+
+    def test_create_without_perm_403(self):
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/vault/', self.viewer_tok,
+            {
+                'organization_id': self.org.id,
+                'title': 'Bad attempt',
+                'password': 'noway',
+            },
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_create_requires_password_field(self):
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/vault/', self.editor_tok,
+            {
+                'organization_id': self.org.id,
+                'title': 'No secret',
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_patch_updates_fields_with_perm(self):
+        resp = self.client.patch(
+            f'/api/mobile/v1/vault/{self.entry.id}/',
+            data=json.dumps({'title': 'Renamed Router', 'username': 'admin2'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {self.editor_tok}',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['title'], 'Renamed Router')
+        self.assertEqual(resp.json()['username'], 'admin2')
+
+    def test_patch_without_perm_403(self):
+        resp = self.client.patch(
+            f'/api/mobile/v1/vault/{self.entry.id}/',
+            data=json.dumps({'title': 'No way'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {self.viewer_tok}',
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_rotate_password_changes_ciphertext(self):
+        from vault.models import Password
+        orig_cipher = self.entry.encrypted_password
+        resp = self.client.patch(
+            f'/api/mobile/v1/vault/{self.entry.id}/',
+            data=json.dumps({'password': 'rotated-plaintext'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {self.editor_tok}',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        fresh = Password.objects.get(pk=self.entry.id)
+        self.assertNotEqual(fresh.encrypted_password, orig_cipher)
+        # Round-trip: the new ciphertext should decrypt to the new plaintext.
+        self.assertEqual(fresh.get_password(), 'rotated-plaintext')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileTicketBillingRollupTests(TestCase):
+    """v3.17.479 — ticket detail returns total/billable/non-billable plus
+    contract block status when applicable."""
+
+    def setUp(self):
+        from datetime import date as _d, timedelta, datetime as _dt
+        from django.utils import timezone
+        from psa.models import (
+            Ticket, TicketTimeEntry, Contract,
+        )
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='BillOrg', slug='billorg')
+        self.user = User.objects.create_user('billuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        status_new, _p1, p3, ttype, queue = _seed_psa_baseline()
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Billable work',
+            status=status_new, priority=p3, ticket_type=ttype, queue=queue,
+        )
+        # Active block-hours contract — must exist BEFORE time entries so
+        # the TicketTimeEntry.save() post-hook can deduct via Contract.for_ticket().
+        Contract.objects.create(
+            organization=self.org, client_org=self.org, name='Test Block',
+            contract_type='block_hours', status='active',
+            start_date=_d.today() - timedelta(days=30),
+            total_hours=5,
+        )
+        # Two billable entries (45m + 30m) and one non-billable (15m).
+        now = timezone.now()
+        TicketTimeEntry.objects.create(
+            ticket=self.ticket, user=self.user,
+            started_at=now - timedelta(minutes=45),
+            ended_at=now,
+            duration_minutes=45, is_billable=True,
+        )
+        TicketTimeEntry.objects.create(
+            ticket=self.ticket, user=self.user,
+            started_at=now - timedelta(minutes=30),
+            ended_at=now,
+            duration_minutes=30, is_billable=True,
+        )
+        TicketTimeEntry.objects.create(
+            ticket=self.ticket, user=self.user,
+            started_at=now - timedelta(minutes=15),
+            ended_at=now,
+            duration_minutes=15, is_billable=False,
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'billuser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_detail_includes_rollup_and_contract(self):
+        resp = _auth_get(
+            self.client, f'/api/mobile/v1/tickets/{self.ticket.id}/', self.token,
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertEqual(body['total_minutes'], 90)
+        self.assertEqual(body['billable_minutes'], 75)
+        self.assertEqual(body['non_billable_minutes'], 15)
+        c = body['contract']
+        self.assertIsNotNone(c)
+        self.assertEqual(c['type'], 'block_hours')
+        # 5h allowance = 300 minutes.
+        self.assertEqual(c['total_minutes'], 300)
+        # All three entries (45 + 30 + 15) auto-deducted via the post_save
+        # hook. Note: Contract.hours_used_minutes does NOT filter on
+        # is_billable today — every TicketTimeEntry consumes the bucket.
+        self.assertEqual(c['used_minutes'], 90)
+        self.assertEqual(c['remaining_minutes'], 210)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileScheduleTaskTests(TestCase):
+    """v3.17.479 — POST /dispatch/tasks/ creates a ScheduledTask + assigns
+    the caller; PATCH /tickets/<id>/ accepts resolution_due_at."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='SchOrg', slug='schorg')
+        self.user = User.objects.create_user('schuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'schuser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_create_scheduled_task_attaches_caller(self):
+        from scheduling.models import ScheduledTask, TaskAssignment
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/dispatch/tasks/', self.token,
+            {
+                'organization_id': self.org.id,
+                'title': 'Patch the firewall',
+                'due_at': '2026-06-15T09:00:00',
+                'priority': 'high',
+            },
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['kind'], 'task')
+        self.assertEqual(body['task_title'], 'Patch the firewall')
+        self.assertEqual(body['task_priority'], 'high')
+        # Server actually created the row + assignment.
+        task = ScheduledTask.objects.get(title='Patch the firewall')
+        self.assertTrue(
+            TaskAssignment.objects.filter(task=task, user=self.user).exists()
+        )
+
+    def test_create_scheduled_task_blocks_cross_org(self):
+        other = Organization.objects.create(name='OtherSchOrg', slug='otherorg')
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/dispatch/tasks/', self.token,
+            {
+                'organization_id': other.id,
+                'title': 'Should fail',
+                'due_at': '2026-06-15T09:00:00',
+            },
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_patch_ticket_due_date(self):
+        from psa.models import Ticket
+        status_new, _p1, p3, ttype, queue = _seed_psa_baseline()
+        t = Ticket.objects.create(
+            organization=self.org, subject='Schedule me',
+            status=status_new, priority=p3, ticket_type=ttype, queue=queue,
+        )
+        resp = self.client.patch(
+            f'/api/mobile/v1/tickets/{t.id}/',
+            data=json.dumps({'resolution_due_at': '2026-06-20T14:00:00'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        t.refresh_from_db()
+        self.assertIsNotNone(t.resolution_due_at)
+        self.assertEqual(t.resolution_due_at.year, 2026)
+        self.assertEqual(t.resolution_due_at.month, 6)
+        self.assertEqual(t.resolution_due_at.day, 20)

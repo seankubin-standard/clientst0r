@@ -61,9 +61,13 @@ def _user_payload(user):
     try:
         from accounts.permission_utils import user_has_perm
         for perm in (
+            # PSA tickets (v3.17.477)
             'tickets_view', 'tickets_create', 'tickets_edit',
             'tickets_assign', 'tickets_view_all',
             'tickets_close', 'tickets_delete',
+            # Vault (v3.17.479) — gate mobile Edit / New / Rotate UI.
+            'vault_view', 'vault_create', 'vault_edit', 'vault_delete',
+            'vault_view_password',
         ):
             permissions[perm] = user_has_perm(user, perm)
     except Exception:

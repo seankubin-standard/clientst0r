@@ -28,6 +28,8 @@ from rest_framework.decorators import (
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from accounts.permission_utils import user_has_perm
+
 from .scoping import accessible_org_ids
 from .throttles import MobileVaultRevealRateThrottle
 
@@ -48,19 +50,77 @@ def _serialize_entry(p):
     }
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def vault_list_view(request):
     """
-    GET /api/mobile/v1/vault/?search=&organization_id=&page=
+    GET  /api/mobile/v1/vault/?search=&organization_id=&page=
+    POST /api/mobile/v1/vault/    (create — v3.17.479)
 
     Paginated list of vault entries the user can see. Org-scoped to
     `accessible_org_ids`. Search matches title / username / url / notes.
+
+    POST body: `{organization_id, title, password, username?, url?,
+                 notes?, category?}` — `category` maps to `password_type`
+    (must be one of Password.PASSWORD_TYPES; defaults to 'website').
+    Requires the `vault_create` role-template perm.
     """
     from vault.models import Password
 
     org_ids = list(accessible_org_ids(request.user))
+
+    if request.method == 'POST':
+        if not user_has_perm(request.user, 'vault_create'):
+            return Response(
+                {'detail': "You don't have permission to create vault items."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        data = request.data or {}
+        org_id = data.get('organization_id')
+        try:
+            org_id = int(org_id) if org_id is not None else None
+        except (TypeError, ValueError):
+            return Response({'detail': 'organization_id must be an integer'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not org_id or org_id not in org_ids:
+            return Response(
+                {'detail': 'organization_id required and must be accessible'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        title = (data.get('title') or '').strip()
+        if not title:
+            return Response({'detail': 'title is required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        secret = data.get('password')
+        if not isinstance(secret, str) or not secret:
+            return Response({'detail': 'password is required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        category = (data.get('category') or 'website').strip().lower()
+        valid_types = {code for code, _ in Password.PASSWORD_TYPES}
+        if category not in valid_types:
+            category = 'website'
+        entry = Password(
+            organization_id=org_id,
+            title=title[:255],
+            username=(data.get('username') or '')[:255],
+            url=(data.get('url') or '')[:2000],
+            notes=(data.get('notes') or ''),
+            password_type=category,
+            created_by=request.user,
+            last_modified_by=request.user,
+        )
+        try:
+            entry.set_password(secret)
+            entry.save()
+        except Exception as exc:
+            return Response({'detail': f'Failed to encrypt: {exc}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        _audit_vault_mutation(request, entry, action='create',
+                              description=f"Vault entry '{entry.title}' created via mobile")
+        return Response(_serialize_entry(entry),
+                        status=status.HTTP_201_CREATED)
+
     qs = Password.objects.filter(organization_id__in=org_ids).select_related('organization')
 
     search = (request.query_params.get('search') or '').strip()
@@ -107,14 +167,39 @@ def vault_list_view(request):
     })
 
 
-@api_view(['GET'])
+def _audit_vault_mutation(request, password, *, action: str, description: str):
+    """v3.17.479 — uniform audit logging for create / edit / rotate."""
+    from audit.models import AuditLog
+    try:
+        AuditLog.objects.create(
+            organization=password.organization,
+            user=request.user, username=request.user.username,
+            action=action,
+            object_type='password', object_id=password.pk,
+            object_repr=password.title,
+            description=description,
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:255],
+            extra_data={'channel': 'mobile'},
+        )
+    except Exception:
+        pass
+
+
+@api_view(['GET', 'PATCH'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def vault_detail_view(request, pk: int):
     """
-    GET /api/mobile/v1/vault/<id>/
+    GET   /api/mobile/v1/vault/<id>/
+    PATCH /api/mobile/v1/vault/<id>/   (edit fields / rotate — v3.17.479)
 
     Cross-org reads return 404 (don't leak existence).
+
+    PATCH body accepts any of: `{title, username, url, notes, category,
+    password}`. `password` rotates the encrypted ciphertext via
+    `Password.set_password()`. Requires the `vault_edit` role-template
+    perm. Every mutation emits an audit-log row.
     """
     from vault.models import Password
 
@@ -125,6 +210,78 @@ def vault_detail_view(request, pk: int):
         )
     except Password.DoesNotExist:
         return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(_serialize_entry(password))
+
+    # PATCH
+    if not user_has_perm(request.user, 'vault_edit'):
+        return Response(
+            {'detail': "You don't have permission to edit vault items."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    data = request.data or {}
+    fields_changed: list[str] = []
+    rotated = False
+
+    if 'title' in data:
+        new_title = (data.get('title') or '').strip()
+        if not new_title:
+            return Response({'detail': 'title cannot be blank'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        password.title = new_title[:255]
+        fields_changed.append('title')
+    if 'username' in data:
+        password.username = (data.get('username') or '')[:255]
+        fields_changed.append('username')
+    if 'url' in data:
+        password.url = (data.get('url') or '')[:2000]
+        fields_changed.append('url')
+    if 'notes' in data:
+        password.notes = data.get('notes') or ''
+        fields_changed.append('notes')
+    if 'category' in data:
+        category = (data.get('category') or '').strip().lower()
+        valid_types = {code for code, _ in Password.PASSWORD_TYPES}
+        if category and category not in valid_types:
+            return Response(
+                {'detail': f'invalid category; expected one of {sorted(valid_types)}'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if category:
+            password.password_type = category
+            fields_changed.append('category')
+
+    if 'password' in data:
+        secret = data.get('password')
+        if not isinstance(secret, str) or not secret:
+            return Response({'detail': 'password cannot be blank'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            password.set_password(secret)
+            rotated = True
+        except Exception as exc:
+            return Response({'detail': f'Failed to encrypt: {exc}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    if not fields_changed and not rotated:
+        return Response(_serialize_entry(password))
+
+    password.last_modified_by = request.user
+    password.save()
+
+    if rotated:
+        _audit_vault_mutation(
+            request, password, action='update',
+            description=(f"Vault password rotated for '{password.title}' via mobile"
+                         + (f"; also updated {', '.join(fields_changed)}"
+                            if fields_changed else '')),
+        )
+    else:
+        _audit_vault_mutation(
+            request, password, action='update',
+            description=f"Vault fields {fields_changed} updated for '{password.title}' via mobile",
+        )
 
     return Response(_serialize_entry(password))
 
