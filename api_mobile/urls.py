@@ -16,6 +16,7 @@ from . import (
     views_receipts,
     views_scan,
     views_tickets,
+    views_users,
     views_vault,
     views_vehicles,
     views_version,
@@ -50,6 +51,9 @@ urlpatterns = [
     path('tickets/<int:pk>/', views_tickets.ticket_detail_view, name='ticket_detail'),
     path('tickets/<int:pk>/comments/', views_tickets.ticket_comment_view, name='ticket_comment'),
     path('tickets/<int:pk>/time/', views_tickets.ticket_time_view, name='ticket_time'),
+
+    # Users — assignable picker for ticket re-assignment (v3.17.477)
+    path('users/assignable/', views_users.assignable_users_view, name='users_assignable'),
 
     # KB / docs (v3.17.350)
     path('kb/', views_kb.kb_list_view, name='kb_list'),

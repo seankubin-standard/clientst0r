@@ -127,6 +127,10 @@ class Membership(BaseModel):
                 # Release + catalog governance (Phase 6.3) — Owner: all True
                 release_view=True, release_manage=True, release_freeze=True,
                 catalog_propose_change=True, catalog_approve_change=True,
+                # PSA Tickets (v3.17.477) — Owner: all True
+                tickets_view=True, tickets_create=True, tickets_edit=True,
+                tickets_assign=True, tickets_view_all=True,
+                tickets_close=True, tickets_delete=True,
             )
         elif self.role == Role.ADMIN:
             return SimpleNamespace(
@@ -173,6 +177,10 @@ class Membership(BaseModel):
                 # Release + catalog governance (Phase 6.3) — Admin: all True
                 release_view=True, release_manage=True, release_freeze=True,
                 catalog_propose_change=True, catalog_approve_change=True,
+                # PSA Tickets (v3.17.477) — Admin: all True
+                tickets_view=True, tickets_create=True, tickets_edit=True,
+                tickets_assign=True, tickets_view_all=True,
+                tickets_close=True, tickets_delete=True,
             )
         elif self.role == Role.EDITOR:
             return SimpleNamespace(
@@ -221,6 +229,11 @@ class Membership(BaseModel):
                 # Release + catalog governance (Phase 6.3) — Editor: view + propose.
                 release_view=True, release_manage=False, release_freeze=False,
                 catalog_propose_change=True, catalog_approve_change=False,
+                # PSA Tickets (v3.17.477) — Editor (techs): file + work,
+                # no reassign or hard-delete.
+                tickets_view=True, tickets_create=True, tickets_edit=True,
+                tickets_assign=False, tickets_view_all=False,
+                tickets_close=True, tickets_delete=False,
             )
         else:  # READONLY
             return SimpleNamespace(
@@ -267,6 +280,10 @@ class Membership(BaseModel):
                 # Release + catalog governance (Phase 6.3) — Read-Only: view only.
                 release_view=True, release_manage=False, release_freeze=False,
                 catalog_propose_change=False, catalog_approve_change=False,
+                # PSA Tickets (v3.17.477) — Read-Only: view only.
+                tickets_view=True, tickets_create=False, tickets_edit=False,
+                tickets_assign=False, tickets_view_all=False,
+                tickets_close=False, tickets_delete=False,
             )
 
     def can_read(self):
@@ -853,6 +870,28 @@ class RoleTemplate(BaseModel):
     security_alerts_create_rules = models.BooleanField(default=False,
         help_text='Create / edit / delete auto-ticket rules + suppression windows.')
 
+    # --- PSA Tickets (v3.17.477) ---
+    # Until v3.17.477 ticket actions in the PSA / mobile surfaces were
+    # gated only by membership + assignment. Now that the mobile app can
+    # reassign tickets to another user and file tickets without a client,
+    # we surface explicit perm flags here so role templates can grant
+    # them (or hold them back from rank-and-file).
+    tickets_view = models.BooleanField(default=True,
+        help_text='View tickets in the PSA / mobile surfaces.')
+    tickets_create = models.BooleanField(default=True,
+        help_text='File new tickets.')
+    tickets_edit = models.BooleanField(default=True,
+        help_text='Edit ticket subject / description / status / priority.')
+    tickets_assign = models.BooleanField(default=False,
+        help_text='Assign a ticket to another user (re-assignment).')
+    tickets_view_all = models.BooleanField(default=False,
+        help_text='View tickets across all organizations (not just '
+                  'tickets in orgs the user is a member of).')
+    tickets_close = models.BooleanField(default=True,
+        help_text='Move a ticket to a terminal status (resolved / closed).')
+    tickets_delete = models.BooleanField(default=False,
+        help_text='Hard-delete a ticket.')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -990,6 +1029,14 @@ class RoleTemplate(BaseModel):
                 'security_alerts_manage_connections': True,
                 'security_alerts_acknowledge': True,
                 'security_alerts_create_rules': True,
+                # PSA Tickets (v3.17.477) — Owner: all True
+                'tickets_view': True,
+                'tickets_create': True,
+                'tickets_edit': True,
+                'tickets_assign': True,
+                'tickets_view_all': True,
+                'tickets_close': True,
+                'tickets_delete': True,
             },
             {
                 'name': 'Administrator',
@@ -1098,6 +1145,14 @@ class RoleTemplate(BaseModel):
                 'security_alerts_manage_connections': True,
                 'security_alerts_acknowledge': True,
                 'security_alerts_create_rules': True,
+                # PSA Tickets (v3.17.477) — Administrator: all True
+                'tickets_view': True,
+                'tickets_create': True,
+                'tickets_edit': True,
+                'tickets_assign': True,
+                'tickets_view_all': True,
+                'tickets_close': True,
+                'tickets_delete': True,
             },
             {
                 'name': 'Editor',
@@ -1205,6 +1260,14 @@ class RoleTemplate(BaseModel):
                 'security_alerts_manage_connections': False,
                 'security_alerts_acknowledge': True,
                 'security_alerts_create_rules': False,
+                # PSA Tickets (v3.17.477) — Editor: file + work, can't reassign or hard-delete.
+                'tickets_view': True,
+                'tickets_create': True,
+                'tickets_edit': True,
+                'tickets_assign': False,
+                'tickets_view_all': False,
+                'tickets_close': True,
+                'tickets_delete': False,
             },
             {
                 'name': 'Help Desk',
@@ -1312,6 +1375,14 @@ class RoleTemplate(BaseModel):
                 'security_alerts_manage_connections': False,
                 'security_alerts_acknowledge': True,
                 'security_alerts_create_rules': False,
+                # PSA Tickets (v3.17.477) — Help Desk: file + work, no assign / delete.
+                'tickets_view': True,
+                'tickets_create': True,
+                'tickets_edit': True,
+                'tickets_assign': False,
+                'tickets_view_all': False,
+                'tickets_close': True,
+                'tickets_delete': False,
             },
             {
                 'name': 'IT Manager',
@@ -1420,6 +1491,14 @@ class RoleTemplate(BaseModel):
                 'security_alerts_manage_connections': True,
                 'security_alerts_acknowledge': True,
                 'security_alerts_create_rules': True,
+                # PSA Tickets (v3.17.477) — IT Manager: all True
+                'tickets_view': True,
+                'tickets_create': True,
+                'tickets_edit': True,
+                'tickets_assign': True,
+                'tickets_view_all': True,
+                'tickets_close': True,
+                'tickets_delete': True,
             },
             {
                 'name': 'Documentation Writer',
@@ -1526,6 +1605,14 @@ class RoleTemplate(BaseModel):
                 'security_alerts_manage_connections': False,
                 'security_alerts_acknowledge': False,
                 'security_alerts_create_rules': False,
+                # PSA Tickets (v3.17.477) — Documentation Writer: view only.
+                'tickets_view': True,
+                'tickets_create': False,
+                'tickets_edit': False,
+                'tickets_assign': False,
+                'tickets_view_all': False,
+                'tickets_close': False,
+                'tickets_delete': False,
             },
             {
                 'name': 'Read-Only',
@@ -1632,6 +1719,14 @@ class RoleTemplate(BaseModel):
                 'security_alerts_manage_connections': False,
                 'security_alerts_acknowledge': False,
                 'security_alerts_create_rules': False,
+                # PSA Tickets (v3.17.477) — Read-Only: view only.
+                'tickets_view': True,
+                'tickets_create': False,
+                'tickets_edit': False,
+                'tickets_assign': False,
+                'tickets_view_all': False,
+                'tickets_close': False,
+                'tickets_delete': False,
             },
             # --- MSP-named sample roles (v3.17.164) -----------------------
             # Built via _build() so they only flip the listed perms; every
@@ -1652,6 +1747,9 @@ class RoleTemplate(BaseModel):
                 procurement_view=True,
                 # Phase 6.3 — view only
                 release_view=True,
+                # PSA Tickets (v3.17.477) — Client: file own tickets.
+                tickets_view=True,
+                tickets_create=True,
             ),
             _build(
                 'Client Admin',
@@ -1675,6 +1773,11 @@ class RoleTemplate(BaseModel):
                 org_manage_members=True,
                 # Phase 6.3 — view only
                 release_view=True,
+                # PSA Tickets (v3.17.477) — Client Admin: file + edit own-org tickets.
+                tickets_view=True,
+                tickets_create=True,
+                tickets_edit=True,
+                tickets_close=True,
             ),
             _build(
                 'Technician',
@@ -1714,6 +1817,11 @@ class RoleTemplate(BaseModel):
                 # Phase 9 — Technician: view + acknowledge
                 security_alerts_view=True,
                 security_alerts_acknowledge=True,
+                # PSA Tickets (v3.17.477) — Technician: file + work, no reassign.
+                tickets_view=True,
+                tickets_create=True,
+                tickets_edit=True,
+                tickets_close=True,
             ),
             _build(
                 'Tech Manager',
@@ -1779,6 +1887,13 @@ class RoleTemplate(BaseModel):
                 security_alerts_manage_connections=True,
                 security_alerts_acknowledge=True,
                 security_alerts_create_rules=True,
+                # PSA Tickets (v3.17.477) — Tech Manager: full incl. assign.
+                tickets_view=True,
+                tickets_create=True,
+                tickets_edit=True,
+                tickets_assign=True,
+                tickets_view_all=True,
+                tickets_close=True,
             ),
             _build(
                 'Office Manager',
@@ -1866,6 +1981,14 @@ class RoleTemplate(BaseModel):
                 security_alerts_manage_connections=True,
                 security_alerts_acknowledge=True,
                 security_alerts_create_rules=True,
+                # PSA Tickets (v3.17.477) — Office Manager: full incl. assign / delete.
+                tickets_view=True,
+                tickets_create=True,
+                tickets_edit=True,
+                tickets_assign=True,
+                tickets_view_all=True,
+                tickets_close=True,
+                tickets_delete=True,
             ),
             _build(
                 'Full Admin',

@@ -51,7 +51,7 @@ def dashboard_view(request):
     soon = now + timezone.timedelta(days=30)
 
     # === Tickets ===
-    open_tickets = critical_tickets = my_open_tickets = 0
+    open_tickets = critical_tickets = my_open_tickets = new_tickets = 0
     recent_tickets: list = []
     try:
         from psa.models import Ticket  # noqa: WPS433 — soft import: PSA may be uninstalled
@@ -62,8 +62,12 @@ def dashboard_view(request):
         open_tickets = open_qs.count()
         critical_tickets = open_qs.filter(priority__code='P1').count()
         my_open_tickets = open_qs.filter(assigned_to=request.user).count()
+        # v3.17.477 — "Open (New)" tile on the mobile dashboard. Counts
+        # tickets currently sitting in the 'new' status (un-triaged) so
+        # techs can see backlog separately from total open.
+        new_tickets = open_qs.filter(status__slug='new').count()
         for t in (open_qs
-                  .select_related('status', 'priority')
+                  .select_related('status', 'priority', 'organization', 'assigned_to')
                   .order_by('-updated_at')[:5]):
             recent_tickets.append(_serialize_ticket(t))
     except Exception:
@@ -124,6 +128,7 @@ def dashboard_view(request):
         'open_tickets': open_tickets,
         'critical_tickets': critical_tickets,
         'my_open_tickets': my_open_tickets,
+        'new_tickets': new_tickets,
         'expiring_soon': expiring_soon,
         'monitors_down': monitors_down,
         'recent_tickets': recent_tickets,

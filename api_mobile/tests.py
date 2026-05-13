@@ -466,8 +466,12 @@ class MobileTicketsTests(TestCase):
         self.org_a = Organization.objects.create(name='OrgA-Tk', slug='orga-tk')
         self.org_b = Organization.objects.create(name='OrgB-Tk', slug='orgb-tk')
         self.user_a = User.objects.create_user('tkuser', password='hunter2')
+        # v3.17.477 — use Role.EDITOR (no tickets_view_all in the simple-
+        # role fallback) so the cross-org scope assertions below still
+        # exercise the org-membership filter. Owner gets view_all = True
+        # by design and is covered separately in MobileTicketAssignPermTests.
         Membership.objects.create(
-            user=self.user_a, organization=self.org_a, role=Role.OWNER, is_active=True,
+            user=self.user_a, organization=self.org_a, role=Role.EDITOR, is_active=True,
         )
         # Seed minimal PSA workflow rows
         self.status_new = TicketStatus.objects.create(name='New', slug='new', sort_order=1)
@@ -1139,19 +1143,23 @@ class MobileVehiclesTests(TestCase):
             'username': 'vuser', 'password': 'hunter2',
         }).json()['token']
 
-    def test_my_vehicles_excludes_others(self):
+    def test_my_vehicles_returns_full_fleet(self):
+        # v3.17.477 — vehicles aren't multi-tenant; any authenticated
+        # user sees every active vehicle. Previously this test asserted
+        # the OTHER user's vehicle was hidden, which was the wrong shape.
         resp = _auth_get(self.client, '/api/mobile/v1/vehicles/', self.token)
         self.assertEqual(resp.status_code, 200)
         ids = {v['id'] for v in resp.json()['results']}
         self.assertIn(self.vehicle.id, ids)
-        self.assertNotIn(self.other_vehicle.id, ids)
+        self.assertIn(self.other_vehicle.id, ids)
 
-    def test_other_vehicle_detail_404(self):
+    def test_other_vehicle_detail_accessible(self):
+        # v3.17.477 — see test_my_vehicles_returns_full_fleet.
         resp = _auth_get(
             self.client, f'/api/mobile/v1/vehicles/{self.other_vehicle.id}/',
             self.token,
         )
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 200)
 
     def test_inventory_list(self):
         resp = _auth_get(
@@ -2059,3 +2067,338 @@ class MobilePushSignalsTests(TestCase):
         vrr.save()
         self.mock_push.assert_called()
         self.assertEqual(self.mock_push.call_args.args[0].pk, self.assignee.pk)
+
+
+# === v3.17.477 follow-up tests ====================================
+#
+# Cover: PSA tickets_assign permission gate on PATCH, /users/assignable/
+# endpoint, /auth/me/ permission map, /dashboard/ new_tickets count,
+# /vehicles/ returning the whole fleet, and the serializer surfacing
+# `organization_name` + `assigned_to_name`.
+
+
+def _seed_psa_baseline():
+    """Helper for v3.17.477 ticket-perm tests — minimal PSA reference rows."""
+    from psa.models import TicketStatus, TicketPriority, TicketType, Queue
+    status_new, _ = TicketStatus.objects.get_or_create(
+        slug='new', defaults={'name': 'New', 'sort_order': 1},
+    )
+    priority_p1, _ = TicketPriority.objects.get_or_create(
+        code='P1', defaults={'name': 'Critical'},
+    )
+    priority_p3, _ = TicketPriority.objects.get_or_create(
+        code='P3', defaults={'name': 'Normal'},
+    )
+    ttype, _ = TicketType.objects.get_or_create(
+        slug='incident', defaults={'name': 'Incident'},
+    )
+    queue, _ = Queue.objects.get_or_create(
+        slug='default', defaults={'name': 'Default'},
+    )
+    return status_new, priority_p1, priority_p3, ttype, queue
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileTicketAssignPermTests(TestCase):
+    """v3.17.477 — PATCH assigned_to_id requires tickets_assign, except for
+    self-claim and unassign."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        from psa.models import Ticket
+        from accounts.models import RoleTemplate
+        self.org = Organization.objects.create(name='AsgOrg', slug='asg')
+        self.tech = User.objects.create_user('tech1', password='hunter2')
+        self.tech_other = User.objects.create_user('tech2', password='hunter2')
+        self.manager = User.objects.create_user('mgr1', password='hunter2')
+        # Tech: no tickets_assign perm. Manager: has tickets_assign.
+        tech_tpl = RoleTemplate.objects.create(
+            name='Tech-NoAssign', is_system_template=False,
+            tickets_view=True, tickets_create=True, tickets_edit=True,
+            tickets_assign=False,
+        )
+        mgr_tpl = RoleTemplate.objects.create(
+            name='Mgr-Assign', is_system_template=False,
+            tickets_view=True, tickets_create=True, tickets_edit=True,
+            tickets_assign=True,
+        )
+        Membership.objects.create(
+            user=self.tech, organization=self.org, role=Role.ADMIN,
+            role_template=tech_tpl, is_active=True,
+        )
+        Membership.objects.create(
+            user=self.tech_other, organization=self.org, role=Role.ADMIN,
+            role_template=tech_tpl, is_active=True,
+        )
+        Membership.objects.create(
+            user=self.manager, organization=self.org, role=Role.OWNER,
+            role_template=mgr_tpl, is_active=True,
+        )
+        status_new, _p1, p3, ttype, queue = _seed_psa_baseline()
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Assignable ticket',
+            status=status_new, priority=p3, ticket_type=ttype, queue=queue,
+        )
+        self.client = Client()
+        self.tech_token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'tech1', 'password': 'hunter2',
+        }).json()['token']
+        self.mgr_token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'mgr1', 'password': 'hunter2',
+        }).json()['token']
+
+    def _patch(self, token, body):
+        return self.client.patch(
+            f'/api/mobile/v1/tickets/{self.ticket.id}/',
+            data=json.dumps(body), content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {token}',
+        )
+
+    def test_self_claim_allowed_without_assign_perm(self):
+        resp = self._patch(self.tech_token, {'assigned_to_id': self.tech.id})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['assigned_to_id'], self.tech.id)
+
+    def test_reassign_to_other_user_blocked_without_perm(self):
+        resp = self._patch(self.tech_token, {'assigned_to_id': self.tech_other.id})
+        self.assertEqual(resp.status_code, 403, resp.content)
+
+    def test_unassign_allowed_without_assign_perm(self):
+        # First assign as manager so we have someone to unassign.
+        self._patch(self.mgr_token, {'assigned_to_id': self.tech_other.id})
+        resp = self._patch(self.tech_token, {'assigned_to_id': None})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIsNone(resp.json()['assigned_to_id'])
+
+    def test_reassign_allowed_with_assign_perm(self):
+        resp = self._patch(self.mgr_token, {'assigned_to_id': self.tech_other.id})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['assigned_to_id'], self.tech_other.id)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileAssignableUsersTests(TestCase):
+    """v3.17.477 — /users/assignable/ scopes the picker to peers, and to
+    just the caller when they lack tickets_assign."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        from accounts.models import RoleTemplate
+        self.org = Organization.objects.create(name='AsgListOrg', slug='asglist')
+        self.tech = User.objects.create_user('atech', password='hunter2')
+        self.peer = User.objects.create_user('apeer', password='hunter2')
+        self.outsider = User.objects.create_user('aout', password='hunter2')
+        self.manager = User.objects.create_user('amgr', password='hunter2')
+        tech_tpl = RoleTemplate.objects.create(
+            name='Tech-NoAssign-AL', is_system_template=False,
+            tickets_assign=False,
+        )
+        mgr_tpl = RoleTemplate.objects.create(
+            name='Mgr-Assign-AL', is_system_template=False,
+            tickets_assign=True,
+        )
+        for u in (self.tech, self.peer, self.manager):
+            Membership.objects.create(
+                user=u, organization=self.org, role=Role.ADMIN,
+                role_template=tech_tpl if u is not self.manager else mgr_tpl,
+                is_active=True,
+            )
+        # `outsider` belongs to a different org — should not appear in
+        # the manager's assignable list.
+        other_org = Organization.objects.create(name='Other-AL', slug='other-al')
+        Membership.objects.create(
+            user=self.outsider, organization=other_org, role=Role.ADMIN,
+            role_template=tech_tpl, is_active=True,
+        )
+        self.client = Client()
+        self.tech_token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'atech', 'password': 'hunter2',
+        }).json()['token']
+        self.mgr_token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'amgr', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_no_assign_perm_returns_self_only(self):
+        resp = _auth_get(
+            self.client, '/api/mobile/v1/users/assignable/', self.tech_token,
+        )
+        self.assertEqual(resp.status_code, 200)
+        ids = [u['id'] for u in resp.json()['results']]
+        self.assertEqual(ids, [self.tech.id])
+
+    def test_with_assign_perm_returns_peers_only(self):
+        resp = _auth_get(
+            self.client, '/api/mobile/v1/users/assignable/', self.mgr_token,
+        )
+        self.assertEqual(resp.status_code, 200)
+        ids = set(u['id'] for u in resp.json()['results'])
+        self.assertIn(self.tech.id, ids)
+        self.assertIn(self.peer.id, ids)
+        self.assertIn(self.manager.id, ids)
+        self.assertNotIn(self.outsider.id, ids)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileAuthMePermissionsTests(TestCase):
+    """v3.17.477 — /auth/me/ payload includes a `permissions` map."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        from accounts.models import RoleTemplate
+        self.org = Organization.objects.create(name='MePerm', slug='meperm')
+        tpl = RoleTemplate.objects.create(
+            name='Mgr-MePerm', is_system_template=False,
+            tickets_view=True, tickets_assign=True, tickets_view_all=False,
+        )
+        self.user = User.objects.create_user('meuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER,
+            role_template=tpl, is_active=True,
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'meuser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_me_returns_permissions_map(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/auth/me/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        perms = resp.json()['user']['permissions']
+        self.assertTrue(perms['tickets_assign'])
+        self.assertFalse(perms['tickets_view_all'])
+        self.assertIn('tickets_create', perms)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileDashboardNewTicketsCountTests(TestCase):
+    """v3.17.477 — dashboard payload now exposes `new_tickets`."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        from psa.models import Ticket
+        self.org = Organization.objects.create(name='DashNT', slug='dashnt')
+        self.user = User.objects.create_user('dashntuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        status_new, _p1, p3, ttype, queue = _seed_psa_baseline()
+        # Two tickets in `new`, one in a different open status.
+        Ticket.objects.create(
+            organization=self.org, subject='New A',
+            status=status_new, priority=p3, ticket_type=ttype, queue=queue,
+        )
+        Ticket.objects.create(
+            organization=self.org, subject='New B',
+            status=status_new, priority=p3, ticket_type=ttype, queue=queue,
+        )
+        from psa.models import TicketStatus
+        in_progress = TicketStatus.objects.create(
+            name='In Progress', slug='in-progress', sort_order=2,
+        )
+        Ticket.objects.create(
+            organization=self.org, subject='Active',
+            status=in_progress, priority=p3, ticket_type=ttype, queue=queue,
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'dashntuser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_dashboard_includes_new_tickets_count(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/dashboard/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['new_tickets'], 2)
+        self.assertEqual(body['open_tickets'], 3)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileVehiclesFleetWideTests(TestCase):
+    """v3.17.477 — /vehicles/ now returns every active vehicle for any
+    authenticated user (the fleet isn't multi-tenant)."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        from vehicles.models import ServiceVehicle
+        self.org = Organization.objects.create(name='FleetOrg', slug='fleetorg')
+        self.user = User.objects.create_user('fleetuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.ADMIN, is_active=True,
+        )
+        self.v1 = ServiceVehicle.objects.create(
+            name='Van 1', make='Ford', model='Transit', year=2024,
+            license_plate='AAA-111', status='active',
+        )
+        self.v2 = ServiceVehicle.objects.create(
+            name='Van 2', make='Ford', model='Transit', year=2024,
+            license_plate='AAA-222', status='active',
+        )
+        self.retired = ServiceVehicle.objects.create(
+            name='Old Van', make='Ford', model='E150', year=2008,
+            license_plate='AAA-999', status='retired',
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'fleetuser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_list_returns_active_fleet_without_assignment(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/vehicles/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        ids = {v['id'] for v in resp.json()['results']}
+        self.assertIn(self.v1.id, ids)
+        self.assertIn(self.v2.id, ids)
+        self.assertNotIn(self.retired.id, ids)
+
+    def test_detail_accessible_without_assignment(self):
+        resp = _auth_get(
+            self.client, f'/api/mobile/v1/vehicles/{self.v1.id}/', self.token,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['license_plate'], 'AAA-111')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileTicketSerializerFieldsTests(TestCase):
+    """v3.17.477 — serialized tickets expose `organization_name`,
+    `assigned_to_name`, `number`, and `updated_at`."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        from psa.models import Ticket
+        self.org = Organization.objects.create(name='Serializer Org', slug='ser-org')
+        self.user = User.objects.create_user(
+            'seruser', password='hunter2',
+            first_name='Sara', last_name='Reuser',
+        )
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        status_new, _p1, p3, ttype, queue = _seed_psa_baseline()
+        self.t = Ticket.objects.create(
+            organization=self.org, subject='Serialize me',
+            status=status_new, priority=p3, ticket_type=ttype, queue=queue,
+            assigned_to=self.user,
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'seruser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_list_row_includes_extended_fields(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/tickets/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        rows = resp.json()['results']
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row['organization_name'], 'Serializer Org')
+        self.assertEqual(row['assigned_to_name'], 'Sara Reuser')
+        self.assertIsNotNone(row['updated_at'])
+        # `number` should be a copy of ticket_number.
+        self.assertEqual(row['number'], row['ticket_number'])

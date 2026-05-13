@@ -53,13 +53,31 @@ def _user_payload(user):
             role = m.role
     except Exception:
         pass
+    # v3.17.477 — surface role-template flags the mobile UI gates on
+    # (ticket assignment picker, "Edit" / "Close" affordances, …). We
+    # only expose the booleans the mobile app actually reads to keep
+    # the payload small.
+    permissions: dict = {}
+    try:
+        from accounts.permission_utils import user_has_perm
+        for perm in (
+            'tickets_view', 'tickets_create', 'tickets_edit',
+            'tickets_assign', 'tickets_view_all',
+            'tickets_close', 'tickets_delete',
+        ):
+            permissions[perm] = user_has_perm(user, perm)
+    except Exception:
+        permissions = {}
     return {
         'id': user.id,
         'username': user.username,
         'email': user.email,
         'full_name': full_name,
+        'first_name': user.first_name or '',
+        'last_name': user.last_name or '',
         'organization_id': org_id,
         'role': role,
+        'permissions': permissions,
     }
 
 

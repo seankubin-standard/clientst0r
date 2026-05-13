@@ -1,8 +1,9 @@
 """
 Mobile API vehicle endpoints (v3.17.456).
 
-Service-fleet vehicles assigned to technicians. Each tech sees the
-vehicles currently assigned to them (via `VehicleAssignment`), and can:
+Service-fleet vehicles. Every authenticated user can see and act on
+every vehicle (the fleet isn't multi-tenant — it's the operator's own
+trucks/vans):
 
   * View vehicle detail + on-vehicle inventory (`VehicleInventoryItem`)
   * Log a fuel fill-up (`VehicleFuelLog`)
@@ -10,8 +11,11 @@ vehicles currently assigned to them (via `VehicleAssignment`), and can:
 
 Vehicles are not per-organization in the data model — they're the
 company fleet that runs Client St0r — so no `accessible_org_ids` scope
-applies. Authorization is "this vehicle is currently assigned to me",
-checked on every write endpoint.
+applies.
+
+v3.17.477 — dropped the "must have an active `VehicleAssignment`"
+gate. Multiple drivers share vehicles; logs still attribute the
+actual driver per entry (fuel.user / damage.reported_by).
 """
 from __future__ import annotations
 
@@ -147,18 +151,13 @@ def _serialize_damage(d) -> dict:
 
 
 def _my_vehicle_or_404(user, pk):
-    """Return the ServiceVehicle if the caller has an active assignment, else None."""
-    from vehicles.models import ServiceVehicle, VehicleAssignment
+    """Return the ServiceVehicle if it exists. v3.17.477 — any authenticated
+    user may access any vehicle (the fleet is shared)."""
+    from vehicles.models import ServiceVehicle
     try:
-        v = ServiceVehicle.objects.get(pk=pk)
+        return ServiceVehicle.objects.get(pk=pk)
     except ServiceVehicle.DoesNotExist:
         return None
-    has_active = VehicleAssignment.objects.filter(
-        vehicle=v, user=user, end_date__isnull=True,
-    ).exists()
-    if not has_active:
-        return None
-    return v
 
 
 @api_view(['GET'])
@@ -168,16 +167,14 @@ def my_vehicles_view(request):
     """
     GET /api/mobile/v1/vehicles/
 
-    Vehicles currently assigned to the caller (active assignment).
+    The whole service fleet. Vehicles aren't multi-tenant — every
+    authenticated user can see every vehicle (v3.17.477).
     """
-    from vehicles.models import VehicleAssignment
-    qs = (VehicleAssignment.objects
-          .filter(user=request.user, end_date__isnull=True)
-          .select_related('vehicle')
-          .order_by('-start_date'))
+    from vehicles.models import ServiceVehicle
+    qs = ServiceVehicle.objects.exclude(status='retired').order_by('name')
     return Response({
         'count': qs.count(),
-        'results': [_serialize_vehicle(a.vehicle, detail=True) for a in qs],
+        'results': [_serialize_vehicle(v, detail=True) for v in qs],
     })
 
 
@@ -185,7 +182,7 @@ def my_vehicles_view(request):
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def vehicle_detail_view(request, pk: int):
-    """GET /api/mobile/v1/vehicles/<id>/  — only if assigned to caller."""
+    """GET /api/mobile/v1/vehicles/<id>/  — any authenticated user."""
     v = _my_vehicle_or_404(request.user, pk)
     if v is None:
         return Response({'detail': 'Not found'}, status=404)

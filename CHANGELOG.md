@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.477] - 2026-05-13
+
+### Mobile: client picker on new ticket, assignee picker on detail, three-tile dashboard, vehicles unscoped, ticket permissions
+
+**Mobile new-ticket form (`mobile/app/tickets/new.tsx`):**
+- Replaced the free-text "Organization ID" input with a real searchable client picker (modal sheet over `/api/mobile/v1/organizations/`). Client selection is now **required** — submit is disabled and the field is highlighted until one is chosen. Backend has always required `organization_id` on POST; the old UI just left the user no way to set it short of memorizing numeric IDs.
+
+**Mobile ticket detail (`mobile/app/tickets/[id].tsx`):**
+- New "Assignee" card. Surfaces the current assignee plus three actions: **Claim** (self-assign — always allowed), **Reassign…** (gated on `tickets_assign` permission), and **Clear** (unassign — gated on `tickets_assign`).
+- Reassign opens a searchable user picker fed by the new `/api/mobile/v1/users/assignable/` endpoint. Users without the assign perm only see themselves in the list (so a tech can claim, but can't hand work off).
+
+**Mobile dashboard (`mobile/app/dashboard.tsx`):**
+- Replaced the prior "Needs attention" + "Today" rows with a single tighter row of three StatTiles: **Critical / Open (New) / Open**. Each tile links to the matching `/tickets?filter=` view. The new `new` filter chip maps to PSA tickets sitting in the `new` status slug (un-triaged).
+
+**Mobile vehicles — fleet is shared (`api_mobile/views_vehicles.py`):**
+- `GET /vehicles/` now returns the entire active fleet for any authenticated user instead of only vehicles with an active `VehicleAssignment` row for the caller. Detail / fuel / damage endpoints likewise dropped the per-assignment gate. Driver-of-record on each log entry (`fuel.user`, `damage.reported_by`) is still set from the request user. Service vehicles aren't multi-tenant — this is the operator's own fleet — so per-user gating was friction without security value.
+
+**PSA ticket permissions (`accounts/models.py`, migration `accounts/0033_add_ticket_permissions.py`):**
+- New `RoleTemplate` flags: `tickets_view`, `tickets_create`, `tickets_edit`, `tickets_assign`, `tickets_view_all`, `tickets_close`, `tickets_delete`. Backfilled the seven shipped system templates (Owner / Administrator / Editor / Help Desk / IT Manager / Documentation Writer / Read-Only) plus the six MSP sample roles (Client / Client Admin / Technician / Tech Manager / Office Manager / Full Admin) with sensible defaults — managers + admins get `tickets_assign`, techs / help desk can file + work but not reassign, read-only and docs writer get view-only.
+- `api_mobile/views_tickets.py`: POST now gated on `tickets_create`; PATCH `assigned_to_id` requires `tickets_assign` unless the caller is self-claiming or clearing the assignee. `tickets_view_all` unlocks cross-org reads in list + detail. The ticket serializer now returns `organization_name`, `assigned_to_name`, `number`, and `updated_at` so list rows render without a second round trip.
+- `api_mobile/views_auth.py`: `/auth/me/` payload now includes a `permissions` map (the seven `tickets_*` booleans) so the mobile app can gate UI affordances without re-querying.
+- `api_mobile/views_users.py` (new): `GET /users/assignable/` — returns the caller alone if they lack `tickets_assign`; otherwise the pool of active users sharing at least one active org membership (or every active user for `tickets_view_all` / superusers).
+- `api_mobile/views_dashboard.py`: dashboard response now includes `new_tickets` (count of open tickets in the `new` status slug).
+
+versionCode 3170476 → 3170477. **AAB rebuild required** — adds the new ticket-creation / detail UI, three-tile dashboard, and vehicle list expansion. Backend migration `accounts/0033_add_ticket_permissions.py` must run on apply.
+
 ## [3.17.476] - 2026-05-12
 
 ### Mobile: asset detail full info + vault linkage + tickets filter fix

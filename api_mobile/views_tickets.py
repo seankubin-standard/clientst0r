@@ -12,12 +12,24 @@ from rest_framework.decorators import (
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from accounts.permission_utils import user_has_perm
+
 from .scoping import accessible_org_ids
 
 
 def _serialize_ticket(t, *, detail=False):
+    # v3.17.477 — surface organization_name / assigned_to_name / number /
+    # updated_at so the mobile list rows render without extra round trips.
+    org_name = None
+    if t.organization_id and getattr(t, 'organization', None) is not None:
+        org_name = getattr(t.organization, 'name', None)
+    assignee_name = None
+    if t.assigned_to_id and getattr(t, 'assigned_to', None) is not None:
+        full = (t.assigned_to.get_full_name() or '').strip()
+        assignee_name = full or t.assigned_to.username
     out = {
         'id': t.id,
+        'number': t.ticket_number,
         'ticket_number': t.ticket_number,
         'subject': t.subject,
         'status': t.status.name if t.status_id else None,
@@ -25,8 +37,12 @@ def _serialize_ticket(t, *, detail=False):
         'priority': t.priority.code if t.priority_id else None,
         'priority_id': t.priority_id,
         'organization_id': t.organization_id,
+        'organization_name': org_name,
         'assigned_to_id': t.assigned_to_id,
+        'assigned_to_name': assignee_name,
         'created_at': t.created_at.isoformat() if t.created_at else None,
+        'updated_at': t.updated_at.isoformat()
+            if getattr(t, 'updated_at', None) else None,
     }
     if detail:
         out.update({
@@ -63,6 +79,14 @@ def ticket_list_view(request):
     org_ids = accessible_org_ids(request.user)
 
     if request.method == 'POST':
+        # v3.17.477 — explicit per-role gate. Default Owner / Admin /
+        # Tech roles get tickets_create=True so the rank-and-file paths
+        # keep working; Read-Only / Documentation Writer get blocked.
+        if not user_has_perm(request.user, 'tickets_create'):
+            return Response(
+                {'detail': "You don't have permission to file tickets."},
+                status=403,
+            )
         data = request.data or {}
         org_id = data.get('organization_id')
         try:
@@ -108,9 +132,13 @@ def ticket_list_view(request):
         return Response(_serialize_ticket(ticket, detail=True), status=201)
 
     # GET
-    qs = Ticket.objects.select_related('status', 'priority').filter(
-        organization_id__in=org_ids,
+    qs = Ticket.objects.select_related(
+        'status', 'priority', 'organization', 'assigned_to',
     )
+    # v3.17.477 — tickets_view_all unlocks cross-org reads. Without it
+    # we keep the membership scope.
+    if not user_has_perm(request.user, 'tickets_view_all'):
+        qs = qs.filter(organization_id__in=org_ids)
 
     status_filter = request.query_params.get('status')
     if status_filter:
@@ -193,10 +221,13 @@ def ticket_detail_view(request, pk: int):
     from psa.models import Ticket, TicketStatus, TicketPriority
 
     org_ids = accessible_org_ids(request.user)
+    base_qs = Ticket.objects.select_related(
+        'status', 'priority', 'organization', 'assigned_to',
+    )
+    if not user_has_perm(request.user, 'tickets_view_all'):
+        base_qs = base_qs.filter(organization_id__in=org_ids)
     try:
-        ticket = Ticket.objects.select_related('status', 'priority').get(
-            pk=pk, organization_id__in=org_ids,
-        )
+        ticket = base_qs.get(pk=pk)
     except Ticket.DoesNotExist:
         return Response({'detail': 'Not found'}, status=404)
 
@@ -253,14 +284,31 @@ def ticket_detail_view(request, pk: int):
             return Response({'detail': f'unknown priority: {raw}'}, status=400)
         ticket.priority = match
     if 'assigned_to_id' in data:
+        # v3.17.477 — gate re-assignment on tickets_assign. Self-claim
+        # (assigning to yourself) is allowed even without the perm so
+        # techs can still pick up unowned tickets.
         from django.contrib.auth.models import User
         v = data['assigned_to_id']
-        if v in (None, '', 0):
+        target_id = None
+        if v not in (None, '', 0):
+            try:
+                target_id = int(v)
+            except (TypeError, ValueError):
+                return Response({'detail': 'invalid assigned_to_id'}, status=400)
+        is_self_claim = target_id is not None and target_id == request.user.id
+        is_unassign = target_id is None
+        if not (is_self_claim or is_unassign):
+            if not user_has_perm(request.user, 'tickets_assign'):
+                return Response(
+                    {'detail': "You don't have permission to reassign tickets."},
+                    status=403,
+                )
+        if target_id is None:
             ticket.assigned_to = None
         else:
             try:
-                ticket.assigned_to = User.objects.get(pk=int(v))
-            except (User.DoesNotExist, ValueError, TypeError):
+                ticket.assigned_to = User.objects.get(pk=target_id)
+            except User.DoesNotExist:
                 return Response({'detail': 'invalid assigned_to_id'}, status=400)
     ticket.save()
     return Response(_serialize_ticket(ticket, detail=True))
