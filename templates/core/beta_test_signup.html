@@ -3,10 +3,52 @@
 
 {% block title %}Beta test the mobile app{% endblock %}
 
+{% block extra_css %}
+{# v3.17.486 — give the signup form a solid background so it doesn't
+   render translucent over the site's profile background image. Theme-
+   aware: white in light mode, dark slate in dark mode. Inputs get a
+   matching surface so the form looks like one continuous card. #}
+<style>
+  .beta-card {
+    background-color: #ffffff !important;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 12px;
+    padding: 2rem 2.25rem;
+    margin: 1rem 0 3rem;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    opacity: 1 !important;
+  }
+  html[data-bs-theme="dark"] .beta-card,
+  body[data-bs-theme="dark"] .beta-card,
+  [data-bs-theme="dark"] .beta-card,
+  body.dark-mode .beta-card {
+    background-color: #1f2329 !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  }
+  .beta-card .form-control,
+  .beta-card .form-control:focus {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+  }
+  .beta-card .alert {
+    backdrop-filter: none !important;
+    opacity: 1 !important;
+  }
+  /* Subtle separator between sections inside the card */
+  .beta-card hr {
+    opacity: 0.4;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container my-5">
   <div class="row justify-content-center">
     <div class="col-lg-7">
+      <div class="beta-card">
       <h1 class="mb-3">📱 Beta test the Client St0r Android app</h1>
       <p class="lead text-muted">
         Want early access to the Client St0r mobile app on Android?
@@ -86,6 +128,7 @@
           configured AI provider (for receipt OCR).
         </p>
       {% endif %}
+      </div>{# /.beta-card #}
     </div>
   </div>
 </div>

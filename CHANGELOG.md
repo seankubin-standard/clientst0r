@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.486] - 2026-05-14
+
+### Beta signup form: solid background card
+
+`/core/beta-test/` previously rendered the form directly on the page body, which on profiles using a custom background image looked translucent — text bleeding through, hard to read. Wrapped the whole form in a `.beta-card` with:
+
+- White surface in light mode, `#1f2329` in dark mode (both `!important` to override the site-wide `.card` translucency rule)
+- Soft drop shadow + rounded corners
+- Opaque form inputs that match the surface
+- Explicit `backdrop-filter: none` so no blur leaks in from inherited styles
+
+Mirrors the same pattern used by the `/play_publish/` dashboard's `.pp-card`.
+
 ## [3.17.485] - 2026-05-14
 
 ### Wire BETA_ADMIN_EMAIL / PLAY_OPEN_TEST_URL / PLAY_INTERNAL_TEST_URL through Django settings
