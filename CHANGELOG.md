@@ -5,6 +5,34 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.487] - 2026-05-14
+
+### Play Console demo video scripts — pure-PIL, no external services
+
+The two scripts that back the Build buttons on `/play_publish/` (Location demo + Foreground service demo) were originally Selenium + Expo-web-bundle based. That required `npx expo start --web` running on `localhost:8765`, which was never set up on the build host — clicking Build returned `ERR_CONNECTION_REFUSED` immediately. Even after wiring Selenium correctly the moviepy v2 pipeline hung indefinitely at 97% CPU on the FGS variant.
+
+Rewrote both:
+- **`scripts/generate_location_demo_video.py`** — 8 frames of pure-PIL synthetic phone-screen mockups (Dashboard / Settings toggle off / Settings toggle on / Timeclock idle / Timeclock running / Operations log / closing card). Captions overlay each frame.
+- **`scripts/generate_fgs_demo_video.py`** (new) — 7 frames including a simulated Android notification-shade frame showing the persistent foreground-service notification with the `TYPE: location · FGS` badge — the visual proof Play wants for the FGS_LOCATION declaration.
+
+Both scripts now drive `ffmpeg` directly via the `concat` demuxer (bundled with `imageio-ffmpeg`), bypassing moviepy entirely. Output: 24 fps CFR H.264, ~700 KB / ~40s each, build time ~13s on the existing host. No Selenium, no Chrome, no Expo dev server required.
+
+Output paths (unchanged):
+- `local_apps/play_publish/data/builds/location-demo.mp4`
+- `local_apps/play_publish/data/builds/fgs-demo.mp4`
+
+### Public beta signup form — confirmed generic, fits any install
+
+Re-emphasizing the existing setup since people may not realize: `/core/beta-test/` is a **public** form (no login required) suitable for any install of Client St0r to invite their own users into their own Android beta. The relevant env variables are:
+
+| Setting | Purpose | Per-install |
+|---|---|---|
+| `BETA_ADMIN_EMAIL` | Where signup notifications go | Each install sets their own |
+| `PLAY_OPEN_TEST_URL` | Public Beta opt-in URL | Each install creates their own Play Console listing and uses its package name |
+| `PLAY_INTERNAL_TEST_URL` | Internal Testing opt-in URL | Same — Play Console provides this per-app |
+
+The form, the navbar CTA, the admin approval page, and the `✉ Email opt-in URL` button all read these settings dynamically — no code changes needed to use this in another instance.
+
 ## [3.17.486] - 2026-05-14
 
 ### Beta signup form: solid background card
