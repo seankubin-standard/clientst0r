@@ -688,3 +688,13 @@ if _LOCAL_APPS_DIR.is_dir():
         if _entry.is_dir() and (_entry / 'apps.py').exists() \
                 and not _entry.name.startswith(('_', '.')):
             INSTALLED_APPS.append(_entry.name)
+
+
+# ---------------------------------------------------------------------------
+# Mobile beta-tester signup wiring (v3.17.485)
+# Read from systemd EnvironmentFile=/home/administrator/.env. Defaults
+# keep the notification path working even if the env isn't set.
+# ---------------------------------------------------------------------------
+BETA_ADMIN_EMAIL = os.getenv('BETA_ADMIN_EMAIL', 'agit8or@agit8or.net')
+PLAY_OPEN_TEST_URL = os.getenv('PLAY_OPEN_TEST_URL', '')
+PLAY_INTERNAL_TEST_URL = os.getenv('PLAY_INTERNAL_TEST_URL', '')

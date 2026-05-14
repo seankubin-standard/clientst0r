@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.485] - 2026-05-14
+
+### Wire BETA_ADMIN_EMAIL / PLAY_OPEN_TEST_URL / PLAY_INTERNAL_TEST_URL through Django settings
+
+`core/views.py::beta_test_signup` and `core/views.py::beta_test_admin` read these three keys via `getattr(settings, ...)`, but `config/settings.py` didn't actually pull them from the environment. Net effect on v3.17.484: only the default `BETA_ADMIN_EMAIL` worked; the two URL keys silently stayed empty even when set in `.env`.
+
+`config/settings.py` now reads all three via `os.getenv()` so they pick up automatically from the systemd `EnvironmentFile=/home/administrator/.env`. Defaults preserve v3.17.484 behavior (`agit8or@agit8or.net`, empty URLs).
+
 ## [3.17.484] - 2026-05-14
 
 ### Beta-tester signup: top-of-page CTA + email notification + one-click opt-in URL email
