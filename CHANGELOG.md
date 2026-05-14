@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.482] - 2026-05-14
+
+### Settings → Updates: stop hammering GitHub on every page load
+
+The Settings → Updates page polled `api.github.com/repos/.../tags` on every load with no caching. After the 2026-05-14 history scrub + force-push, the repeated force-pushes consumed the anonymous 60-req/hour quota and the page started showing "GitHub API rate limit exceeded" indefinitely.
+
+**Fix — `core/updater.py::UpdateService.check_for_updates()`:**
+- Now caches the successful poll result in Django's cache backend for 5 minutes (key `system_update_check`) so the page can be open in many tabs without spamming GitHub. Even fully anonymous (no token), this keeps us at 12 req/hour max — well under the 60/hour anonymous limit.
+- Also caches a 24-hour "last good" snapshot (key `system_update_check_last_good`). When a 403 / rate-limit response comes back, the updater returns the stale-but-recent snapshot with a `stale: true` flag so the UI keeps rendering instead of erroring out.
+- Rate-limited responses are cached for 10 minutes to prevent retry storms.
+- New `force_refresh=True` kwarg lets the "Check for updates" button bypass the cache when the user explicitly asks.
+
+**Operational fix — `/home/administrator/.env`:**
+- Appended `GITHUB_TOKEN=...` (existing developer token, granted to the same Google account that owns the repo). The updater already supported this env var; it just wasn't set. Adds a 5000-req/hour authenticated quota as a backstop to the caching layer.
+
 ## [3.17.481] - 2026-05-14
 
 ### Mobile beta release prep: public onboarding page, master Play Store guide, full Data Safety + listing copy

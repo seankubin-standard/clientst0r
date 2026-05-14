@@ -169,15 +169,36 @@ class UpdateService:
 
         return headers
 
-    def check_for_updates(self):
+    # v3.17.482 — cache TTL for /tags polls. GitHub's anonymous limit
+    # is 60/hour; with TTL=300 we touch GitHub at most 12 times/hour
+    # even if Settings → Updates is open in 10 browser tabs.
+    _CACHE_KEY_SUCCESS = 'system_update_check'
+    _CACHE_KEY_LAST_GOOD = 'system_update_check_last_good'
+    _CACHE_TTL_SUCCESS = 300       # 5 min — successful result
+    _CACHE_TTL_RATELIMITED = 600   # 10 min — back off harder on 403
+
+    def check_for_updates(self, *, force_refresh=False):
         """
         Check GitHub for new versions by comparing git tags.
-        Uses caching to avoid rate limits.
+
+        v3.17.482 — short-TTL cache stops the GitHub /tags endpoint from
+        being hammered on every Settings → Updates page load. The
+        previous "Uses caching" docstring was aspirational; this is the
+        first version that actually does it.
 
         Returns:
             dict with 'update_available', 'latest_version', 'current_version',
             'release_url', 'release_notes'
         """
+        from django.core.cache import cache
+
+        if not force_refresh:
+            cached = cache.get(self._CACHE_KEY_SUCCESS)
+            if cached is not None:
+                cached = dict(cached)
+                cached['from_cache'] = True
+                return cached
+
         logger.info(f"Starting update check. Current version: {self.current_version}")
 
         try:
@@ -194,14 +215,29 @@ class UpdateService:
                 if rate_limit_remaining == '0':
                     reset_time = response.headers.get('X-RateLimit-Reset', 'unknown')
                     logger.error(f"GitHub API rate limit exceeded. Resets at: {reset_time}")
-                    return {
+                    # If we have a recent good result cached, return that
+                    # with a stale flag so the UI keeps working through
+                    # the rate-limit window.
+                    last_good = cache.get(self._CACHE_KEY_LAST_GOOD)
+                    if last_good is not None:
+                        out = dict(last_good)
+                        out['from_cache'] = True
+                        out['stale'] = True
+                        out['rate_limit'] = True
+                        return out
+                    # Cache the rate-limit response too so we don't
+                    # immediately retry and burn another request.
+                    payload = {
                         'update_available': False,
                         'latest_version': None,
                         'current_version': self.current_version,
                         'error': 'GitHub API rate limit exceeded. Please try again later or set GITHUB_TOKEN environment variable for higher limits.',
                         'checked_at': timezone.now().isoformat(),
-                        'rate_limit': True
+                        'rate_limit': True,
                     }
+                    cache.set(self._CACHE_KEY_SUCCESS, payload,
+                              self._CACHE_TTL_RATELIMITED)
+                    return payload
 
             response.raise_for_status()
 
@@ -268,7 +304,7 @@ class UpdateService:
                 logger.debug(f"Could not fetch release notes: {e}")
                 pass  # Release doesn't exist or network issue, that's ok
 
-            return {
+            result = {
                 'update_available': update_available,
                 'latest_version': latest_version,
                 'current_version': self.current_version,
@@ -277,6 +313,12 @@ class UpdateService:
                 'published_at': published_at,
                 'checked_at': timezone.now().isoformat(),
             }
+            # v3.17.482 — cache the success so subsequent polls within
+            # 5 min are answered from memory; ALSO cache as the
+            # "last good" so a future 403 can return stale-but-useful.
+            cache.set(self._CACHE_KEY_SUCCESS, result, self._CACHE_TTL_SUCCESS)
+            cache.set(self._CACHE_KEY_LAST_GOOD, result, 24 * 3600)
+            return result
 
         except requests.Timeout as e:
             logger.warning(f"GitHub API timeout while checking for updates: {e}")
