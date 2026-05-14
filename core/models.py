@@ -261,6 +261,12 @@ class BetaTesterRequest(models.Model):
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.CharField(max_length=500, blank=True)
 
+    # v3.17.488 — when this row was forwarded from a remote install via
+    # /core/beta-test/upstream/, this holds the origin host (e.g.
+    # "https://customer-msp.example.com") so the operator can tell
+    # which install the signup came from. Empty = local signup.
+    source_install = models.CharField(max_length=255, blank=True)
+
     class Meta:
         db_table = 'core_beta_tester_requests'
         ordering = ['-submitted_at']

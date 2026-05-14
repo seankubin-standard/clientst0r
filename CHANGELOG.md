@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.488] - 2026-05-14
+
+### Beta-tester signup: lock Play URLs to canonical listing + forward remote signups upstream
+
+Three fixes to the beta-signup pipeline:
+
+**1. Visible comment on `/core/beta-test/` (`templates/core/beta_test_signup.html`):**
+- Removed the multi-line `{# … #}` block I added in v3.17.486. Django's `{# #}` syntax is single-line only — multi-line content after the first newline leaks into the rendered HTML. The comment appeared as visible text above the form on every page load. Fix: just delete it.
+
+**2. Play Console URLs locked to the canonical agit8or1 listing (`config/settings.py`):**
+- `PLAY_OPEN_TEST_URL` and `PLAY_INTERNAL_TEST_URL` were env-driven in v3.17.485, defaulting to empty. That implied each install could point at its own Play listing — but there is exactly ONE Client St0r Android app (the one on agit8or1's Play Console), and every install should direct its users at THAT app's opt-in URLs.
+- Both URLs are now hard-coded constants in `settings.py`. Removed from the env-override path. Forks running this code automatically use the agit8or1 listing.
+- `.env` entries for these keys are now dead config but harmless — left in place as a paper trail.
+
+**3. Cross-install upstream forwarding (new — `core/views.py` + `core/models.py` migration):**
+- New `BetaTesterRequest.source_install` field tracks which install a signup came from.
+- New view `beta_test_upstream` at `POST /core/beta-test/upstream/` accepts cross-origin POSTs from remote installs. CSRF-exempt (no cookie relationship with foreign installs); rate-limited 30/hr per IP via django-ratelimit. Saves the signup with `source_install` set, fires the same admin-notification email as a local signup.
+- Existing `beta_test_signup` view now best-effort POSTs to `BETA_UPSTREAM_URL` (settings, default `https://huduglue.agit8or.net/core/beta-test/upstream/`) after creating the local row. Net effect: a user on ANY install's `/core/beta-test/` form signs up for the canonical agit8or1 Android app — their signup lands on BOTH the local install (for that operator's records) AND on agit8or1 (so the canonical maintainer can approve and add to Play Console).
+- Forward is skipped if `BETA_UPSTREAM_URL` is empty (set in `.env` on the canonical install itself) or if the upstream host matches the request host (defense-in-depth against loops).
+- Forward failures are silent — a network blip on the upstream side can't break the local user's submission flow.
+
+Migration: `core/0062_betatesterrequest_source_install.py` — adds the new field plus a couple of index-rename ops that Django auto-detected.
+
 ## [3.17.487] - 2026-05-14
 
 ### Play Console demo video scripts — pure-PIL, no external services

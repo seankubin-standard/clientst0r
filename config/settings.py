@@ -691,10 +691,32 @@ if _LOCAL_APPS_DIR.is_dir():
 
 
 # ---------------------------------------------------------------------------
-# Mobile beta-tester signup wiring (v3.17.485)
-# Read from systemd EnvironmentFile=/home/administrator/.env. Defaults
-# keep the notification path working even if the env isn't set.
+# Mobile beta-tester signup wiring (v3.17.485 / locked v3.17.488)
 # ---------------------------------------------------------------------------
+# BETA_ADMIN_EMAIL — where signup notifications go. Env-overridable so
+# a fork can route to its own ops address, but the default is the
+# canonical Client St0r maintainer so any unconfigured install still
+# delivers signups to a person who can act on them.
 BETA_ADMIN_EMAIL = os.getenv('BETA_ADMIN_EMAIL', 'agit8or@agit8or.net')
-PLAY_OPEN_TEST_URL = os.getenv('PLAY_OPEN_TEST_URL', '')
-PLAY_INTERNAL_TEST_URL = os.getenv('PLAY_INTERNAL_TEST_URL', '')
+
+# Play Console listing URLs — HARD-CODED to the canonical agit8or1
+# Client St0r Android listing. There is exactly one Android app to
+# beta-test, regardless of how many self-hosted Client St0r servers
+# point users at it. Forks should not change these — a user on any
+# install signs up here for THIS Play app.
+PLAY_OPEN_TEST_URL = 'https://play.google.com/apps/testing/com.clientstor.mspreboot'
+PLAY_INTERNAL_TEST_URL = 'https://play.google.com/apps/internaltest/4701536670067601320'
+
+# v3.17.488 — upstream forwarding.
+# When a user submits the beta-signup form on a remote install of
+# Client St0r, the view (a) saves a local row for the operator's
+# records, and (b) best-effort POSTs the same payload to this URL so
+# the signup also lands on the canonical agit8or1 server (the one
+# whose Play Console listing is being signed up for).
+# The canonical install MUST set BETA_UPSTREAM_URL='' in its .env to
+# avoid forwarding to itself — see /home/administrator/.env for the
+# operator setting.
+BETA_UPSTREAM_URL = os.getenv(
+    'BETA_UPSTREAM_URL',
+    'https://huduglue.agit8or.net/core/beta-test/upstream/',
+)

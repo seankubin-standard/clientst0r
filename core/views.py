@@ -305,6 +305,43 @@ def beta_test_signup(request):
             )
             submitted = True
 
+            # v3.17.488 — forward to the canonical upstream so the
+            # agit8or1 server (which owns the Play Console listing) gets
+            # this signup too. Best-effort: a network blip on the
+            # forward shouldn't break the local user's submission flow.
+            try:
+                from django.conf import settings as _ds
+                upstream = getattr(_ds, 'BETA_UPSTREAM_URL', '') or ''
+                # Skip if blank, or if upstream points at our own host
+                # (avoid a self-forward loop on the canonical install).
+                if upstream:
+                    from urllib.parse import urlparse
+                    up_host = urlparse(upstream).netloc.lower()
+                    my_host = request.get_host().lower()
+                    if up_host and up_host != my_host:
+                        import requests
+                        requests.post(
+                            upstream,
+                            data={
+                                'name': name,
+                                'google_account_email': email,
+                                'company': req.company,
+                                'role': req.role,
+                                'message': req.message,
+                                'heard_from': req.heard_from,
+                                # Origin metadata so the upstream
+                                # operator knows which install this
+                                # came from.
+                                'source_install': f'{request.scheme}://{my_host}',
+                            },
+                            timeout=5,
+                            headers={
+                                'User-Agent': 'ClientSt0r-BetaForwarder/1.0',
+                            },
+                        )
+            except Exception:
+                pass
+
             # v3.17.484 — notify the beta admin. Fail open so a
             # misconfigured SMTP doesn't break the signup flow.
             try:
@@ -454,6 +491,87 @@ def beta_test_admin(request):
         # Emails ready to paste into Play Console's tester list field
         'emails_to_add': ' '.join(r.google_account_email for r in approved),
     })
+
+
+# v3.17.488 — cross-origin upstream endpoint. Remote installs of Client
+# St0r POST their beta-signup payloads here so the data lands on the
+# canonical agit8or1 server (the one that owns the Play Console listing).
+# CSRF-exempt because the caller is a foreign install with no cookie /
+# csrf-token relationship to this server. Rate-limited by IP via
+# django-ratelimit to discourage abuse.
+from django.views.decorators.csrf import csrf_exempt as _csrf_exempt
+
+
+@_csrf_exempt
+@ratelimit(key='ip', rate='30/h', method='POST', block=True)
+def beta_test_upstream(request):
+    """
+    POST /core/beta-test/upstream/
+
+    Accepts the same form fields as /core/beta-test/ plus an optional
+    `source_install` (the originating install's base URL). Creates a
+    BetaTesterRequest row tagged with the source install. Returns
+    JSON {ok: true} on success, {ok: false, error: '...'} on validation
+    failure.
+
+    GET returns 405 — this endpoint is POST-only by design (no UI).
+    """
+    from core.models import BetaTesterRequest
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+
+    name = (request.POST.get('name') or '').strip()
+    email = (request.POST.get('google_account_email') or '').strip()
+    if not name or not email:
+        return JsonResponse(
+            {'ok': False, 'error': 'name + google_account_email required'},
+            status=400,
+        )
+
+    source = (request.POST.get('source_install') or '').strip()[:255]
+    # Validate looks like a URL (loose check)
+    if source and not source.startswith(('http://', 'https://')):
+        source = ''
+
+    req = BetaTesterRequest.objects.create(
+        name=name[:200],
+        google_account_email=email[:254],
+        company=(request.POST.get('company') or '').strip()[:200],
+        role=(request.POST.get('role') or '').strip()[:200],
+        message=(request.POST.get('message') or '').strip(),
+        heard_from=(request.POST.get('heard_from') or '').strip()[:200],
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:500],
+        source_install=source,
+    )
+
+    # Same admin notification path as the local signup — best-effort.
+    try:
+        from django.core.mail import send_mail
+        admin_email = getattr(settings, 'BETA_ADMIN_EMAIL',
+                              'agit8or@agit8or.net')
+        send_mail(
+            subject=f'[Client St0r] Beta signup (forwarded from {source or "?"}): {name}',
+            message=(
+                f'New mobile beta tester signup #{req.pk} '
+                f'(forwarded from a remote install):\n\n'
+                f'  Name:           {name}\n'
+                f'  Google email:   {email}\n'
+                f'  Company:        {req.company or "—"}\n'
+                f'  Role:           {req.role or "—"}\n'
+                f'  Heard from:     {req.heard_from or "—"}\n'
+                f'  Source install: {source or "(not declared)"}\n\n'
+                f'Message:\n{req.message or "(none)"}\n'
+            ),
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None)
+                       or 'noreply@clientst0r',
+            recipient_list=[admin_email],
+            fail_silently=True,
+        )
+    except Exception:
+        pass
+
+    return JsonResponse({'ok': True, 'id': req.pk})
 
 
 def privacy_policy(request):
