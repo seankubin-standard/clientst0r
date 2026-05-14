@@ -257,6 +257,15 @@
                         </a>
                     </li>
                     <li class="nav-item"><a class="nav-link px-2" href="{% url 'core:favorite_list' %}" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{% trans 'Favorites' %}"><i class="fas fa-star text-warning"></i></a></li>
+                    {# v3.17.484 — Beta-test the Android app CTA for logged-in users. #}
+                    <li class="nav-item">
+                        <a class="nav-link px-2" href="{% url 'core:beta_test_signup' %}"
+                           data-bs-toggle="tooltip" data-bs-placement="bottom"
+                           title="{% trans 'Beta-test the Android mobile app' %}">
+                            <i class="fas fa-mobile-screen-button text-info"></i>
+                            <span class="d-none d-xl-inline ms-1">{% trans "Beta app" %}</span>
+                        </a>
+                    </li>
                     <!-- Global KB lives under PSA → KB when PSA is enabled; otherwise stays in the primary navbar -->
                     {% if global_kb_enabled and not psa_enabled %}
                         {% if is_staff_user or user.is_superuser %}

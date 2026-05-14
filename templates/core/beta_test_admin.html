@@ -118,9 +118,19 @@
             <td>{{ r.name }}</td>
             <td><code>{{ r.google_account_email }}</code></td>
             <td class="text-end">
+              {# v3.17.484 — email the approved tester the opt-in URL automatically. #}
+              <form method="post" class="d-inline"
+                    onsubmit="return confirm('Email the Play opt-in URL to {{ r.google_account_email }} and mark as added?');">
+                {% csrf_token %}
+                <input type="hidden" name="pk" value="{{ r.pk }}">
+                <button name="action" value="send_opt_in" class="btn btn-success btn-sm">
+                  ✉ Email opt-in URL
+                </button>
+              </form>
               <form method="post" class="d-inline">{% csrf_token %}
                 <input type="hidden" name="pk" value="{{ r.pk }}">
-                <button name="action" value="mark_added" class="btn btn-primary btn-sm">
+                <button name="action" value="mark_added" class="btn btn-outline-primary btn-sm"
+                        title="Manual fallback — already pasted to Play Console + emailed separately">
                   ✓ Mark as added
                 </button>
               </form>

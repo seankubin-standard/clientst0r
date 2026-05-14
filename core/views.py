@@ -279,6 +279,10 @@ def beta_test_signup(request):
     Public form (no login required). Anonymous beta testers fill in their
     name + Gmail (the one signed into their Play Store) and submit. Admin
     approves at /core/beta-testers/.
+
+    v3.17.484 — fires an email notification to the configured beta admin
+    on every submission, so the operator doesn't have to refresh the
+    approval page to know a new request landed.
     """
     from core.models import BetaTesterRequest
     submitted = False
@@ -289,7 +293,7 @@ def beta_test_signup(request):
         if not name or not email:
             error = 'Name and Google account email are required.'
         else:
-            BetaTesterRequest.objects.create(
+            req = BetaTesterRequest.objects.create(
                 name=name,
                 google_account_email=email,
                 company=(request.POST.get('company') or '').strip()[:200],
@@ -300,6 +304,46 @@ def beta_test_signup(request):
                 user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:500],
             )
             submitted = True
+
+            # v3.17.484 — notify the beta admin. Fail open so a
+            # misconfigured SMTP doesn't break the signup flow.
+            try:
+                from django.conf import settings as _ds
+                from django.core.mail import send_mail
+                admin_email = getattr(_ds, 'BETA_ADMIN_EMAIL',
+                                      'agit8or@agit8or.net')
+                # Build admin URL — best-effort, may be wrong if not
+                # behind the public hostname.
+                approve_path = '/core/beta-testers/'
+                host = request.get_host()
+                scheme = 'https' if request.is_secure() else 'http'
+                admin_url = f'{scheme}://{host}{approve_path}'
+                send_mail(
+                    subject=f'[Client St0r] Beta tester signup: {name}',
+                    message=(
+                        f'New mobile beta tester signup #{req.pk}:\n\n'
+                        f'  Name:         {name}\n'
+                        f'  Google email: {email}  '
+                        f'(the Gmail signed into Play Store)\n'
+                        f'  Company:      {req.company or "—"}\n'
+                        f'  Role:         {req.role or "—"}\n'
+                        f'  Heard from:   {req.heard_from or "—"}\n'
+                        f'  IP:           {req.ip_address or "—"}\n\n'
+                        f'Message:\n{req.message or "(none)"}\n\n'
+                        f'Approve at: {admin_url}\n'
+                        f'After approval, you can:\n'
+                        f'  (a) point them at the Play Open-Testing opt-in URL '
+                        f'(no manual Console step needed once Open Testing is live), or\n'
+                        f'  (b) paste {email} into Play Console → Testing → '
+                        f'Internal testing → Testers (manual fallback).\n'
+                    ),
+                    from_email=getattr(_ds, 'DEFAULT_FROM_EMAIL', None)
+                               or 'noreply@clientst0r',
+                    recipient_list=[admin_email],
+                    fail_silently=True,
+                )
+            except Exception:
+                pass
     return render(request, 'core/beta_test_signup.html', {
         'submitted': submitted,
         'error': error,
@@ -332,6 +376,56 @@ def beta_test_admin(request):
             req.status = 'added_to_play'
         elif action == 'reject':
             req.status = 'rejected'
+        elif action == 'send_opt_in':
+            # v3.17.484 — email the approved tester the Play opt-in URL.
+            # Best path when Open Testing is live (no per-email gating);
+            # for Internal Testing, the operator still needs to paste the
+            # email into Play Console first.
+            from django.core.mail import send_mail
+            opt_in_url = (getattr(settings, 'PLAY_OPEN_TEST_URL', '')
+                          or getattr(settings, 'PLAY_INTERNAL_TEST_URL', ''))
+            if not opt_in_url:
+                messages.error(
+                    request,
+                    'No opt-in URL configured. Set PLAY_OPEN_TEST_URL or '
+                    'PLAY_INTERNAL_TEST_URL in settings before sending.',
+                )
+                return redirect('core:beta_test_admin')
+            try:
+                send_mail(
+                    subject="You're in — Client St0r Mobile beta",
+                    message=(
+                        f'Hi {req.name},\n\n'
+                        'You\'re approved for the Client St0r Mobile Android '
+                        'beta. To install:\n\n'
+                        f'  1. Open this link on your Android phone (signed in '
+                        f'with {req.google_account_email}):\n     {opt_in_url}\n\n'
+                        '  2. Tap "Become a tester".\n'
+                        '  3. Tap "Download it on Google Play" — the Play Store '
+                        'opens; install as normal.\n\n'
+                        'Tap the orange BETA ribbon at the top of any screen '
+                        'to send feedback. Thanks for testing!\n'
+                    ),
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None)
+                               or 'noreply@clientst0r',
+                    recipient_list=[req.google_account_email],
+                    fail_silently=False,
+                )
+                req.status = 'added_to_play'
+                req.decided_at = timezone.now()
+                req.decided_by = request.user
+                req.decision_note = (
+                    (note + ' · ' if note else '') + 'opt-in URL emailed'
+                )[:500]
+                req.save()
+                messages.success(
+                    request,
+                    f'Opt-in URL emailed to {req.google_account_email} → '
+                    'marked as added_to_play.',
+                )
+            except Exception as exc:
+                messages.error(request, f'Failed to send: {exc}')
+            return redirect('core:beta_test_admin')
         else:
             messages.error(request, 'Unknown action.')
             return redirect('core:beta_test_admin')

@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.484] - 2026-05-14
+
+### Beta-tester signup: top-of-page CTA + email notification + one-click opt-in URL email
+
+**Top-bar CTA (`templates/base.html`):**
+- Added a 📱 **Beta app** nav-item visible to logged-in users (currently the CTA only rendered for anonymous visitors). Right side of the navbar between Favorites and the Search box, tooltip "Beta-test the Android mobile app". Routes to the existing `/core/beta-test/` public signup form.
+
+**Email notification on signup (`core/views.py::beta_test_signup`):**
+- Every public submission now fires a `send_mail` to `BETA_ADMIN_EMAIL` (default `agit8or@agit8or.net`). Subject `[Client St0r] Beta tester signup: <name>`, body has name + Google email + company + role + message + approval URL. Fail-open: if SMTP is misconfigured the signup still completes.
+
+**One-click opt-in URL email on approval (`core/views.py::beta_test_admin`):**
+- New action `send_opt_in` on the admin approval page. The "✉ Email opt-in URL" button on each approved row fires a `send_mail` to the tester's Gmail with install instructions + the Play opt-in URL (reads `PLAY_OPEN_TEST_URL` first, falls back to `PLAY_INTERNAL_TEST_URL`), and auto-flips the status to `added_to_play`. The existing "✓ Mark as added" button stays as a manual fallback for when the operator paste-adds the email to Play Console outside the app.
+
+**Settings to configure (`config/settings.py` or environment):**
+- `BETA_ADMIN_EMAIL` — defaults to `agit8or@agit8or.net`
+- `PLAY_OPEN_TEST_URL` — paste once Open Testing track is live (e.g. `https://play.google.com/apps/testing/com.clientstor.mspreboot`)
+- `PLAY_INTERNAL_TEST_URL` — current Internal Testing opt-in URL (used until Open Testing is live)
+- `DEFAULT_FROM_EMAIL` — sender address (any existing config carries over)
+
+No mobile rebuild needed for this release.
+
 ## [3.17.483] - 2026-05-14
 
 ### Play Store: upload script now sets release name to match the bundle
