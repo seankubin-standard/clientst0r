@@ -178,6 +178,13 @@ Output: `mobile/android/app/build/outputs/bundle/release/app-release.aab` (typic
 
 First build takes 5–15 minutes (downloads dependencies). Subsequent builds are 1–3 minutes.
 
+#### Known failure: `SDK location not found`
+Gradle can't find the Android SDK. Either:
+- `export ANDROID_HOME=$HOME/Android/Sdk` (and `ANDROID_SDK_ROOT` to the same path) in the shell that invokes `./gradlew`, OR
+- Create `mobile/android/local.properties` with one line: `sdk.dir=/home/administrator/android-sdk`.
+
+The `local.properties` approach is more robust because Gradle daemons inherit it once and don't depend on the parent shell environment.
+
 #### Known failure: `Could not get unknown property 'release'`
 This appears with `expo-modules-core@1.12.26` + AGP 8.x on a clean prebuild. The plugin's `from components.release` resolves before the Android library variant is published. The existing `patches/expo-modules-core+1.12.26.patch` fixes the Kotlin null-safety issue but not this Gradle publishing one.
 
@@ -199,6 +206,24 @@ Workaround until a second patch lands:
 2. Re-run `npx patch-package expo-modules-core` to generate `patches/expo-modules-core+1.12.26.patch.new` (then merge into the existing patch and commit *locally* — patches live in the gitignored `mobile/` tree).
 
 The block being wrapped is for publishing the Expo modules as a Maven artifact, which AAB builds don't need. Skipping it is safe.
+
+**Note on try/catch limitation:** wrapping `project.afterEvaluate { ... }` in a `try` only catches errors that throw at *registration* time, not when Gradle executes the closure later. The `from components.release` is a closure-time error, so the try doesn't help. The cleaner fix is to delete the publishing block entirely from the plugin file, or guard the inner block with `if (project.components.findByName('release') != null)`.
+
+#### Build status as of 2026-05-14
+`./gradlew bundleRelease` produced a **37 MB signed AAB** at v3.17.481 / versionCode 3170481. The patched `expo-modules-core+1.12.26.patch` resolved the `components.release` issue (guard inside the `afterEvaluate` closure rather than a try-around). Cold-build time: ~10 minutes.
+
+**Final permission set in the AAB** (verified via `aapt2 dump`):
+- INTERNET, ACCESS_NETWORK_STATE
+- VIBRATE, WAKE_LOCK
+- CAMERA
+- ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, ACCESS_BACKGROUND_LOCATION
+- FOREGROUND_SERVICE, FOREGROUND_SERVICE_LOCATION
+- POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED, BIND_JOB_SERVICE, READ_APP_BADGE
+- READ_MEDIA_IMAGES, READ_MEDIA_VIDEO
+- USE_BIOMETRIC, USE_FINGERPRINT (added by expo-secure-store)
+- DETECT_SCREEN_CAPTURE (added by expo-screen-capture for vault security)
+
+**Successfully stripped** (allowlist worked): RECORD_AUDIO, SYSTEM_ALERT_WINDOW, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE.
 
 ### 1.8 Verify the AAB locally
 
