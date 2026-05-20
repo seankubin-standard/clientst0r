@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.489] - 2026-05-20
+
+### Fix #133: M365 sync — mailbox/OneDrive/SharePoint names showing as blank or hex hashes
+
+Reported on issue #133: after running an M365 sync against a fresh client tenant, the Mailbox Usage table showed empty Name and UPN columns. Permissions were correct (Reports.Read.All granted, admin consented) — the bug was in how MS Graph returns the data.
+
+**Root cause.** Microsoft Graph's reporting endpoints (`getMailboxUsageDetail`, `getOneDriveUsageAccountDetail`, `getSharePointSiteUsageDetail`) anonymize Display Name and User Principal Name **by default** since MS's 2021 privacy update. The columns come back as 32-character hex hashes (e.g. `5C807787F0A30D1C3CDBB76DC1ED3CAB`) or empty strings. The `/users` endpoint is *not* anonymized, so the names exist — they just don't make it into the report rows.
+
+**Fix — `integrations/providers/m365.py`:**
+- New module-level helper `_deanonymize_usage_rows(rows, users)` that detects anonymized rows (blank or 32+ hex chars) and substitutes real values from the users list using UPN as the join key. Falls back to name→UPN lookup if UPN is hashed but the name is real.
+- `M365Provider.sync()` now calls the de-anonymizer on `mailbox_usage`, `onedrive_usage`, and `sharepoint_usage` before returning. Existing data shape unchanged; only the previously-blank fields get filled in.
+- Rows that can't be matched (deleted user, both fields hashed) get `_anonymized=True` flagged so the UI can show a hint.
+
+**UI hint — `integrations/views.py`:**
+- The Mailbox Usage card now shows an info banner above the table when any row is still anonymized after the join. The banner links directly to the M365 Admin Center setting that disables anonymization entirely ("Concealed names" toggle at *Settings → Org settings → Reports*) for operators who'd rather flip that than rely on the UPN join.
+
+No migration; no env changes; no mobile rebuild. Effect kicks in on the next M365 sync.
+
 ## [3.17.488] - 2026-05-14
 
 ### Beta-tester signup: lock Play URLs to canonical listing + forward remote signups upstream

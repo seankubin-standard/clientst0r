@@ -419,9 +419,33 @@ class M365Provider:
             return []
 
     def sync(self) -> dict:
-        """Pull all data and return structured summary."""
+        """Pull all data and return structured summary.
+
+        v3.17.489 / issue #133 — Graph reporting endpoints
+        (getMailboxUsageDetail, getOneDriveUsageAccountDetail,
+        getSharePointSiteUsageDetail) anonymize Display Name + UPN by
+        default since MS's 2021 privacy update. The names come back as
+        32-char hex hashes (e.g. ``5C807787F0A30D1C3CDBB76DC1ED3CAB``)
+        OR blank. The /users endpoint is unaffected. After we collect
+        everything, we cross-reference the usage rows against the users
+        list and substitute real names where the report rows are
+        anonymized.
+
+        Tenant admin can also disable anonymization in
+        M365 admin center → Settings → Org settings → Reports →
+        uncheck "Display anonymous identifiers instead of names". Code
+        de-anonymization makes it work without that change.
+        """
+        users = self.get_users()
+        mailbox_usage = self.get_mailbox_usage()
+        onedrive_usage = self.get_onedrive_usage()
+        sharepoint_usage = self.get_sharepoint_usage()
+        _deanonymize_usage_rows(mailbox_usage, users)
+        _deanonymize_usage_rows(onedrive_usage, users)
+        _deanonymize_usage_rows(sharepoint_usage, users)
+
         return {
-            'users': self.get_users(),
+            'users': users,
             'licenses': self.get_licenses(),
             'shared_mailboxes': self.get_shared_mailboxes(),
             'teams': self.get_teams(),
@@ -430,8 +454,70 @@ class M365Provider:
             'conditional_access_policies': self.get_conditional_access_policies(),
             'secure_score': self.get_secure_score(),
             'devices': self.get_devices(),
-            'sharepoint_usage': self.get_sharepoint_usage(),
+            'sharepoint_usage': sharepoint_usage,
             'defender_alerts': self.get_defender_alerts(),
-            'mailbox_usage': self.get_mailbox_usage(),
-            'onedrive_usage': self.get_onedrive_usage(),
+            'mailbox_usage': mailbox_usage,
+            'onedrive_usage': onedrive_usage,
         }
+
+
+# v3.17.489 — module-level helper (no `self`) so it's testable in isolation.
+_ANON_HASH_RE = __import__('re').compile(r'^[0-9A-Fa-f]{32,}$')
+
+
+def _deanonymize_usage_rows(rows, users):
+    """Mutate `rows` in place: where displayName / userPrincipalName look
+    anonymized (blank, or 32+ hex chars — MS's hash format), substitute
+    real values from `users` joining on whichever field IS real. If we
+    can't find a match (e.g. user deleted, only the hash survives in
+    the report), leave the row alone and mark `_anonymized=True` so the
+    UI can show a hint.
+
+    A row's match strategy:
+      1. If UPN is real (contains '@' and isn't a hex hash), look up
+         displayName by UPN.
+      2. Else if displayName is real, look up UPN by displayName.
+      3. Else flag as anonymized — nothing to join on.
+    """
+    if not rows or not users:
+        return
+    # Skip permission-error sentinel rows.
+    if rows and isinstance(rows[0], dict) and rows[0].get('permission_error'):
+        return
+
+    upn_to_name = {}
+    name_to_upn = {}
+    for u in users:
+        upn = (u.get('userPrincipalName') or '').strip()
+        name = (u.get('displayName') or '').strip()
+        if upn and name:
+            upn_to_name[upn.lower()] = name
+            name_to_upn[name.lower()] = upn
+
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        name = (r.get('displayName') or '').strip()
+        upn = (r.get('userPrincipalName') or '').strip()
+        name_looks_anon = (not name) or bool(_ANON_HASH_RE.match(name))
+        upn_looks_anon = (not upn) or ('@' not in upn) or bool(_ANON_HASH_RE.match(upn))
+
+        if not name_looks_anon and not upn_looks_anon:
+            continue  # row is already de-anonymized
+
+        # Strategy 1: real UPN → look up name
+        if not upn_looks_anon:
+            real_name = upn_to_name.get(upn.lower())
+            if real_name:
+                r['displayName'] = real_name
+                continue
+
+        # Strategy 2: real name → look up UPN
+        if not name_looks_anon:
+            real_upn = name_to_upn.get(name.lower())
+            if real_upn:
+                r['userPrincipalName'] = real_upn
+                continue
+
+        # Strategy 3: both anonymized — flag for UI hint
+        r['_anonymized'] = True

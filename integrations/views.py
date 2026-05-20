@@ -2671,6 +2671,26 @@ def m365_sync(request, pk):
             mb_rows = [r for r in raw_mb if not r.get('permission_error')]
             if not mb_rows:
                 return '<div class="card mb-3"><div class="card-header"><i class="fas fa-envelope me-2"></i>Mailbox Usage</div><div class="card-body"><p class="text-muted mb-0">No mailbox data returned. Ensure <code>Reports.Read.All</code> is granted and the M365 sync has run.</p></div></div>'
+            # v3.17.489 / issue #133 — if any row is still anonymized
+            # after the UPN-join de-anonymization in m365.sync(), show
+            # a hint about the tenant admin setting that disables the
+            # MS Graph privacy hashing entirely.
+            anon_remaining = sum(1 for r in mb_rows if r.get('_anonymized'))
+            anon_banner = ''
+            if anon_remaining:
+                anon_banner = (
+                    f'<div class="alert alert-info small mb-3">'
+                    f'<i class="fas fa-info-circle me-2"></i>'
+                    f'<strong>{anon_remaining} of {len(mb_rows)} mailbox rows</strong> still '
+                    f'show anonymized names (we couldn\'t match them to a user via UPN). '
+                    f'To stop Microsoft Graph from anonymizing report data at all, '
+                    f'a tenant admin can turn off "Concealed names" at: '
+                    f'<a href="https://admin.microsoft.com/Adminportal/Home#/Settings/Services/:/Settings/L1/Reports" target="_blank" rel="noopener">'
+                    f'M365 Admin Center → Settings → Org settings → Reports</a> → '
+                    f'uncheck <em>"Display anonymous identifiers instead of names, '
+                    f'group names, and sites in all reports"</em> → Save. Re-run the M365 sync after.'
+                    f'</div>'
+                )
             def _fmt_bytes(b):
                 try:
                     b = int(b)
@@ -2688,7 +2708,7 @@ def m365_sync(request, pk):
                 items = r.get('itemCount') or 0
                 last_active = html_lib.escape(r.get('lastActivityDate') or '\u2014')
                 rows_html += f'<tr><td>{name}</td><td>{upn}</td><td>{rtype}</td><td>{storage}</td><td>{items}</td><td>{last_active}</td></tr>'
-            return f'''<div class="card mb-3">
+            return f'''{anon_banner}<div class="card mb-3">
   <div class="card-header"><i class="fas fa-envelope me-2"></i>Mailbox Usage ({len(mb_rows)})</div>
   <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
     <thead><tr><th>Name</th><th>UPN</th><th>Type</th><th>Storage Used</th><th>Items</th><th>Last Active</th></tr></thead>
