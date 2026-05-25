@@ -5,6 +5,30 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.495] - 2026-05-25
+
+### Fix: auto-update + breach-scan timers were firing twice daily
+
+Both `clientst0r-auto-update.timer` and `clientst0r-breach-scan.timer` had two `OnCalendar=` directives — systemd treats those as additive, so each timer was triggering twice a day instead of once.
+
+**`clientst0r-auto-update.timer`** had:
+```
+OnCalendar=daily          # = midnight every day
+OnCalendar=02:00          # 02:00 every day
+```
+Result: fired at 00:00 AND 02:00. Two auto-update attempts per day. Removed the redundant `daily` line; now fires once at 02:00 local. `OnBootSec=10min` + `Persistent=true` keep the catch-up behavior for hosts that were off at 02:00.
+
+**`clientst0r-breach-scan.timer`** had:
+```
+OnCalendar=daily
+OnCalendar=*-*-* 02:00:00
+```
+Result: same problem — fired at 00:00 AND 02:00. Removed the redundant `daily` line; now fires once at 02:00 local with `RandomizedDelaySec=1800` (up to 30 min jitter) preserved to avoid HIBP API peak times.
+
+No other timer affected — `monitor`, `psa-sync`, `rmm-sync`, `scheduler` all use single `OnBootSec` + `OnUnitActiveSec` constructs, no duplicated calendars.
+
+After Apply + re-running `deploy/migrate-from-huduglue.sh` (or just `cp deploy/clientst0r-{auto-update,breach-scan}.timer /etc/systemd/system/ && sudo systemctl daemon-reload`), each timer fires once per day at 02:00 instead of twice.
+
 ## [3.17.494] - 2026-05-25
 
 ### itdocs-scheduler renamed to clientst0r-scheduler; itdocs-gunicorn removed

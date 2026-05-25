@@ -3,14 +3,13 @@ Description=Run Client St0r password breach scanning daily
 Requires=clientst0r-breach-scan.service
 
 [Timer]
-# Run daily at 2 AM
-OnCalendar=daily
+# Run daily at 02:00 local time
 OnCalendar=*-*-* 02:00:00
 
-# Run on boot if missed
+# Run on boot if missed (host was off at 02:00)
 Persistent=true
 
-# Random delay to avoid peak times
+# Random delay up to 30 min to avoid HIBP API peak times
 RandomizedDelaySec=1800
 
 [Install]

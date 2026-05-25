@@ -3,13 +3,12 @@ Description=Client St0r Auto-Update Timer
 Requires=clientst0r-auto-update.service
 
 [Timer]
-# Run daily at 2 AM
-OnCalendar=daily
-# On boot, wait 10 minutes then check
+# Run daily at 02:00 local time
+OnCalendar=*-*-* 02:00:00
+# On boot, wait 10 minutes then check (catches missed cycles when host
+# was off at 02:00, in addition to Persistent= catch-up)
 OnBootSec=10min
-# Run 2 AM every day
-OnCalendar=02:00
-# If missed, run as soon as possible
+# If 02:00 was missed (host off), fire as soon as possible after boot
 Persistent=true
 
 [Install]
