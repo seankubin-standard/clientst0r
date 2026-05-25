@@ -406,7 +406,7 @@ if [ "$RESTART_SERVICE" = true ]; then
 
     # Auto-detect service name
     SERVICE_NAME=""
-    for svc in clientst0r-gunicorn.service itdocs-gunicorn.service; do
+    for svc in clientst0r-gunicorn.service; do
         if systemctl list-units --type=service --all | grep -q "$svc"; then
             SERVICE_NAME="$svc"
             info "Found service: $svc"

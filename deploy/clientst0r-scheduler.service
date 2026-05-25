@@ -1,5 +1,5 @@
 [Unit]
-Description=Client St0r PSA Sync
+Description=Client St0r Task Scheduler
 After=network.target
 
 [Service]
@@ -9,6 +9,7 @@ Group=administrator
 WorkingDirectory=/home/administrator
 Environment="PATH=/home/administrator/venv/bin"
 EnvironmentFile=/home/administrator/.env
-ExecStart=/home/administrator/venv/bin/python manage.py sync_psa
+ExecStart=/home/administrator/venv/bin/python manage.py run_scheduler
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=clientst0r-scheduler

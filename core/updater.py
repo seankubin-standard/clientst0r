@@ -125,14 +125,12 @@ class UpdateService:
 
         Checks for common service names:
         - clientst0r-gunicorn.service
-        - itdocs-gunicorn.service
 
         Returns:
             str: Service name if found, None if not running under systemd
         """
         possible_names = [
             'clientst0r-gunicorn.service',
-            'itdocs-gunicorn.service',
         ]
 
         for service_name in possible_names:

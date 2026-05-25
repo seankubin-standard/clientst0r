@@ -67,7 +67,7 @@ log "Update instructions downloaded and validated"
 
 # Auto-detect gunicorn service name
 GUNICORN_SERVICE=""
-for svc in clientst0r-gunicorn.service itdocs-gunicorn.service; do
+for svc in clientst0r-gunicorn.service; do
     if systemctl list-unit-files 2>/dev/null | grep -q "^$svc"; then
         GUNICORN_SERVICE="$svc"
         break

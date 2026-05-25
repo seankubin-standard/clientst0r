@@ -942,7 +942,7 @@ def force_restart_services(request):
         logger.info("Cleared Django cache")
 
         # Detect which gunicorn service exists
-        service_names = ['clientst0r-gunicorn.service', 'itdocs-gunicorn.service']
+        service_names = ['clientst0r-gunicorn.service']
         gunicorn_service = None
 
         for service in service_names:

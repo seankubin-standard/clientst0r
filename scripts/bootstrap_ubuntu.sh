@@ -149,12 +149,12 @@ if [ "$INSTALL_TYPE" = "upgrade" ]; then
     echo "Step 5: Restarting services..."
 
     # Check if gunicorn service exists and is active
-    if systemctl is-active --quiet itdocs-gunicorn; then
-        echo "  - Restarting itdocs-gunicorn service..."
-        sudo systemctl restart itdocs-gunicorn
+    if systemctl is-active --quiet clientst0r-gunicorn; then
+        echo "  - Restarting clientst0r-gunicorn service..."
+        sudo systemctl restart clientst0r-gunicorn
         echo "  ✓ Service restarted"
     else
-        echo "  ℹ itdocs-gunicorn service not running (will need manual start)"
+        echo "  ℹ clientst0r-gunicorn service not running (will need manual start)"
     fi
 
     # Check if nginx is running
@@ -178,33 +178,40 @@ echo ""
 if [ "$INSTALL_TYPE" = "fresh" ]; then
     echo "Next steps:"
     echo "1. Install systemd service:"
-    echo "   sudo cp deploy/itdocs-gunicorn.service /etc/systemd/system/"
+    echo "   sudo cp deploy/clientst0r-gunicorn.service /etc/systemd/system/"
     echo "   sudo systemctl daemon-reload"
-    echo "   sudo systemctl enable itdocs-gunicorn"
-    echo "   sudo systemctl start itdocs-gunicorn"
+    echo "   sudo systemctl enable clientst0r-gunicorn"
+    echo "   sudo systemctl start clientst0r-gunicorn"
     echo ""
     echo "2. Install PSA sync timer (optional):"
-    echo "   sudo cp deploy/itdocs-psa-sync.service /etc/systemd/system/"
-    echo "   sudo cp deploy/itdocs-psa-sync.timer /etc/systemd/system/"
+    echo "   sudo cp deploy/clientst0r-psa-sync.service /etc/systemd/system/"
+    echo "   sudo cp deploy/clientst0r-psa-sync.timer /etc/systemd/system/"
     echo "   sudo systemctl daemon-reload"
-    echo "   sudo systemctl enable itdocs-psa-sync.timer"
-    echo "   sudo systemctl start itdocs-psa-sync.timer"
+    echo "   sudo systemctl enable clientst0r-psa-sync.timer"
+    echo "   sudo systemctl start clientst0r-psa-sync.timer"
     echo ""
-    echo "3. Configure Nginx:"
-    echo "   sudo cp deploy/nginx-itdocs.conf /etc/nginx/sites-available/itdocs"
-    echo "   sudo ln -s /etc/nginx/sites-available/itdocs /etc/nginx/sites-enabled/"
+    echo "3. Install task scheduler (every-minute cron-style runner):"
+    echo "   sudo cp deploy/clientst0r-scheduler.service /etc/systemd/system/"
+    echo "   sudo cp deploy/clientst0r-scheduler.timer /etc/systemd/system/"
+    echo "   sudo systemctl daemon-reload"
+    echo "   sudo systemctl enable clientst0r-scheduler.timer"
+    echo "   sudo systemctl start clientst0r-scheduler.timer"
+    echo ""
+    echo "4. Configure Nginx:"
+    echo "   sudo cp deploy/nginx-clientst0r.conf /etc/nginx/sites-available/clientst0r"
+    echo "   sudo ln -s /etc/nginx/sites-available/clientst0r /etc/nginx/sites-enabled/"
     echo "   sudo nginx -t"
     echo "   sudo systemctl reload nginx"
     echo ""
-    echo "4. Access the platform at http://yourdomain.com"
+    echo "5. Access the platform at http://yourdomain.com"
 else
     echo "Upgrade complete! Your services have been restarted."
     echo ""
     echo "Database backup saved to: $BACKUP_DIR/database.sql"
     echo ""
     echo "To verify the installation:"
-    echo "  - Check service status: sudo systemctl status itdocs-gunicorn"
-    echo "  - View logs: sudo journalctl -u itdocs-gunicorn -f"
+    echo "  - Check service status: sudo systemctl status clientst0r-gunicorn"
+    echo "  - View logs: sudo journalctl -u clientst0r-gunicorn -f"
     echo "  - Test the web interface at your configured URL"
 fi
 echo ""

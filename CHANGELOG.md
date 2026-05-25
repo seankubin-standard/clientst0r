@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.494] - 2026-05-25
+
+### itdocs-scheduler renamed to clientst0r-scheduler; itdocs-gunicorn removed
+
+Follow-up to the v3.17.492 brand scrub. Two legacy `itdocs-*` systemd units were left in place last time because the names themselves weren't huduglue-branded. With the rest of the stack consistently on `clientst0r-*`, those holdouts looked even more out of place — and `itdocs-gunicorn.service` was an installed-but-disabled duplicate of `clientst0r-gunicorn.service`. This release retires both.
+
+**Renamed — task scheduler.** `deploy/itdocs-scheduler.{service,timer}` → `deploy/clientst0r-scheduler.{service,timer}`. The new service runs the same `manage.py run_scheduler` every minute, just under a clientst0r-branded unit name with `SyslogIdentifier=clientst0r-scheduler`. The timer's `Requires=` reference also points at the new service name.
+
+**Deleted — obsolete deploy templates.** `deploy/itdocs-gunicorn.service` (replaced by `clientst0r-gunicorn.service` in v3.17.492), `deploy/itdocs-scheduler.{service,timer}` (renamed), `deploy/itdocs-monitor.{service,timer}` + `deploy/itdocs-psa-sync.{service,timer}` (duplicates of `clientst0r-monitor.*` / `clientst0r-psa-sync.*` — both timers were firing the same management commands on a different cadence).
+
+**Nginx config rename.** `deploy/nginx-itdocs.conf` → `deploy/nginx-clientst0r.conf`. Upstream block, log paths, static-files alias, and SSL cert paths all rebranded. The internal `/var/lib/itdocs/uploads/` mount path is preserved (changing it would require migrating live upload data).
+
+**Code references.** Removed `itdocs-gunicorn.service` from systemd unit-name lookup lists in `core/views.py`, `core/updater.py`, `core/management/commands/auto_heal_version.py`, plus the bash equivalents in `update.sh`, `scripts/auto_update.sh`, and `deploy/update_instructions.sh`. The only service name considered now is `clientst0r-gunicorn.service`. `templates/core/settings_scheduler.html` (operator-facing systemd-help block) updated to reference `clientst0r-scheduler` in all `systemctl` / `journalctl` examples.
+
+**bootstrap_ubuntu.sh.** Fresh-install instructions now point at the clientst0r-* unit files, add the scheduler timer to the install sequence, and the upgrade path restarts `clientst0r-gunicorn` (was `itdocs-gunicorn`).
+
+**Extended migration script — `deploy/migrate-from-huduglue.sh`.** Same one-shot script as v3.17.492, now also installs `clientst0r-scheduler.{service,timer}`, and stops/disables/removes the legacy `itdocs-gunicorn.service`, `itdocs-scheduler.{service,timer}`, `itdocs-monitor.{service,timer}`, `itdocs-psa-sync.{service,timer}`. Also calls `systemctl reset-failed` at the end to clear any cached failure records. Idempotent — safe to re-run.
+
+No code changes affecting request handling, no migrations, no mobile rebuild. Canonical install runs `deploy/migrate-from-huduglue.sh` after Apply to flip the live systemd units.
+
 ## [3.17.493] - 2026-05-25
 
 ### Fix: breach-scan systemd unit was passing a non-existent CLI flag
