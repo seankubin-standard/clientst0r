@@ -10,7 +10,7 @@ set -euo pipefail
 NEW_VALUE="${1:?usage: hsts_bump.sh <seconds>}"
 ENV_FILE="/home/administrator/.env"
 LOG_FILE="/home/administrator/logs/hsts-ramp.log"
-SERVICE="huduglue-gunicorn.service"
+SERVICE="clientst0r-gunicorn.service"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=HuduGlue PSA Sync Timer
+Description=Client St0r PSA Sync Timer
 Requires=itdocs-psa-sync.service
 
 [Timer]

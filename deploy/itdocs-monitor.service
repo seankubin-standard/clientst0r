@@ -1,5 +1,5 @@
 [Unit]
-Description=HuduGlue Website Monitor Check
+Description=Client St0r Website Monitor Check
 After=network.target
 
 [Service]

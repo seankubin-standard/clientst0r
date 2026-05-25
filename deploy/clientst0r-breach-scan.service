@@ -1,5 +1,5 @@
 [Unit]
-Description=HuduGlue Password Breach Scanning
+Description=Client St0r Password Breach Scanning
 After=network.target mariadb.service
 
 [Service]

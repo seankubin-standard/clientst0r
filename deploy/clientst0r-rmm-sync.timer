@@ -1,6 +1,6 @@
 [Unit]
-Description=HuduGlue RMM Sync Timer
-Requires=huduglue-rmm-sync.service
+Description=Client St0r RMM Sync Timer
+Requires=clientst0r-rmm-sync.service
 
 [Timer]
 OnBootSec=5min

@@ -1,5 +1,5 @@
 [Unit]
-Description=HuduGlue Task Scheduler
+Description=Client St0r Task Scheduler
 After=network.target
 
 [Service]

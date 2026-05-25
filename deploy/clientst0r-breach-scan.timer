@@ -1,6 +1,6 @@
 [Unit]
-Description=Run HuduGlue password breach scanning daily
-Requires=huduglue-breach-scan.service
+Description=Run Client St0r password breach scanning daily
+Requires=clientst0r-breach-scan.service
 
 [Timer]
 # Run daily at 2 AM

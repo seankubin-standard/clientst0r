@@ -20,7 +20,7 @@ def debug_version(request):
     html += f"get_version(): {get_version()}\n"
     
     # Check file on disk
-    with open('/home/administrator/huduglue/config/version.py', 'r') as f:
+    with open('/home/administrator/config/version.py', 'r') as f:
         for line in f:
             if 'VERSION =' in line:
                 html += f"File on disk: {line.strip()}\n"

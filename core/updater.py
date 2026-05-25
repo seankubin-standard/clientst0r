@@ -94,7 +94,6 @@ class UpdateService:
             os.path.join(self.base_dir, 'venv', 'bin', 'python3.12'),
 
             # Alternative: Check if there's a subdirectory that might have the venv
-            os.path.join(self.base_dir, 'huduglue', 'venv', 'bin', 'python'),
             os.path.join(self.base_dir, 'clientst0r', 'venv', 'bin', 'python'),
 
             # Fallback: settings.BASE_DIR if different from detected base_dir
@@ -126,7 +125,6 @@ class UpdateService:
 
         Checks for common service names:
         - clientst0r-gunicorn.service
-        - huduglue-gunicorn.service
         - itdocs-gunicorn.service
 
         Returns:
@@ -134,7 +132,6 @@ class UpdateService:
         """
         possible_names = [
             'clientst0r-gunicorn.service',
-            'huduglue-gunicorn.service',
             'itdocs-gunicorn.service',
         ]
 

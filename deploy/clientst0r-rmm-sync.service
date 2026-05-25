@@ -1,5 +1,5 @@
 [Unit]
-Description=HuduGlue PSA Sync
+Description=Client St0r RMM Sync
 After=network.target
 
 [Service]
@@ -9,6 +9,9 @@ Group=administrator
 WorkingDirectory=/home/administrator
 Environment="PATH=/home/administrator/venv/bin"
 EnvironmentFile=/home/administrator/.env
-ExecStart=/home/administrator/venv/bin/python manage.py sync_psa
+ExecStart=/home/administrator/venv/bin/python manage.py sync_rmm
 StandardOutput=journal
 StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

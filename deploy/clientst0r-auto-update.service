@@ -1,5 +1,5 @@
 [Unit]
-Description=HuduGlue Auto-Update Service
+Description=Client St0r Auto-Update Service
 After=network.target
 
 [Service]
@@ -8,8 +8,8 @@ User=administrator
 Group=administrator
 WorkingDirectory=/home/administrator
 ExecStart=/home/administrator/scripts/auto_update.sh
-StandardOutput=append:/var/log/huduglue/auto-update.log
-StandardError=append:/var/log/huduglue/auto-update.log
+StandardOutput=append:/var/log/clientst0r/auto-update.log
+StandardError=append:/var/log/clientst0r/auto-update.log
 
 # Environment
 Environment="PATH=/home/administrator/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

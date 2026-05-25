@@ -1,5 +1,5 @@
 [Unit]
-Description=HuduGlue Task Scheduler Timer
+Description=Client St0r Task Scheduler Timer
 Requires=itdocs-scheduler.service
 
 [Timer]

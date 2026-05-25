@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.492] - 2026-05-25
+
+### Full HuduGlue → Client St0r rename (no leftover brand traces)
+
+Project-wide scrub of the legacy `huduglue` / `HuduGlue` brand name. The hostname `huduglue.agit8or.net` is kept (live DNS for the canonical dev/demo server, not a brand surface). Historical CHANGELOG entries are preserved as-is — they're a record of what happened, not what's true now.
+
+**Code rename — service-name detection.** `core/views.py`, `core/updater.py`, `core/security_views.py`, `core/management/commands/auto_heal_version.py`, `core/debug_version_view.py`, `templates/core/system_updates.html`, `templates/core/python_scanner_dashboard.html`. The systemd-unit-name lookup lists now contain `clientst0r-gunicorn.service` (+ `itdocs-gunicorn.service` as legacy fallback only). Every visible reference to `huduglue-gunicorn.service` in user-facing UI / error messages / debug output is now `clientst0r-gunicorn.service`.
+
+**Shell scripts.** `update.sh`, `update_safe.sh`, `scripts/auto_update.sh`, `scripts/hsts_bump.sh`, `deploy/update_instructions.sh`, `deploy/setup_mobile_build.sh`, `setup_gui_updates.sh` — all `huduglue` references renamed to `clientst0r`. The sudoers template at `setup_gui_updates.sh` now grants passwordless sudo on the canonical service names only.
+
+**Deleted dead legacy scripts.** `COMPLETE_REMOTE_FIX.sh`, `DIAGNOSE_REMOTE.sh`, `ENABLE_GUI_UPDATES.sh`, `FINAL_REMOTE_FIX.sh`, `FIX_REMOTE_UPDATES.sh`, `START_GUNICORN_REMOTE.sh`. All of these assumed the project lived at `/home/administrator/huduglue/` — a path that hasn't existed in this codebase. They were broken on every install.
+
+**Documentation.** `docs/PUBLIC_RELEASE_CHECKLIST.md` — three "play-reviewer test account on huduglue" references replaced with "on the canonical server"; the `/play_publish/` UI is now described as living on "the canonical server" instead of "huduglue". `docs/PLAY_STORE_LISTING.md` and `docs/PLAY_DATA_SAFETY.md` keep the literal `huduglue.agit8or.net` URL because those are Play Console submission docs and the URL is the live demo server.
+
+**Deploy unit files — systemd renames.** Eleven unit files renamed: `huduglue-{auto-update, breach-scan, monitor, psa-sync, rmm-sync}.{service,timer}` → `clientst0r-{...}.{service,timer}`. New `deploy/clientst0r-gunicorn.service` matches the live unit on the canonical install (Type=notify, gunicorn config). Three sudoers files renamed: `huduglue-{fail2ban, install, mobile-build}-sudoers` → `clientst0r-{...}-sudoers`. Two fail2ban configs (`huduglue-fail2ban-{filter,jail}.conf`) renamed to `clientst0r-fail2ban-{...}.conf` with jail / iptables-chain name `clientst0r`.
+
+**Stale itdocs unit Descriptions.** `deploy/itdocs-{gunicorn,monitor,psa-sync,scheduler}.{service,timer}` all had `Description=HuduGlue ...` lines; bulk-replaced with `Description=Client St0r ...`. The unit names themselves stay `itdocs-*` because that's a separate legacy install lane, not the huduglue brand.
+
+**Docker MariaDB config.** `docker/mariadb/conf.d/huduglue.cnf` renamed to `clientst0r.cnf`. MariaDB picks up any `*.cnf` in the conf.d directory — filename change is purely cosmetic, no behavior change.
+
+**Live unit migration helper — `deploy/migrate-from-huduglue.sh`.** One-shot bash script (must be run as root) that handles a running install with the legacy `huduglue-*` systemd units. It: (1) installs all new `clientst0r-*` unit files into `/etc/systemd/system`, (2) stops + disables + removes the corresponding `huduglue-*` units (plus the `huduglue-gunicorn.service.backup` lingering on prod), (3) enables + starts the new units, (4) reloads systemd, (5) prints the new active state. Idempotent. The script ITSELF references "huduglue" by design — that's how it knows what to migrate from.
+
+**Deleted stale artifact.** `security_scan_bandit.json` — captured huduglue-era code excerpts in scan output. Removed; regenerated next scan.
+
+No migrations. No mobile rebuild. After Apply the canonical install runs `deploy/migrate-from-huduglue.sh` to flip the live systemd units.
+
 ## [3.17.491] - 2026-05-23
 
 ### Surface Docker install as a headline feature

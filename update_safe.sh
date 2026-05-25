@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Self-Healing Update Script for HuduGlue
+# Self-Healing Update Script for Client St0r
 # Automatically detects and fixes common migration and update issues
 #
 
@@ -36,14 +36,14 @@ log_error() {
 # Header
 echo "╔════════════════════════════════════════════════════════╗"
 echo "║                                                        ║"
-echo "║        HuduGlue Self-Healing Update System            ║"
+echo "║        Client St0r Self-Healing Update System            ║"
 echo "║                                                        ║"
 echo "╚════════════════════════════════════════════════════════╝"
 echo ""
 
 # Check we're in the right directory
 if [ ! -f "manage.py" ]; then
-    log_error "manage.py not found. Are you in the HuduGlue directory?"
+    log_error "manage.py not found. Are you in the Client St0r directory?"
     exit 1
 fi
 
@@ -190,7 +190,7 @@ echo ""
 # Step 11: Display current version
 log_info "Checking current version..."
 CURRENT_VERSION=$(python manage.py shell -c "from config.version import VERSION; print(VERSION)" 2>/dev/null || echo "Unknown")
-log_success "HuduGlue is now running version $CURRENT_VERSION"
+log_success "Client St0r is now running version $CURRENT_VERSION"
 echo ""
 
 # Summary
@@ -208,4 +208,4 @@ echo "  ✓ Applied database migrations"
 echo "  ✓ Collected static files"
 echo "  ✓ Restarted service"
 echo ""
-log_success "HuduGlue is ready to use!"
+log_success "Client St0r is ready to use!"

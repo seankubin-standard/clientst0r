@@ -63,7 +63,7 @@ log "Using virtual environment: $VENV_DIR"
 
 # --- Service detection (if not provided by caller) ---
 if [ -z "$SERVICE" ]; then
-    for svc in clientst0r-gunicorn.service huduglue-gunicorn.service itdocs-gunicorn.service; do
+    for svc in clientst0r-gunicorn.service itdocs-gunicorn.service; do
         if /usr/bin/systemctl is-active "$svc" >/dev/null 2>&1; then
             SERVICE="$svc"
             break

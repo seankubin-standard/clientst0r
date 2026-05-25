@@ -942,7 +942,7 @@ def force_restart_services(request):
         logger.info("Cleared Django cache")
 
         # Detect which gunicorn service exists
-        service_names = ['huduglue-gunicorn.service', 'clientst0r-gunicorn.service', 'itdocs-gunicorn.service']
+        service_names = ['clientst0r-gunicorn.service', 'itdocs-gunicorn.service']
         gunicorn_service = None
 
         for service in service_names:
@@ -1749,7 +1749,7 @@ def download_mobile_app(request, app_type):
         # v3.17.423 — detach the build into its own process group / session
         # so it survives a gunicorn restart. Previously the daemon-thread +
         # subprocess.run setup made the build a child of the gunicorn worker;
-        # any subsequent `systemctl reload huduglue-gunicorn.service` would
+        # any subsequent `systemctl reload clientst0r-gunicorn.service` would
         # SIGTERM the worker's process tree and kill the gradle build mid-
         # flight, leaving the status file stuck on "building" forever.
         #

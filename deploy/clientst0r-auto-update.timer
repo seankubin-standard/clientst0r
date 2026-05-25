@@ -1,6 +1,6 @@
 [Unit]
-Description=HuduGlue Auto-Update Timer
-Requires=huduglue-auto-update.service
+Description=Client St0r Auto-Update Timer
+Requires=clientst0r-auto-update.service
 
 [Timer]
 # Run daily at 2 AM

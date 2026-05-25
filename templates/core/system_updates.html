@@ -952,7 +952,7 @@ function waitForServerThenReload() {
                 'No response after 5 minutes. The service might still be running, '
                 + 'or it might have failed to restart. '
                 + '<a href="javascript:location.reload()">Reload manually</a> '
-                + 'or check <code>journalctl -u huduglue-gunicorn.service</code>.';
+                + 'or check <code>journalctl -u clientst0r-gunicorn.service</code>.';
             if (barEl) {
                 barEl.classList.remove('progress-bar-animated', 'bg-info');
                 barEl.classList.add('bg-danger');

@@ -1,5 +1,5 @@
 [Unit]
-Description=HuduGlue Website Monitor Check Timer
+Description=Client St0r Website Monitor Check Timer
 Requires=itdocs-monitor.service
 
 [Timer]

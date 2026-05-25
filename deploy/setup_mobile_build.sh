@@ -1,11 +1,11 @@
 #!/bin/bash
-# Auto-setup script for HuduGlue mobile app building
+# Auto-setup script for Client St0r mobile app building
 # This configures passwordless sudo for automatic dependency installation
 
 set -e
 
 echo "=========================================="
-echo "HuduGlue Mobile App Build Setup"
+echo "Client St0r Mobile App Build Setup"
 echo "=========================================="
 echo ""
 

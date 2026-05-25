@@ -1,5 +1,5 @@
 [Unit]
-Description=HuduGlue PSA Sync
+Description=Client St0r PSA Sync
 After=network.target
 
 [Service]

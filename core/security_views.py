@@ -530,7 +530,7 @@ def remediate_python_package(request):
         'stderr': (result.stderr or '')[-2000:],
         'next_steps': [
             f'Update requirements.txt: pin {name}=={version}',
-            'Restart gunicorn: sudo systemctl restart huduglue-gunicorn.service',
+            'Restart gunicorn: sudo systemctl restart clientst0r-gunicorn.service',
             'Re-run the scan to confirm the vulnerability is gone',
         ] if success else [],
     })
