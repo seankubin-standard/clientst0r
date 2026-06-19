@@ -36,6 +36,23 @@
                         <small class="form-text text-muted">API keys inherit permissions based on their role</small>
                     </div>
 
+                    <div class="mb-3">
+                        <label for="scope" class="form-label">Organization Scope <span class="text-danger">*</span></label>
+                        <select class="form-select" id="scope" name="scope" required>
+                            {% for scope_value, scope_label in scopes %}
+                            <option value="{{ scope_value }}" {% if scope_value == 'single' %}selected{% endif %}>
+                                {{ scope_label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text text-muted">
+                            Controls how many client organizations this key can reach. A key never grants
+                            access beyond what you can already access. Use <strong>All accessible
+                            organizations</strong> for a single-pane-of-glass integration that pulls every
+                            client; pass <code>?organization=&lt;id&gt;</code> on a request to narrow to one.
+                        </small>
+                    </div>
+
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-triangle"></i>
                         <strong>Important:</strong> The API key will be shown only once after creation. Make sure to copy it and store it securely!

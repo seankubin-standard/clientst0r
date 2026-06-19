@@ -34,6 +34,17 @@
                 {% endif %}
             </dd>
 
+            <dt class="col-sm-3">Org Scope:</dt>
+            <dd class="col-sm-9">
+                {% if api_key.scope == 'all' %}
+                <span class="badge bg-primary">{{ api_key.get_scope_display }}</span>
+                {% elif api_key.scope == 'descendants' %}
+                <span class="badge bg-info">{{ api_key.get_scope_display }}</span>
+                {% else %}
+                <span class="badge bg-secondary">{{ api_key.get_scope_display }}</span>
+                {% endif %}
+            </dd>
+
             <dt class="col-sm-3">API Key:</dt>
             <dd class="col-sm-9">
                 <div class="input-group">

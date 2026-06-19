@@ -27,6 +27,7 @@ from django.contrib.auth.models import User
 from django.test import Client, TestCase, override_settings
 
 from accounts.models import Membership, Role
+from api.models import APIKey, APIKeyScope
 from assets.models import Asset
 from audit.models import AuditLog
 from core.models import Organization
@@ -251,6 +252,127 @@ class PasswordOTPEndpointTests(TestCase):
         resp = self.client.get(f'/api/passwords/{non_otp.id}/otp/')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('Not an OTP entry', resp.json().get('error', ''))
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class MultiOrgAPIKeyScopeTests(TestCase):
+    """Issue #134 — a single API key can read/write across many client
+    organizations depending on its `scope`. These tests drive the API via
+    Bearer API-key auth (not session auth) so they exercise the real
+    integration path an MSP single-pane-of-glass would use.
+
+    Backward-compatibility guarantee under test: a SINGLE-scoped key (the
+    only kind that existed before this feature) sees exactly one org and is
+    refused any other, identical to pre-v3.17.496 behavior.
+    """
+
+    def setUp(self):
+        # A small MSP hierarchy: parent org with one child location, plus an
+        # unrelated org the key owner is NOT a member of.
+        self.org_a = Organization.objects.create(name='MO-OrgA', slug='mo-orga')
+        self.org_child = Organization.objects.create(
+            name='MO-OrgA-Child', slug='mo-orga-child', parent=self.org_a,
+        )
+        self.org_b = Organization.objects.create(name='MO-OrgB', slug='mo-orgb')
+
+        self.owner = User.objects.create_user('mo-owner', password='pw', email='mo@x.com')
+        # Owner is a member of A, its child, and B (but NOT a staff user).
+        for org in (self.org_a, self.org_child, self.org_b):
+            Membership.objects.create(
+                user=self.owner, organization=org, role=Role.OWNER, is_active=True,
+            )
+
+        # One asset per org so cross-org reach is countable.
+        self.asset_a = Asset.objects.create(organization=self.org_a, name='mo-a', asset_type='server')
+        self.asset_child = Asset.objects.create(organization=self.org_child, name='mo-child', asset_type='server')
+        self.asset_b = Asset.objects.create(organization=self.org_b, name='mo-b', asset_type='server')
+
+    def _key(self, scope, home=None):
+        _, plaintext = APIKey.create_key(
+            organization=home or self.org_a, user=self.owner,
+            name=f'{scope}-key', role=Role.OWNER, scope=scope,
+        )
+        return plaintext
+
+    def _get(self, path, key):
+        return Client().get(path, HTTP_AUTHORIZATION=f'Bearer {key}')
+
+    @staticmethod
+    def _rows(resp):
+        data = resp.json()
+        return data['results'] if isinstance(data, dict) and 'results' in data else data
+
+    # ---- SINGLE scope (legacy, default) ---------------------------------
+    def test_single_scope_sees_only_home_org(self):
+        key = self._key(APIKeyScope.SINGLE, home=self.org_a)
+        resp = self._get('/api/assets/', key)
+        self.assertEqual(resp.status_code, 200)
+        names = {r['name'] for r in self._rows(resp)}
+        self.assertEqual(names, {'mo-a'})
+
+    def test_single_scope_refuses_other_org_param(self):
+        key = self._key(APIKeyScope.SINGLE, home=self.org_a)
+        resp = self._get(f'/api/assets/?organization={self.org_b.id}', key)
+        self.assertEqual(resp.status_code, 403)
+
+    # ---- ALL scope (single pane of glass) -------------------------------
+    def test_all_scope_sees_every_member_org_by_default(self):
+        key = self._key(APIKeyScope.ALL, home=self.org_a)
+        resp = self._get('/api/assets/', key)
+        self.assertEqual(resp.status_code, 200)
+        names = {r['name'] for r in self._rows(resp)}
+        self.assertEqual(names, {'mo-a', 'mo-child', 'mo-b'})
+
+    def test_all_scope_can_narrow_with_param(self):
+        key = self._key(APIKeyScope.ALL, home=self.org_a)
+        resp = self._get(f'/api/assets/?organization={self.org_b.slug}', key)
+        self.assertEqual(resp.status_code, 200)
+        names = {r['name'] for r in self._rows(resp)}
+        self.assertEqual(names, {'mo-b'})
+
+    def test_each_row_is_tagged_with_its_organization(self):
+        key = self._key(APIKeyScope.ALL, home=self.org_a)
+        rows = self._rows(self._get('/api/assets/', key))
+        by_name = {r['name']: r for r in rows}
+        self.assertEqual(by_name['mo-b']['organization'], self.org_b.id)
+        self.assertEqual(by_name['mo-b']['organization_name'], 'MO-OrgB')
+
+    # ---- DESCENDANTS scope ----------------------------------------------
+    def test_descendants_scope_sees_home_plus_children_only(self):
+        key = self._key(APIKeyScope.DESCENDANTS, home=self.org_a)
+        rows = self._rows(self._get('/api/assets/', key))
+        names = {r['name'] for r in rows}
+        self.assertEqual(names, {'mo-a', 'mo-child'})  # org B excluded
+
+    # ---- create routing + access control --------------------------------
+    def test_all_scope_create_routes_to_param_org(self):
+        key = self._key(APIKeyScope.ALL, home=self.org_a)
+        resp = Client().post(
+            f'/api/assets/?organization={self.org_b.id}',
+            data={'name': 'created-in-b', 'asset_type': 'server'},
+            HTTP_AUTHORIZATION=f'Bearer {key}',
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        created = Asset.objects.get(name='created-in-b')
+        self.assertEqual(created.organization_id, self.org_b.id)
+
+    def test_create_into_inaccessible_org_is_rejected(self):
+        outsider_org = Organization.objects.create(name='MO-Outsider', slug='mo-outsider')
+        key = self._key(APIKeyScope.ALL, home=self.org_a)
+        resp = Client().post(
+            f'/api/assets/?organization={outsider_org.id}',
+            data={'name': 'should-not-exist', 'asset_type': 'server'},
+            HTTP_AUTHORIZATION=f'Bearer {key}',
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(Asset.objects.filter(name='should-not-exist').exists())
+
+    # ---- organizations discovery endpoint -------------------------------
+    def test_all_scope_organizations_endpoint_lists_client_set(self):
+        key = self._key(APIKeyScope.ALL, home=self.org_a)
+        rows = self._rows(self._get('/api/organizations/', key))
+        slugs = {r['slug'] for r in rows}
+        self.assertEqual(slugs, {'mo-orga', 'mo-orga-child', 'mo-orgb'})
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)

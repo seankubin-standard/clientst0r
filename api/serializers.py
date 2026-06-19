@@ -30,7 +30,22 @@ class OrganizationSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'slug', 'created_at']
 
 
-class AssetSerializer(serializers.ModelSerializer):
+class OrganizationScopedSerializerMixin(serializers.ModelSerializer):
+    """
+    Surfaces the owning organization on every API resource (issue #134) so a
+    single-pane-of-glass consumer can tell which client a row belongs to, and
+    optionally target a client on create via the writable `organization` field.
+    Access to the requested org is enforced server-side in the viewset.
+    """
+    organization = serializers.PrimaryKeyRelatedField(
+        queryset=Organization.objects.all(), required=False
+    )
+    organization_name = serializers.CharField(
+        source='organization.name', read_only=True
+    )
+
+
+class AssetSerializer(OrganizationScopedSerializerMixin):
     tags = TagSerializer(many=True, read_only=True)
     tag_ids = serializers.PrimaryKeyRelatedField(
         many=True, write_only=True, queryset=Tag.objects.all(), source='tags', required=False
@@ -45,24 +60,26 @@ class AssetSerializer(serializers.ModelSerializer):
         # model 'Asset'`. Removed in v3.17.193 alongside the matching fix
         # in AssetViewSet.filterset_fields.
         fields = [
-            'id', 'name', 'asset_type', 'serial_number', 'model', 'manufacturer',
+            'id', 'organization', 'organization_name',
+            'name', 'asset_type', 'serial_number', 'model', 'manufacturer',
             'hostname', 'ip_address', 'notes', 'tags', 'tag_ids',
             'needs_reorder', 'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
 
 
-class ContactSerializer(serializers.ModelSerializer):
+class ContactSerializer(OrganizationScopedSerializerMixin):
     class Meta:
         model = Contact
         fields = [
-            'id', 'first_name', 'last_name', 'email', 'phone', 'title',
+            'id', 'organization', 'organization_name',
+            'first_name', 'last_name', 'email', 'phone', 'title',
             'notes', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class DocumentSerializer(serializers.ModelSerializer):
+class DocumentSerializer(OrganizationScopedSerializerMixin):
     tags = TagSerializer(many=True, read_only=True)
     tag_ids = serializers.PrimaryKeyRelatedField(
         many=True, write_only=True, queryset=Tag.objects.all(), source='tags', required=False
@@ -72,7 +89,8 @@ class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = [
-            'id', 'title', 'slug', 'body', 'content_type', 'category',
+            'id', 'organization', 'organization_name',
+            'title', 'slug', 'body', 'content_type', 'category',
             'is_published', 'is_template', 'is_archived',
             'tags', 'tag_ids', 'created_at', 'updated_at',
             'created_by', 'created_by_name'
@@ -86,18 +104,20 @@ class PasswordListSerializer(serializers.ModelSerializer):
     """
     tags = TagSerializer(many=True, read_only=True)
     password_type_display = serializers.CharField(source='get_password_type_display', read_only=True)
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
 
     class Meta:
         model = Password
         fields = [
-            'id', 'title', 'password_type', 'password_type_display',
+            'id', 'organization', 'organization_name',
+            'title', 'password_type', 'password_type_display',
             'username', 'url', 'tags', 'expires_at', 'is_expired',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'is_expired']
+        read_only_fields = ['id', 'organization', 'created_at', 'updated_at', 'is_expired']
 
 
-class PasswordDetailSerializer(serializers.ModelSerializer):
+class PasswordDetailSerializer(OrganizationScopedSerializerMixin):
     """
     Detailed serializer - requires special permission to access password field.
     """
@@ -111,7 +131,8 @@ class PasswordDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Password
         fields = [
-            'id', 'title', 'password_type', 'username', 'password', 'url',
+            'id', 'organization', 'organization_name',
+            'title', 'password_type', 'username', 'password', 'url',
             'otp_issuer', 'otp_code', 'notes', 'expires_at', 'tags', 'tag_ids',
             'created_at', 'updated_at'
         ]

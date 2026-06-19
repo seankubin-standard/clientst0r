@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from core.middleware import get_request_organization
-from .models import APIKey
+from .models import APIKey, APIKeyScope
 from accounts.models import Role
 
 
@@ -39,6 +39,7 @@ def apikey_create(request):
     if request.method == 'POST':
         name = request.POST.get('name')
         role = request.POST.get('role', Role.READONLY)
+        scope = request.POST.get('scope', APIKeyScope.SINGLE)
 
         if not name:
             messages.error(request, 'API key name is required.')
@@ -48,12 +49,19 @@ def apikey_create(request):
         if role not in dict(Role.choices).keys():
             role = Role.READONLY
 
+        # Validate scope (issue #134). The key's effective reach is still
+        # bounded at request time by what this user can actually access, so a
+        # broad scope never grants access beyond the owner's own permissions.
+        if scope not in dict(APIKeyScope.choices).keys():
+            scope = APIKeyScope.SINGLE
+
         # Create API key
         api_key_obj, plaintext_key = APIKey.create_key(
             organization=org,
             user=request.user,
             name=name,
-            role=role
+            role=role,
+            scope=scope,
         )
 
         # Show the key once (can't be shown again)
@@ -65,6 +73,7 @@ def apikey_create(request):
     # GET request - show form
     return render(request, 'api/apikey_create.html', {
         'roles': Role.choices,
+        'scopes': APIKeyScope.choices,
     })
 
 

@@ -9,13 +9,17 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
 
-from core.middleware import get_request_organization
+from rest_framework.exceptions import PermissionDenied
+
 from audit.models import AuditLog
 from assets.models import Asset, Contact
 from docs.models import Document
 from vault.models import Password
 from core.models import Tag, Organization
 
+from .scoping import (
+    accessible_org_ids, resolve_scope_org_ids, resolve_create_org,
+)
 from .serializers import (
     AssetSerializer, ContactSerializer, DocumentSerializer,
     PasswordListSerializer, PasswordDetailSerializer,
@@ -25,31 +29,44 @@ from .serializers import (
 
 class OrganizationScopedViewSet(viewsets.ModelViewSet):
     """
-    Base viewset that automatically filters by organization.
+    Base viewset that scopes every request to the organization(s) the caller
+    may address.
+
+    Single-organization keys and web sessions behave exactly as before. Keys
+    with a broader `scope` (issue #134), and any caller passing
+    ``?organization=<id|slug|all>``, can read/write across multiple client
+    organizations. See `api.scoping` for the resolution rules.
     """
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        """Filter queryset by current organization."""
-        org = get_request_organization(self.request)
+        """Filter queryset to the org(s) resolved for this request."""
         base_queryset = super().get_queryset()
-        if hasattr(base_queryset.model, 'organization'):
-            return base_queryset.filter(organization=org)
-        return base_queryset
+        if not hasattr(base_queryset.model, 'organization'):
+            return base_queryset
+        org_ids = resolve_scope_org_ids(self.request)
+        return base_queryset.filter(organization_id__in=org_ids)
 
     def perform_create(self, serializer):
-        """Automatically set organization and created_by on create."""
-        org = get_request_organization(self.request)
+        """Set organization (param > body > primary, access-checked) + created_by."""
         kwargs = {}
-        if hasattr(serializer.Meta.model, 'organization'):
-            kwargs['organization'] = org
-        if hasattr(serializer.Meta.model, 'created_by'):
+        model = serializer.Meta.model
+        if hasattr(model, 'organization'):
+            kwargs['organization'] = resolve_create_org(self.request, serializer)
+        if hasattr(model, 'created_by'):
             kwargs['created_by'] = self.request.user
         serializer.save(**kwargs)
 
     def perform_update(self, serializer):
-        """Automatically set last_modified_by on update."""
+        """Set last_modified_by; block moving a row to an inaccessible org."""
         kwargs = {}
+        target_org = serializer.validated_data.get('organization')
+        if target_org is not None and target_org.id not in set(
+            accessible_org_ids(self.request)
+        ):
+            raise PermissionDenied(
+                "You do not have access to the target organization for this object."
+            )
         if hasattr(serializer.Meta.model, 'last_modified_by'):
             kwargs['last_modified_by'] = self.request.user
         serializer.save(**kwargs)
@@ -158,7 +175,9 @@ class PasswordViewSet(OrganizationScopedViewSet):
     def retrieve(self, request, *args, **kwargs):
         """Log password access on retrieve."""
         instance = self.get_object()
-        org = get_request_organization(request)
+        # Log against the row's own org — with multi-org keys the active row
+        # may belong to a different client than the request's primary org.
+        org = instance.organization
 
         # Log access
         AuditLog.objects.create(
@@ -183,7 +202,7 @@ class PasswordViewSet(OrganizationScopedViewSet):
         POST /api/passwords/{id}/reveal/
         """
         password = self.get_object()
-        org = get_request_organization(request)
+        org = password.organization
 
         # Log password reveal
         AuditLog.objects.create(
@@ -223,7 +242,7 @@ class PasswordViewSet(OrganizationScopedViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        org = get_request_organization(request)
+        org = password.organization
         AuditLog.objects.create(
             organization=org,
             user=request.user,
@@ -253,15 +272,18 @@ class TagViewSet(OrganizationScopedViewSet):
 class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint for organizations (read-only).
-    Users can only see organizations they belong to.
+
+    Returns every organization the caller may address — for a multi-org key
+    (issue #134) this is the full client list, so a single-pane-of-glass
+    consumer can discover which organizations to query.
     """
     queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        """Only show organizations user has access to."""
+        """Only show organizations the caller has access to."""
         return Organization.objects.filter(
-            memberships__user=self.request.user,
-            is_active=True
+            id__in=accessible_org_ids(self.request),
+            is_active=True,
         ).distinct()

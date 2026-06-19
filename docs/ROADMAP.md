@@ -851,6 +851,19 @@ Self-hosted MSPs should be able to `git clone && docker compose up -d` and have 
 
 ---
 
+## Phase 43 — Multi-Organization REST API Access **(S · integrations)** [shipped — v3.17.496]
+
+The public REST API (`/api/`) was single-tenant per request: an API key was bound to one organization and every endpoint filtered to that org alone. MSPs building a single-pane-of-glass need one connection that reads/writes across many client organizations. This phase broadens the API to multi-client without breaking any existing single-org integration.
+
+- **Per-key organization scope** — new `APIKey.scope` field (`single` / `descendants` / `all`), default `single` so every existing key is unchanged. `descendants` covers the home org + its sub-locations (Phase 18 hierarchy); `all` covers every organization the key's owner can access *(shipped v3.17.496)*
+- **`?organization=<id|slug|all>` request parameter** — narrow a multi-org key to one client, or fan out to all. Cross-org requests are refused with 403; a `single` key can never address another org *(shipped v3.17.496)*
+- **Organization surfaced on every resource** — `organization` + `organization_name` on assets, contacts, documents, and passwords so a consumer can group rows by client; writable on create to target a specific client *(shipped v3.17.496)*
+- **`/api/organizations/` returns the full accessible client set** for discovery before iterating *(shipped v3.17.496)*
+- **Scope-bounded by live permissions** — a key never grants access beyond what its owner currently has; password reveal / OTP audit rows are logged against the row's own organization for full multi-client traceability *(shipped v3.17.496)*
+- Contract documented in `docs/api-multi-org.md` *(shipped v3.17.496)*
+
+---
+
 ## Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock **(L · keystone)** [shipped — v3.17.417]
 
 Reverses the earlier "PWA only" deferral. The combination of GPS auto-documentation + employee timeclock makes this a force-multiplier for billable-hours capture, not just a UX improvement.
@@ -948,6 +961,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 40 — Public / Client-Facing Status Page | M | 2-3 weeks | extends monitoring + psa Tickets |
 | 41 — Compliance Frameworks & Recertification | M | shipped v3.17.435–444 | extends accounts + audit + reports.pdf_export (Phase 19); built atop Phase 39 evidence-pack infra |
 | 42 — Docker / Containerized deployment | S | shipped v3.17.490 | none — packaging only; classic `bash install.sh` path unchanged |
+| 43 — Multi-Organization REST API Access | S | shipped v3.17.496 | extends Phase 18 hierarchy; backward-compatible (default key scope unchanged) |
 | 8 — Mobile apps + GPS auto-time + Timeclock | L | **shipped v3.17.354–417 (extends Phase 2 + 18 + 21)** | Phase 2 (WorkingHours); positioned last as the largest single undertaking |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.

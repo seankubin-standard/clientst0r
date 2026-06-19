@@ -5,6 +5,30 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.496] - 2026-06-19
+
+### Feature: multi-organization REST API access (issue #134)
+
+The public REST API can now address **multiple client organizations through a single API key** — built for MSPs running a single-pane-of-glass integration that needs to read/write across every client without one key per client. Fully opt-in and backward-compatible: existing keys, and any new key left on the default scope, behave exactly as before.
+
+**Per-key organization scope** — new `APIKey.scope` field with three values:
+- `single` *(default)* — the key's home organization only (legacy behavior).
+- `descendants` — the home organization plus every sub-location beneath it (Phase 18 hierarchy).
+- `all` — every organization the key's owner can access (all active orgs for an MSP staff user / superuser, or the owner's active memberships).
+
+A key never grants more access than its owner already has.
+
+**Per-request selection** — list/detail/create/update endpoints accept an optional `organization` query parameter:
+- omitted → home/current org for `single` keys & web sessions; all accessible orgs for `descendants` / `all` keys.
+- `?organization=<id|slug>` → narrows to one org (403 if inaccessible).
+- `?organization=all` → every accessible org.
+
+**Organization surfaced on every resource** — `organization` + `organization_name` now appear on assets, contacts, documents, and passwords so a consumer can group rows by client; `organization` is writable on create to target a specific client. `GET /api/organizations/` returns the full accessible client set for discovery.
+
+**Security** — cross-org isolation enforced on every request; password reveal / OTP audit rows are logged against the row's own organization for accurate multi-client traceability; scope is bounded by the owner's live permissions at request time.
+
+New scope selector in **Settings → API Keys → Create API Key**. Contract documented in `docs/api-multi-org.md`. New migration `api/0003_apikey_scope`. 11 new tests in `api/tests.py` covering single-scope isolation, all-scope fan-out, descendants, the `?organization=` param, cross-org create rejection, and the discovery endpoint.
+
 ## [3.17.495] - 2026-05-25
 
 ### Fix: auto-update + breach-scan timers were firing twice daily

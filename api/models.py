@@ -37,6 +37,28 @@ def get_key_prefix(api_key):
     return api_key[:12] if len(api_key) >= 12 else api_key
 
 
+class APIKeyScope(models.TextChoices):
+    """
+    Multi-organization reach of an API key (issue #134).
+
+    - SINGLE      (default, legacy): the key may only ever read/write its
+      home `organization`. 100% backward-compatible — every key that
+      existed before this field was added is SINGLE.
+    - DESCENDANTS: the home organization plus any sub-location under it via
+      the `Organization.parent` hierarchy (Phase 18).
+    - ALL:         every organization the key's *owner* is entitled to —
+      all active orgs for an MSP staff user / superuser, or the owner's
+      active memberships for a regular org user. This is the
+      single-pane-of-glass / multi-client mode.
+
+    A key's effective reach is always bounded by what its owner can already
+    access; the scope never grants access the user themselves lacks.
+    """
+    SINGLE = 'single', 'Single organization'
+    DESCENDANTS = 'descendants', 'Organization + sub-locations'
+    ALL = 'all', 'All accessible organizations'
+
+
 class APIKey(BaseModel):
     """
     API key for programmatic access.
@@ -53,6 +75,13 @@ class APIKey(BaseModel):
     # Permissions
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.READONLY)
 
+    # Multi-org reach (issue #134). Defaults to SINGLE so existing keys are
+    # unchanged.
+    scope = models.CharField(
+        max_length=20, choices=APIKeyScope.choices, default=APIKeyScope.SINGLE,
+        help_text="Which organizations this key can address",
+    )
+
     # Status
     is_active = models.BooleanField(default=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
@@ -66,7 +95,8 @@ class APIKey(BaseModel):
         return f"{self.name} ({self.key_prefix}...)"
 
     @classmethod
-    def create_key(cls, organization, user, name, role=Role.READONLY):
+    def create_key(cls, organization, user, name, role=Role.READONLY,
+                   scope=APIKeyScope.SINGLE):
         """
         Create new API key and return the plaintext key (only time it's available).
         Returns tuple: (api_key_object, plaintext_key)
@@ -81,7 +111,8 @@ class APIKey(BaseModel):
             name=name,
             key_hash=key_hash,
             key_prefix=key_prefix,
-            role=role
+            role=role,
+            scope=scope,
         )
 
         return api_key, plaintext_key

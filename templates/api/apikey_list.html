@@ -26,6 +26,7 @@
                     <th>Key Prefix</th>
                     {% if can_manage_all %}<th>Owner</th>{% endif %}
                     <th>Role</th>
+                    <th>Org Scope</th>
                     <th>Status</th>
                     <th>Last Used</th>
                     <th>Created</th>
@@ -49,6 +50,15 @@
                         <span class="badge bg-info">{{ key.get_role_display }}</span>
                         {% else %}
                         <span class="badge bg-secondary">{{ key.get_role_display }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if key.scope == 'all' %}
+                        <span class="badge bg-primary">{{ key.get_scope_display }}</span>
+                        {% elif key.scope == 'descendants' %}
+                        <span class="badge bg-info">{{ key.get_scope_display }}</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ key.get_scope_display }}</span>
                         {% endif %}
                     </td>
                     <td>
@@ -131,7 +141,7 @@
 $(document).ready(function() {
     {% if api_keys %}
     $('#apiKeyTable').DataTable({
-        order: [[{% if can_manage_all %}6{% else %}5{% endif %}, 'desc']],  // Sort by created date
+        order: [[{% if can_manage_all %}7{% else %}6{% endif %}, 'desc']],  // Sort by created date
         pageLength: 25,
         language: {
             search: "_INPUT_",
