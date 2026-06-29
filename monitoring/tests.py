@@ -17,6 +17,7 @@ Coverage areas:
 """
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 
 from django.contrib.auth.models import User
@@ -351,3 +352,67 @@ class WebsiteMonitorDeleteGlobalViewTests(TestCase):
         self.assertEqual(resp.status_code, 404)
         # And the monitor should still exist
         self.assertTrue(WebsiteMonitor.objects.filter(pk=other_mon.pk).exists())
+
+
+@override_settings(MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class RackConnectionCreateViewTests(TestCase):
+    """#136 — the rack detail page submits wiring connections as a JSON
+    body via fetch(), but the view only read request.POST, so every field
+    reported "This field is required." even when filled in."""
+
+    def setUp(self):
+        from monitoring.models import Rack, RackDevice
+        self.org = Organization.objects.create(name='RackCo', slug='rackco')
+        self.staff = User.objects.create_user(
+            'rackadmin', 'rack@x.com', 'pw',
+            is_staff=True, is_superuser=True,
+        )
+        self.rack = Rack.objects.create(organization=self.org, name='Closet', units=16)
+        self.switch = RackDevice.objects.create(rack=self.rack, name='Switch', start_unit=1)
+        self.firewall = RackDevice.objects.create(rack=self.rack, name='Firewall', start_unit=2)
+        self.client = Client()
+        self.client.force_login(self.staff)
+        s = self.client.session
+        s['2fa_prompted'] = True
+        s.save()
+
+    def _payload(self):
+        return {
+            'from_device': self.switch.pk,
+            'to_device': self.firewall.pk,
+            'connection_type': 'network',
+            'from_port': 'Gi1/0/1',
+            'to_port': 'Gi1/0/2',
+            'cable_color': '#0d6efd',
+            'speed': '1Gbps',
+        }
+
+    def test_json_payload_creates_connection(self):
+        from monitoring.models import RackConnection
+        resp = self.client.post(
+            f'/monitoring/devices/{self.switch.pk}/connections/create/',
+            data=json.dumps(self._payload()),
+            content_type='application/json',
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body['success'], body)
+        self.assertTrue(
+            RackConnection.objects.filter(
+                from_device=self.switch, to_device=self.firewall
+            ).exists()
+        )
+
+    def test_form_encoded_payload_still_works(self):
+        """Classic (non-JS) form POSTs must keep working too."""
+        from monitoring.models import RackConnection
+        resp = self.client.post(
+            f'/monitoring/devices/{self.switch.pk}/connections/create/',
+            data=self._payload(),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(
+            RackConnection.objects.filter(from_device=self.switch).exists()
+        )

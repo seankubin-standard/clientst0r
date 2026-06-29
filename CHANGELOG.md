@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.498] - 2026-06-29
+
+### Fix: creating a rack wiring connection failed with "This field is required" (issue #136)
+
+Adding a cable/wiring connection between two devices in a rack failed even with every field filled in, returning `{"from_device":["This field is required."], ...}` for all fields. The rack detail page submits the connection via `fetch()` with a JSON body (`Content-Type: application/json`), but `rack_connection_create` / `rack_connection_edit` only read `request.POST` — which is empty for a JSON request — so every required field looked missing.
+
+- The two views now read the payload through a small `_rack_connection_post_data()` helper that parses a JSON body when the request is `application/json` and otherwise falls back to `request.POST`. Classic (non-JS) form posts keep working unchanged.
+- Added `monitoring.tests.RackConnectionCreateViewTests` covering both the JSON-body path (the failing case) and the form-encoded path.
+
 ## [3.17.497] - 2026-06-24
 
 ### Fix: TOTP secret entry was hidden on every password type except "OTP"

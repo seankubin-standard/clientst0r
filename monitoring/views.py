@@ -1026,16 +1026,30 @@ def wan_monitor_list(request):
 # Rack Connection Management
 # ============================================================================
 
+def _rack_connection_post_data(request):
+    """Return the submitted connection data, supporting both classic
+    form-encoded POSTs and the JSON payload the rack detail page sends via
+    fetch(). Without this, a JSON body leaves request.POST empty and every
+    field reports "This field is required." (#136)."""
+    if request.content_type and 'application/json' in request.content_type:
+        import json
+        try:
+            return json.loads(request.body or b'{}')
+        except (ValueError, TypeError):
+            return {}
+    return request.POST
+
+
 @login_required
 @require_write
 def rack_connection_create(request, device_id):
     """Create a new connection from a device."""
     org = get_request_organization(request)
     from_device = get_object_or_404(RackDevice, pk=device_id) if not org else get_object_or_404(RackDevice, pk=device_id, rack__organization=org)
-    
+
     if request.method == 'POST':
         from .forms import RackConnectionForm
-        form = RackConnectionForm(request.POST, rack=from_device.rack, from_device=from_device, organization=org)
+        form = RackConnectionForm(_rack_connection_post_data(request), rack=from_device.rack, from_device=from_device, organization=org)
         if form.is_valid():
             connection = form.save()
             messages.success(request, f'Connection created: {connection}')
@@ -1082,7 +1096,7 @@ def rack_connection_edit(request, pk):
     
     if request.method == 'POST':
         from .forms import RackConnectionForm
-        form = RackConnectionForm(request.POST, instance=connection, rack=connection.from_device.rack, organization=org)
+        form = RackConnectionForm(_rack_connection_post_data(request), instance=connection, rack=connection.from_device.rack, organization=org)
         if form.is_valid():
             connection = form.save()
             messages.success(request, f'Connection updated: {connection}')
