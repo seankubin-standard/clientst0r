@@ -7,8 +7,14 @@ from dotenv import load_dotenv
 from django.utils.translation import gettext_lazy as _
 from .version import get_version
 
-# Load environment variables
-load_dotenv()
+# Load environment variables.
+# override=True so the .env file is authoritative over any stale variables
+# already present in the process environment. This matters for the in-app
+# Settings → AI & LLM page, which writes keys to .env and reloads gunicorn:
+# under Docker Compose, `env_file: .env` injects the (often empty) keys into
+# the container environment at startup, and a plain load_dotenv() would NOT
+# overwrite them — so a key saved via the UI would never take effect (#137).
+load_dotenv(override=True)
 
 # Build paths
 BASE_DIR = Path(__file__).resolve().parent.parent

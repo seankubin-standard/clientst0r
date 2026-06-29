@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.499] - 2026-06-29
+
+### Fix: AI features reported a "missing API key" even when one was saved (issue #137)
+
+"Import from Property Appraiser URL using AI" (and any other AI feature) failed with a missing-key error despite a key being configured in **Settings → AI & LLM**. The settings page writes the key to `.env` and reloads gunicorn, but `config/settings.py` called `load_dotenv()` without `override=True`. Under Docker Compose the `env_file: .env` directive injects the (initially empty) `ANTHROPIC_API_KEY` into the container environment at startup, and `load_dotenv()` will **not** overwrite a variable that already exists in the environment — so the key saved through the UI never took effect.
+
+- `config/settings.py` now calls `load_dotenv(override=True)`, making the `.env` file authoritative over stale process-environment variables. After the automatic reload, a key saved via the UI is picked up. This fixes every AI feature, not just property import.
+- Safe because `.env`/`.env.*` are dockerignored, so the image never bakes in DB credentials; `override` only ever affects the AI/maps keys the settings UI manages.
+
 ## [3.17.498] - 2026-06-29
 
 ### Fix: creating a rack wiring connection failed with "This field is required" (issue #136)
