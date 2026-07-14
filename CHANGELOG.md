@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.501] - 2026-07-14
+
+### Security: patch 3 Dependabot advisories (cryptography, bleach)
+
+Bumped two dependencies in `requirements.txt` to clear all open Dependabot alerts:
+
+- **`cryptography` → `>=48.0.1,<49.0.0`** (was `46.0.7`) — *high*: the wheels bundled a vulnerable OpenSSL build. Used by the vault/secrets encryption (Fernet, AES-GCM, PBKDF2).
+- **`bleach` → `>=6.4.0,<7`** (was `6.1.*`) — *medium*: `clean()`/`Cleaner()` failed to sanitize dangerous URI schemes in allowed `formaction` attributes; *low*: URI-scheme sanitization could be bypassed with Unicode above U+00A0. Used to sanitize KB/AI-generated HTML (`docs.models`) and inbound PSA email (`psa.email_parsing`).
+
+Verified in an isolated environment that the new versions resolve against the full requirements set with no conflicts and are API-compatible with existing usage: the issue-#127 progress-bar `width: N%` styling still survives `CSSSanitizer`, non-allowlisted CSS properties are still dropped, `javascript:` hrefs are stripped, and the cryptography primitives (Fernet / AES-GCM / PBKDF2) round-trip correctly. No application code changes were required.
+
 ## [3.17.500] - 2026-07-14
 
 ### Fix: AI document generation failed with "Server returned HTML instead of JSON" (issue #138)
