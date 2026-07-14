@@ -78,9 +78,15 @@ COPY --chown=clientst0r:clientst0r docker-entrypoint.sh /app/docker-entrypoint.s
 RUN chmod +x /app/docker-entrypoint.sh
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
+# --timeout 300: AI documentation generation (especially local Ollama models
+# on CPU) legitimately runs for several minutes. A shorter worker timeout gets
+# the worker SIGKILLed mid-request, so the browser receives gunicorn's HTML 500
+# page instead of our JSON error ("Server returned HTML instead of JSON" — #138).
+# Provider HTTP timeouts are capped below this so a genuinely stuck model
+# returns a clean JSON error before the worker is reaped.
 CMD ["gunicorn", "config.wsgi:application", \
      "--bind", "0.0.0.0:8000", \
      "--workers", "4", \
-     "--timeout", "120", \
+     "--timeout", "300", \
      "--access-logfile", "-", \
      "--error-logfile", "-"]

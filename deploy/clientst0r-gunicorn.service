@@ -14,7 +14,7 @@ ExecStart=/home/administrator/venv/bin/gunicorn \
     --workers 4 \
     --bind unix:/home/administrator/gunicorn.sock \
     --bind 0.0.0.0:8000 \
-    --timeout 180 \
+    --timeout 300 \
     --access-logfile /var/log/itdocs/gunicorn-access.log \
     --error-logfile /var/log/itdocs/gunicorn-error.log \
     --log-level info \

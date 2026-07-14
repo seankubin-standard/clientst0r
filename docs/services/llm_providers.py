@@ -8,6 +8,12 @@ from typing import Dict, Any, Optional
 import requests
 import json
 
+# Ceiling for a single LLM HTTP call. Deliberately below the gunicorn worker
+# --timeout (300s) so a slow/stuck model raises a caught Timeout and we return
+# a JSON error, instead of the worker being killed and the browser receiving an
+# HTML 500 page ("Server returned HTML instead of JSON" — issue #138).
+AI_HTTP_TIMEOUT = 280
+
 
 class LLMProvider(ABC):
     """Abstract base class for LLM providers."""
@@ -144,9 +150,11 @@ class AnthropicProvider(LLMProvider):
         self.api_key = api_key
         self.model = model
 
-        # Import anthropic only when this provider is used
+        # Import anthropic only when this provider is used.
+        # Explicit timeout (below the gunicorn worker --timeout) so a stuck
+        # request surfaces as a caught error instead of a killed worker (#138).
         import anthropic
-        self.client = anthropic.Anthropic(api_key=api_key)
+        self.client = anthropic.Anthropic(api_key=api_key, timeout=float(AI_HTTP_TIMEOUT))
 
     def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 4096) -> Dict[str, Any]:
         try:
@@ -248,7 +256,8 @@ class MiniMaxCodingProvider(LLMProvider):
         import anthropic
         self.client = anthropic.Anthropic(
             api_key=api_key,
-            base_url='https://api.minimax.io/anthropic'
+            base_url='https://api.minimax.io/anthropic',
+            timeout=float(AI_HTTP_TIMEOUT),  # below gunicorn worker --timeout (#138)
         )
 
     def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 4096) -> Dict[str, Any]:
@@ -667,13 +676,19 @@ class OllamaProvider(LLMProvider):
                     'stream': False,
                     'options': {'num_predict': max_tokens},
                 },
-                timeout=300,
+                # Kept below the gunicorn worker --timeout (300s) so a slow
+                # model surfaces as this caught Timeout → clean JSON error,
+                # rather than the worker being SIGKILLed and the browser
+                # getting an HTML 500 ("returned HTML instead of JSON" — #138).
+                timeout=AI_HTTP_TIMEOUT,
             )
             resp.raise_for_status()
             content = resp.json().get('message', {}).get('content', '')
             return {'success': True, 'content': content}
         except requests.exceptions.ConnectionError:
             return {'success': False, 'error': f'Cannot reach Ollama at {self.base_url} — is it running?'}
+        except requests.exceptions.Timeout:
+            return {'success': False, 'error': f'Ollama did not respond within {AI_HTTP_TIMEOUT}s. The model may be too large/slow for this host — try a smaller model or a shorter prompt.'}
         except Exception as e:
             return {'success': False, 'error': str(e)}
 

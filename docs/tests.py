@@ -418,3 +418,55 @@ class KBReviewReminderCommandTests(TestCase):
         mail.outbox = []
         call_command('kb_review_reminders', '--dry-run', verbosity=0)
         self.assertEqual(len(mail.outbox), 0)
+
+
+# ---------------------------------------------------------------------------
+# Issue #138 — AI document generation returned an HTML 500 ("Server returned
+# HTML instead of JSON") whenever the LLM call outran the gunicorn worker
+# --timeout, because provider HTTP timeouts were ABOVE the worker timeout so
+# the worker was SIGKILLed before the provider could time out cleanly. These
+# tests lock the invariant that provider timeouts stay below the worker budget
+# and that a slow model surfaces as a caught JSON error, never an exception.
+# ---------------------------------------------------------------------------
+from unittest import mock
+
+import requests as _requests
+
+from docs.services.llm_providers import AI_HTTP_TIMEOUT, OllamaProvider
+
+
+class AIProviderTimeoutTests(TestCase):
+    # The gunicorn worker --timeout configured in Dockerfile / the systemd
+    # unit. Provider HTTP timeouts must stay strictly under this.
+    GUNICORN_WORKER_TIMEOUT = 300
+
+    def test_provider_timeout_is_below_worker_timeout(self):
+        self.assertLess(
+            AI_HTTP_TIMEOUT, self.GUNICORN_WORKER_TIMEOUT,
+            'Provider HTTP timeout must stay below the gunicorn worker '
+            '--timeout, or a slow model kills the worker and the browser '
+            'gets an HTML 500 instead of a JSON error (issue #138).',
+        )
+
+    def test_ollama_passes_bounded_timeout(self):
+        provider = OllamaProvider(base_url='http://ollama:11434', model='llama3.2')
+        fake = mock.Mock(status_code=200)
+        fake.json.return_value = {'message': {'content': 'hello'}}
+        fake.raise_for_status.return_value = None
+        with mock.patch('docs.services.llm_providers.requests.post', return_value=fake) as post:
+            result = provider.generate('sys', 'user', max_tokens=256)
+        self.assertTrue(result['success'])
+        self.assertEqual(post.call_args.kwargs['timeout'], AI_HTTP_TIMEOUT)
+
+    def test_ollama_timeout_returns_json_error_not_exception(self):
+        """A slow model must yield a clean {'success': False, ...} dict — the
+        view turns that into a JSON response — rather than raising and letting
+        an HTML 500 escape to the browser."""
+        provider = OllamaProvider(base_url='http://ollama:11434', model='llama3.2')
+        with mock.patch(
+            'docs.services.llm_providers.requests.post',
+            side_effect=_requests.exceptions.Timeout('timed out'),
+        ):
+            result = provider.generate('sys', 'user')
+        self.assertFalse(result['success'])
+        self.assertIn('did not respond', result['error'].lower())

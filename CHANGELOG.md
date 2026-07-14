@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.500] - 2026-07-14
+
+### Fix: AI document generation failed with "Server returned HTML instead of JSON" (issue #138)
+
+Generating a document with the AI assistant failed with `Internal Server Error (500) - Server returned HTML instead of JSON` — reported with both the Ollama and Anthropic/Claude providers. Despite the user's read ("it's expecting JSON when I selected rich HTML"), the cause was **not** response parsing: the `ai_generate` view and the generator service already wrap everything and always return `JsonResponse`. The frontend only shows that message when a response is non-2xx **and** its body isn't JSON — i.e. a web-server HTML error page.
+
+**Root cause — timeout budget inversion.** AI generation legitimately runs for minutes (local Ollama models on CPU especially), but the per-request HTTP timeouts were configured *above* the gunicorn worker `--timeout` (120s in Docker, 180s on the systemd unit). So gunicorn SIGKILLed the worker mid-generation and the browser received gunicorn's HTML 500 page — before the provider's own timeout could return a clean JSON error. The Ollama provider's 300s timeout could never fire behind a 120s worker.
+
+**Fix — align the timeout budget across every layer:**
+- Gunicorn worker `--timeout` raised to **300s** in both `Dockerfile` and `deploy/clientst0r-gunicorn.service`.
+- Nginx `proxy_read_timeout` / `proxy_send_timeout` raised to **300s** in the Docker and native reverse-proxy configs (only relevant when the proxy profile is enabled).
+- Provider HTTP timeouts capped at **280s** (`AI_HTTP_TIMEOUT`), strictly *below* the worker timeout, so a genuinely stuck/slow model now raises a caught `Timeout` and returns a clean JSON error ("Ollama did not respond within 280s…") instead of killing the worker. Applied to the Ollama request and, via an explicit client `timeout`, the Anthropic and MiniMax-Coding providers (the SDK default was ~600s).
+- Added `docs.tests.AIProviderTimeoutTests` locking the invariant (provider timeout < worker timeout) and asserting a provider `Timeout` degrades to a JSON error rather than an exception.
+
 ## [3.17.499] - 2026-06-29
 
 ### Fix: AI features reported a "missing API key" even when one was saved (issue #137)
