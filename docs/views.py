@@ -13,6 +13,26 @@ from core.decorators import require_write, require_admin, require_organization_c
 from .models import Document, DocumentVersion, DocumentCategory
 from .forms import DocumentForm
 import os
+import mimetypes
+
+
+def _uploaded_file_type(request, field_name, file_name=None):
+    """
+    Resolve the MIME type of an uploaded file.
+
+    The `content_type` attribute only exists on the in-request UploadedFile
+    (request.FILES), never on the model's FieldFile. Reading it off a FieldFile
+    raises AttributeError, so always resolve it from request.FILES, falling back
+    to a mimetypes guess from the filename (or an empty string).
+    """
+    uploaded = request.FILES.get(field_name)
+    if uploaded is not None and getattr(uploaded, 'content_type', None):
+        return uploaded.content_type
+    if file_name:
+        guessed, _ = mimetypes.guess_type(file_name)
+        if guessed:
+            return guessed
+    return ''
 
 
 @login_required
@@ -185,7 +205,10 @@ def document_create(request):
             # Handle file upload
             if document.content_type == 'file' and document.file:
                 document.file_size = document.file.size
-                document.file_type = document.file.content_type
+                # content_type only exists on the freshly uploaded file (UploadedFile),
+                # not on the model's FieldFile — read it from request.FILES with a
+                # mimetypes fallback so we never touch FieldFile.content_type.
+                document.file_type = _uploaded_file_type(request, 'file', document.file.name)
                 # Auto-generate title from filename if not provided
                 if not document.title or document.title == '':
                     import os
@@ -255,7 +278,7 @@ def document_edit(request, slug):
             # Handle file upload
             if document.content_type == 'file' and document.file:
                 document.file_size = document.file.size
-                document.file_type = document.file.content_type
+                document.file_type = _uploaded_file_type(request, 'file', document.file.name)
 
             document.save()
             form.save_m2m()

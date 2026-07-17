@@ -470,3 +470,65 @@ class AIProviderTimeoutTests(TestCase):
             result = provider.generate('sys', 'user')
         self.assertFalse(result['success'])
         self.assertIn('did not respond', result['error'].lower())
+
+
+@override_settings(MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class DocumentFileUploadTests(TestCase):
+    """Issue #139 — uploading a file document raised AttributeError:
+    'FieldFile' object has no attribute 'content_type'. The MIME type must be
+    read from the in-request UploadedFile (request.FILES), never off the model's
+    FieldFile."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='UploadCo', slug='upload-co')
+        cls.staff = User.objects.create_user(
+            'upload-staff', 'us@x.com', 'pw', is_staff=True, is_superuser=True)
+
+    def _login(self, c):
+        c.force_login(self.staff)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_create_file_document_records_mime_type(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        c = Client()
+        self._login(c)
+        upload = SimpleUploadedFile(
+            'report.pdf', b'%PDF-1.4 fake', content_type='application/pdf')
+        r = c.post('/docs/create/', {
+            'title': 'Report',
+            'body': '',
+            'content_type': 'file',
+            'is_published': 'on',
+            'file': upload,
+        })
+        # Must not 500 with AttributeError; a valid create redirects (302).
+        self.assertEqual(r.status_code, 302)
+        doc = Document.objects.get(title='Report')
+        self.assertEqual(doc.content_type, 'file')
+        self.assertEqual(doc.file_type, 'application/pdf')
+        self.assertEqual(doc.file_size, len(b'%PDF-1.4 fake'))
+
+    def test_edit_replacing_file_records_mime_type(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        c = Client()
+        self._login(c)
+        doc = Document.objects.create(
+            organization=self.org, title='Existing', content_type='file',
+            file=SimpleUploadedFile('a.txt', b'hi', content_type='text/plain'),
+            created_by=self.staff, last_modified_by=self.staff)
+        new_upload = SimpleUploadedFile(
+            'b.png', b'\x89PNG fake', content_type='image/png')
+        r = c.post(f'/docs/{doc.slug}/edit/', {
+            'title': 'Existing',
+            'body': '',
+            'content_type': 'file',
+            'is_published': 'on',
+            'file': new_upload,
+        })
+        self.assertEqual(r.status_code, 302)
+        doc.refresh_from_db()
+        self.assertEqual(doc.file_type, 'image/png')

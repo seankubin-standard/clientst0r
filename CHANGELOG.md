@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.502] - 2026-07-17
+
+### Fix: creating/editing a file document crashed with AttributeError (issue #139)
+
+Uploading a file at `/docs/create/` (or replacing one at `/docs/<slug>/edit/`) raised
+`'FieldFile' object has no attribute 'content_type'`. The MIME type was read off
+`document.file` — a model `FieldFile`, which has no `content_type` — instead of the
+in-request `UploadedFile`.
+
+- `docs/views.py`: `document_create` / `document_edit` now resolve `file_type` via a new
+  `_uploaded_file_type()` helper that reads `content_type` from `request.FILES`, with a
+  `mimetypes.guess_type()` fallback from the filename. This mirrors the bulk-upload path,
+  which was already correct.
+- Regression tests added in `docs/tests.py` (`DocumentFileUploadTests`) covering create and
+  edit-replace uploads.
+
 ## [3.17.501] - 2026-07-14
 
 ### Security: patch 3 Dependabot advisories (cryptography, bleach)
