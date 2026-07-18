@@ -130,9 +130,13 @@ def import_organization_from_psa(connection, company_data):
         logger.info(f"Updated organization {org.slug} from PSA company {company_name}")
 
         AuditLog.objects.create(
-            event_type='psa_org_updated',
+            action='sync',
+            object_type='organization',
+            object_id=org.id,
+            object_repr=org.name,
             description=f'Updated organization {org.slug} from PSA: {company_name}',
-            metadata={
+            organization=org,
+            extra_data={
                 'psa_provider': connection.provider_type,
                 'psa_company_id': external_id,
                 'organization_id': org.id,
@@ -150,8 +154,15 @@ def import_organization_from_psa(connection, company_data):
             slug = f"{base_slug}-{counter}"
             counter += 1
 
+        # Ensure name is unique (Organization.name has a unique constraint)
+        unique_name = display_name
+        _name_counter = 1
+        while Organization.objects.filter(name=unique_name).exists():
+            _name_counter += 1
+            unique_name = f"{display_name} ({_name_counter})"
+
         org = Organization.objects.create(
-            name=display_name,
+            name=unique_name,
             slug=slug,
             is_active=connection.org_import_as_active,
         )
@@ -198,9 +209,13 @@ def import_organization_from_psa(connection, company_data):
         )
 
         AuditLog.objects.create(
-            event_type='psa_org_created',
+            action='sync',
+            object_type='organization',
+            object_id=org.id,
+            object_repr=org.name,
             description=f'Created organization {org.slug} from PSA: {company_name}',
-            metadata={
+            organization=org,
+            extra_data={
                 'psa_provider': connection.provider_type,
                 'psa_company_id': external_id,
                 'organization_id': org.id,
@@ -310,8 +325,15 @@ def import_organization_from_rmm(connection, site_data):
             slug = f"{base_slug}-{counter}"
             counter += 1
 
+        # Ensure name is unique (Organization.name has a unique constraint)
+        unique_name = display_name
+        _name_counter = 1
+        while Organization.objects.filter(name=unique_name).exists():
+            _name_counter += 1
+            unique_name = f"{display_name} ({_name_counter})"
+
         org = Organization.objects.create(
-            name=display_name,
+            name=unique_name,
             slug=slug,
             is_active=connection.org_import_as_active,
         )

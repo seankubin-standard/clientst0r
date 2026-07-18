@@ -13,6 +13,7 @@ from .models import (
     RMMConnection, RMMDevice, RMMAlert, RMMSoftware,
     ExternalObjectMap
 )
+from django.contrib.contenttypes.models import ContentType
 from .providers import get_provider
 from .providers.rmm import get_rmm_provider
 from .org_import import import_organization_from_rmm
@@ -209,8 +210,9 @@ class PSASync:
         # Update mapping
         data_hash = self._hash_data(company_data)
         ExternalObjectMap.objects.update_or_create(
-            connection=self.connection,
-            external_type='company',
+            connection_type=ContentType.objects.get_for_model(self.connection.__class__),
+            connection_id=self.connection.pk,
+            external_type='company_record',
             external_id=external_id,
             defaults={
                 'organization': target_org,
@@ -253,12 +255,12 @@ class PSASync:
             if imported_org:
                 # Track if this was a create or update
                 if existing_org:
-                    if not hasattr(self.stats, 'organizations'):
+                    if 'organizations' not in self.stats:
                         self.stats['organizations'] = {'created': 0, 'updated': 0, 'errors': 0}
                     self.stats['organizations']['updated'] += 1
                     logger.debug(f"Updated existing organization {imported_org.name} for company {company_data.get('name')}")
                 else:
-                    if not hasattr(self.stats, 'organizations'):
+                    if 'organizations' not in self.stats:
                         self.stats['organizations'] = {'created': 0, 'updated': 0, 'errors': 0}
                     self.stats['organizations']['created'] += 1
                     logger.info(f"Created new organization {imported_org.name} for company {company_data.get('name')}")
@@ -272,7 +274,7 @@ class PSASync:
 
         except Exception as e:
             logger.error(f"Error importing organization for company {company_data.get('name')}: {e}")
-            if not hasattr(self.stats, 'organizations'):
+            if 'organizations' not in self.stats:
                 self.stats['organizations'] = {'created': 0, 'updated': 0, 'errors': 0}
             self.stats['organizations']['errors'] += 1
             # On error, fallback to connection org
@@ -316,7 +318,8 @@ class PSASync:
         # Update mapping
         data_hash = self._hash_data(contact_data)
         ExternalObjectMap.objects.update_or_create(
-            connection=self.connection,
+            connection_type=ContentType.objects.get_for_model(self.connection.__class__),
+            connection_id=self.connection.pk,
             external_type='contact',
             external_id=external_id,
             defaults={
@@ -381,7 +384,8 @@ class PSASync:
         # Update mapping
         data_hash = self._hash_data(ticket_data)
         ExternalObjectMap.objects.update_or_create(
-            connection=self.connection,
+            connection_type=ContentType.objects.get_for_model(self.connection.__class__),
+            connection_id=self.connection.pk,
             external_type='ticket',
             external_id=external_id,
             defaults={

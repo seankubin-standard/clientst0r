@@ -11,6 +11,7 @@ from django.db import IntegrityError
 from core.middleware import get_request_organization
 from core.decorators import require_admin, require_write
 from django.core.exceptions import PermissionDenied
+from django.contrib.contenttypes.models import ContentType
 from .models import PSAConnection, PSACompany, PSAContact, PSATicket, RMMConnection, RMMDevice, RMMAlert, RMMSoftware, UnifiConnection, M365Connection, OmadaConnection, GrandstreamConnection, DistributorConnection, DistributorWebhookEvent, AccountingConnection
 from .forms import PSAConnectionForm, RMMConnectionForm, UnifiConnectionForm, M365ConnectionForm, OmadaConnectionForm, GrandstreamConnectionForm
 from .status import connection_status
@@ -1091,7 +1092,8 @@ def psa_organization_mapping(request, pk):
 
                                 # Create or update ExternalObjectMap
                                 ext_map, created = ExternalObjectMap.objects.update_or_create(
-                                    connection=connection,
+                                    connection_type=ContentType.objects.get_for_model(connection.__class__),
+                                    connection_id=connection.pk,
                                     external_type='company',
                                     external_id=company.external_id,
                                     defaults={
@@ -1140,7 +1142,8 @@ def psa_organization_mapping(request, pk):
     # Get existing mappings
     existing_mappings = {}
     for mapping in ExternalObjectMap.objects.filter(
-        connection=connection,
+        connection_type=ContentType.objects.get_for_model(connection.__class__),
+        connection_id=connection.pk,
         external_type='company',
         local_type='organization'
     ):
