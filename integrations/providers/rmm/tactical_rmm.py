@@ -200,7 +200,7 @@ class TacticalRMMProvider(BaseRMMProvider):
 
         try:
             # Get alerts from alerts endpoint
-            response = self._make_request('GET', '/alerts/')
+            response = self._make_request('PATCH', '/alerts/', json={})
             data = self._safe_json(response)
 
             if not isinstance(data, list):
@@ -489,14 +489,14 @@ class TacticalRMMProvider(BaseRMMProvider):
 
         return {
             'external_id': str(raw_data['agent_id']),
-            'device_name': raw_data.get('hostname', ''),
+            'device_name': raw_data.get('hostname') or '',
             'device_type': device_type,
             'manufacturer': manufacturer,
             'model': model,
-            'serial_number': raw_data.get('serial_number', ''),
+            'serial_number': raw_data.get('serial_number') or '',
             'os_type': os_type,
-            'os_version': raw_data.get('operating_system', ''),
-            'hostname': raw_data.get('hostname', ''),
+            'os_version': raw_data.get('operating_system') or '',
+            'hostname': raw_data.get('hostname') or '',
             'ip_address': ip_address,
             'mac_address': mac_address,
             'latitude': latitude,

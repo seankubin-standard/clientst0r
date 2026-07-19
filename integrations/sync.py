@@ -822,6 +822,7 @@ class RMMSync:
 
         cpu_raw = raw.get('cpu_model') or raw.get('cpu') or raw.get('_norm_cpu') or ''
         cpu = ', '.join(str(c) for c in cpu_raw if c) if isinstance(cpu_raw, list) else str(cpu_raw)
+        cpu = cpu[:200]
         if cpu and cpu != asset.cpu:
             asset.cpu = cpu
             update_fields.append('cpu')
@@ -861,6 +862,7 @@ class RMMSync:
             storage = ', '.join(storage_parts)
         else:
             storage = raw.get('_norm_storage') or ''
+        storage = storage[:200]
         if storage and storage != asset.storage:
             asset.storage = storage
             update_fields.append('storage')
@@ -984,6 +986,7 @@ class RMMSync:
             raw = device.raw_data or {}
             cpu_raw = raw.get('cpu_model') or raw.get('cpu') or raw.get('_norm_cpu') or ''
             cpu = ', '.join(str(c) for c in cpu_raw if c) if isinstance(cpu_raw, list) else str(cpu_raw)
+            cpu = cpu[:200]
             ram_gb = None
             try:
                 total_ram_val = raw.get('total_ram') or 0
@@ -1010,7 +1013,7 @@ class RMMSync:
                 if total:
                     pct = round(float(percent)) if percent is not None else (round(used / total * 100) if total else 0)
                     storage_parts.append(f"{dev} {int(total)}GB ({pct}% used)")
-            storage = ', '.join(storage_parts) or raw.get('_norm_storage', '')
+            storage = (', '.join(storage_parts) or raw.get('_norm_storage', ''))[:200]
             agent_notes = raw.get('notes') or raw.get('description') or ''
             notes_text = agent_notes or f'Auto-mapped from RMM device {device.external_id}. Online: {device.is_online}'
 
