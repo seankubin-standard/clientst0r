@@ -4,7 +4,7 @@ Implements full integration with HaloPSA API.
 """
 import logging
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from .base import BaseProvider, ProviderError, AuthenticationError
 
 logger = logging.getLogger('integrations')
@@ -27,6 +27,7 @@ class HaloPSAProvider(BaseProvider):
         super().__init__(connection)
         self._access_token = None
         self._token_expires_at = None
+        self._status_names = None
 
     def _get_access_token(self):
         """
@@ -256,18 +257,50 @@ class HaloPSAProvider(BaseProvider):
             'raw_data': raw_data,
         }
 
+    def _get_status_names(self) -> Dict:
+        """id -> name map from /api/Status, cached per provider instance."""
+        if self._status_names is None:
+            try:
+                response = self._make_request('GET', '/api/Status')
+                self._status_names = {
+                    s.get('id'): (s.get('name') or '')
+                    for s in response.json()
+                    if isinstance(s, dict)
+                }
+            except Exception as e:
+                logger.warning(f"Failed to fetch HaloPSA status list: {e}")
+                self._status_names = {}
+        return self._status_names
+
+    def _bucket_status(self, name: str) -> str:
+        """
+        Map a HaloPSA status name (tenant-configurable, e.g. "Quote Sent",
+        "Awaiting Procurement") onto PSATicket.STATUS_CHOICES.
+        """
+        n = (name or '').strip().lower()
+        if not n or n == 'new':
+            return 'new'
+        if 'clos' in n or 'invoiced' in n:
+            return 'closed'
+        if 'resolv' in n or 'complet' in n:
+            return 'resolved'
+        if ('hold' in n or 'await' in n or 'wait' in n or 'parts' in n
+                or n.startswith('with ')):
+            return 'waiting'
+        return 'in_progress'
+
     def normalize_ticket(self, raw_data: Dict) -> Dict:
         """Normalize HaloPSA ticket to standard format."""
-        # Map HaloPSA status
-        status_map = {
-            'New': 'new',
-            'Open': 'in_progress',
-            'On Hold': 'waiting',
-            'Resolved': 'resolved',
-            'Closed': 'closed',
-        }
-        status_name = raw_data.get('status', {}).get('name', 'New') if isinstance(raw_data.get('status'), dict) else raw_data.get('statusname', 'New')
-        status = status_map.get(status_name, 'new')
+        # The Tickets list endpoint returns only status_id; a status
+        # name/dict is present only on some detail payloads.
+        raw_status = raw_data.get('status')
+        if isinstance(raw_status, dict):
+            status_name = raw_status.get('name', '')
+        else:
+            status_name = raw_data.get('statusname', '')
+        if not status_name and raw_data.get('status_id') is not None:
+            status_name = self._get_status_names().get(raw_data.get('status_id'), '')
+        status = self._bucket_status(status_name)
 
         # Map priority
         priority_map = {
@@ -311,7 +344,7 @@ class HaloPSAProvider(BaseProvider):
         if not date_string:
             return None
         try:
-            # Halo format: 2023-01-15T10:30:00
-            return datetime.strptime(date_string[:19], '%Y-%m-%dT%H:%M:%S')
+            # Halo format: 2023-01-15T10:30:00 (UTC, no offset)
+            return datetime.strptime(date_string[:19], '%Y-%m-%dT%H:%M:%S').replace(tzinfo=timezone.utc)
         except Exception:
             return None
