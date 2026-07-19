@@ -46,6 +46,9 @@ class PSAConnection(BaseModel):
     sync_tickets = models.BooleanField(default=True)
     sync_agreements = models.BooleanField(default=False)
     sync_projects = models.BooleanField(default=False)
+    sync_sites = models.BooleanField(default=True, help_text="Sync sites/locations (providers that support it)")
+    sync_contracts = models.BooleanField(default=True, help_text="Sync contracts (providers that support it)")
+    sync_recurring_invoices = models.BooleanField(default=True, help_text="Sync recurring invoices and derive the fully-managed flag")
     sync_interval_minutes = models.PositiveIntegerField(default=60)
 
     # Organization import settings
@@ -183,6 +186,13 @@ class PSACompany(BaseModel):
     website = models.URLField(max_length=500, blank=True)
     address = models.TextField(blank=True)
 
+    # PSA-side classification and billing summary
+    customer_type = models.CharField(max_length=100, blank=True, help_text="Customer type as configured in the PSA")
+    notes = models.TextField(blank=True, help_text="Client notes from the PSA")
+    is_fully_managed = models.BooleanField(default=False, help_text="Client has at least one recurring invoice in the PSA")
+    recurring_invoice_total = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Sum of recurring invoice amounts per billing cycle")
+    recurring_invoice_count = models.PositiveIntegerField(default=0)
+
     # Raw PSA data (JSON)
     raw_data = models.JSONField(default=dict, blank=True)
 
@@ -288,6 +298,113 @@ class PSATicket(BaseModel):
 
     def __str__(self):
         return f"{self.ticket_number}: {self.subject}"
+
+
+class PSASite(BaseModel):
+    """
+    Synced site/location from PSA.
+    """
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='psa_sites')
+    connection = models.ForeignKey(PSAConnection, on_delete=models.CASCADE, related_name='sites')
+    company = models.ForeignKey(PSACompany, on_delete=models.SET_NULL, null=True, blank=True, related_name='sites')
+
+    external_id = models.CharField(max_length=255)
+    name = models.CharField(max_length=255)
+    phone = models.CharField(max_length=100, blank=True)
+    timezone = models.CharField(max_length=100, blank=True)
+    address = models.TextField(blank=True, help_text="Delivery/physical address from the PSA")
+    notes = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    is_invoice_site = models.BooleanField(default=False)
+
+    # Link to native Location record (created/updated during sync)
+    linked_location = models.ForeignKey(
+        'locations.Location', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='psa_sites'
+    )
+
+    raw_data = models.JSONField(default=dict, blank=True)
+    last_synced_at = models.DateTimeField(auto_now=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'psa_sites'
+        unique_together = [['connection', 'external_id']]
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['organization', 'name']),
+        ]
+
+    def __str__(self):
+        return f"{self.name}"
+
+
+class PSAContract(BaseModel):
+    """
+    Synced contract/agreement from PSA.
+    """
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='psa_contracts')
+    connection = models.ForeignKey(PSAConnection, on_delete=models.CASCADE, related_name='psa_contracts')
+    company = models.ForeignKey(PSACompany, on_delete=models.SET_NULL, null=True, blank=True, related_name='contracts')
+
+    external_id = models.CharField(max_length=255)
+    ref = models.CharField(max_length=255, blank=True, help_text="Contract reference in the PSA")
+    contract_type = models.CharField(max_length=100, blank=True)
+    status = models.CharField(max_length=100, blank=True)
+    start_date = models.DateTimeField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
+    billing_period = models.CharField(max_length=50, blank=True)
+    period_charge_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    raw_data = models.JSONField(default=dict, blank=True)
+    last_synced_at = models.DateTimeField(auto_now=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'psa_synced_contracts'
+        unique_together = [['connection', 'external_id']]
+        ordering = ['ref']
+        indexes = [
+            models.Index(fields=['organization', 'ref']),
+        ]
+
+    def __str__(self):
+        return f"{self.ref or self.external_id}"
+
+
+class PSARecurringInvoice(BaseModel):
+    """
+    Synced recurring invoice from PSA. Presence of one of these for a
+    company drives the 'fully managed' flag on the client organization.
+    """
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='psa_recurring_invoices')
+    connection = models.ForeignKey(PSAConnection, on_delete=models.CASCADE, related_name='recurring_invoices')
+    company = models.ForeignKey(PSACompany, on_delete=models.SET_NULL, null=True, blank=True, related_name='recurring_invoices')
+
+    external_id = models.CharField(max_length=255)
+    contract_ref = models.CharField(max_length=255, blank=True)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    next_creation_date = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    raw_data = models.JSONField(default=dict, blank=True)
+    last_synced_at = models.DateTimeField(auto_now=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'psa_recurring_invoices'
+        unique_together = [['connection', 'external_id']]
+        ordering = ['-total']
+        indexes = [
+            models.Index(fields=['organization']),
+        ]
+
+    def __str__(self):
+        return f"Recurring invoice {self.external_id} ({self.total})"
 
 
 # ============================================================================

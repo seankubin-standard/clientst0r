@@ -4,6 +4,7 @@ Integrations admin configuration
 from django.contrib import admin
 from .models import (
     PSAConnection, PSACompany, PSAContact, PSATicket, ExternalObjectMap,
+    PSASite, PSAContract, PSARecurringInvoice,
     RMMConnection, RMMDevice, RMMAlert, RMMSoftware
 )
 
@@ -19,11 +20,38 @@ class PSAConnectionAdmin(admin.ModelAdmin):
 
 @admin.register(PSACompany)
 class PSACompanyAdmin(admin.ModelAdmin):
-    list_display = ['name', 'connection', 'external_id', 'phone', 'last_synced_at']
-    list_filter = ['connection', 'organization']
+    list_display = ['name', 'connection', 'external_id', 'customer_type', 'is_fully_managed', 'recurring_invoice_total', 'last_synced_at']
+    list_filter = ['connection', 'organization', 'is_fully_managed', 'customer_type']
     search_fields = ['name', 'external_id', 'phone']
     readonly_fields = ['created_at', 'updated_at', 'last_synced_at', 'raw_data']
     raw_id_fields = ['organization', 'connection']
+
+
+@admin.register(PSASite)
+class PSASiteAdmin(admin.ModelAdmin):
+    list_display = ['name', 'company', 'connection', 'is_active', 'is_invoice_site', 'last_synced_at']
+    list_filter = ['connection', 'is_active', 'is_invoice_site']
+    search_fields = ['name', 'external_id']
+    readonly_fields = ['created_at', 'updated_at', 'last_synced_at', 'raw_data']
+    raw_id_fields = ['organization', 'connection', 'company', 'linked_location']
+
+
+@admin.register(PSAContract)
+class PSAContractAdmin(admin.ModelAdmin):
+    list_display = ['ref', 'company', 'contract_type', 'status', 'start_date', 'end_date', 'is_active']
+    list_filter = ['connection', 'status', 'is_active']
+    search_fields = ['ref', 'external_id']
+    readonly_fields = ['created_at', 'updated_at', 'last_synced_at', 'raw_data']
+    raw_id_fields = ['organization', 'connection', 'company']
+
+
+@admin.register(PSARecurringInvoice)
+class PSARecurringInvoiceAdmin(admin.ModelAdmin):
+    list_display = ['external_id', 'company', 'contract_ref', 'total', 'next_creation_date', 'is_active']
+    list_filter = ['connection', 'is_active']
+    search_fields = ['external_id', 'contract_ref']
+    readonly_fields = ['created_at', 'updated_at', 'last_synced_at', 'raw_data']
+    raw_id_fields = ['organization', 'connection', 'company']
 
 
 @admin.register(PSAContact)

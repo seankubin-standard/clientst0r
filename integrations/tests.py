@@ -15,7 +15,10 @@ import json
 from django.test import TestCase, override_settings
 
 from core.models import Organization
-from .models import DistributorConnection, DistributorWebhookEvent
+from .models import (
+    DistributorConnection, DistributorWebhookEvent,
+    PSAConnection, PSACompany, PSASite, PSAContract, PSARecurringInvoice,
+)
 
 
 class DistributorConnectionModelTests(TestCase):
@@ -1039,3 +1042,168 @@ class WarrantyConnectionScaffoldTests(TestCase):
         result = p.lookup_warranty('SN12345')
         self.assertFalse(result['success'])
         self.assertIn('missing', result['error'])
+
+
+class PSASyncEntityCoverageTests(TestCase):
+    """
+    Full-entity-coverage sync: sites, contracts, recurring invoices,
+    customer type, notes, org scoping of contacts/tickets, and the
+    fully-managed business rule.
+    """
+
+    class FakeProvider:
+        supports_companies = True
+        supports_contacts = True
+        supports_tickets = True
+        supports_sites = True
+        supports_contracts = True
+        supports_recurring_invoices = True
+
+        def test_connection(self):
+            return True
+
+        def list_companies(self, updated_since=None):
+            return [
+                {
+                    'external_id': '100', 'name': 'Managed Client',
+                    'phone': '555-0100', 'website': '', 'address': '',
+                    'customer_type': 'Dental', 'notes': 'VIP client',
+                    'raw_data': {},
+                },
+                {
+                    'external_id': '200', 'name': 'Break Fix Client',
+                    'phone': '', 'website': '', 'address': '',
+                    'customer_type': '', 'notes': '',
+                    'raw_data': {},
+                },
+            ]
+
+        def list_contacts(self, updated_since=None):
+            return [
+                {
+                    'external_id': 'c1', 'company_id': '100',
+                    'first_name': 'Jane', 'last_name': 'Doe',
+                    'email': 'jane@example.com', 'phone': '', 'title': '',
+                    'raw_data': {},
+                },
+            ]
+
+        def list_tickets(self, updated_since=None):
+            return [
+                {
+                    'external_id': 't1', 'company_id': '100', 'contact_id': 'c1',
+                    'ticket_number': 'T-1', 'subject': 'Printer down',
+                    'description': '', 'status': 'new', 'priority': 'medium',
+                    'created_at': None, 'updated_at': None, 'raw_data': {},
+                },
+            ]
+
+        def list_sites(self, include_details=False):
+            return [
+                {
+                    'external_id': 's1', 'company_id': '100',
+                    'name': 'Main Office', 'phone': '555-0101',
+                    'timezone': '', 'address': '1 Main St\nSuite 2',
+                    'notes': '', 'is_active': True, 'is_invoice_site': True,
+                    'raw_data': {},
+                },
+            ]
+
+        def list_contracts(self):
+            return [
+                {
+                    'external_id': 'k1', 'company_id': '100',
+                    'ref': 'MC-0001', 'contract_type': 'Managed',
+                    'status': 'Active', 'start_date': None, 'end_date': None,
+                    'billing_period': '2', 'period_charge_amount': 100,
+                    'is_active': True, 'raw_data': {},
+                },
+            ]
+
+        def list_recurring_invoices(self):
+            return [
+                {
+                    'external_id': 'r1', 'company_id': '100',
+                    'contract_ref': 'MC-0001', 'total': 535.50,
+                    'next_creation_date': None, 'is_active': True,
+                    'raw_data': {},
+                },
+            ]
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='MSP HQ', slug='msp-hq')
+        self.connection = PSAConnection.objects.create(
+            organization=self.org,
+            provider_type='halo_psa',
+            name='Test Halo',
+            base_url='https://psa.example.com',
+            encrypted_credentials='',
+            import_organizations=True,
+        )
+
+    def _run_sync(self):
+        from unittest.mock import patch
+        from .sync import PSASync
+
+        with patch('integrations.sync.get_provider', return_value=self.FakeProvider()):
+            syncer = PSASync(self.connection)
+            return syncer.sync_all()
+
+    def test_full_entity_sync_and_fully_managed_rule(self):
+        stats = self._run_sync()
+
+        managed = PSACompany.objects.get(connection=self.connection, external_id='100')
+        breakfix = PSACompany.objects.get(connection=self.connection, external_id='200')
+
+        # Customer type + notes captured
+        self.assertEqual(managed.customer_type, 'Dental')
+        self.assertEqual(managed.notes, 'VIP client')
+
+        # Sites, contracts, recurring invoices synced
+        site = PSASite.objects.get(connection=self.connection, external_id='s1')
+        self.assertEqual(site.company, managed)
+        self.assertEqual(PSAContract.objects.filter(connection=self.connection).count(), 1)
+        self.assertEqual(PSARecurringInvoice.objects.filter(connection=self.connection).count(), 1)
+
+        # Native Location created for the client-org site
+        self.assertIsNotNone(site.linked_location)
+        self.assertEqual(site.linked_location.organization, managed.organization)
+        self.assertEqual(site.linked_location.street_address, '1 Main St')
+
+        # Fully-managed rule: recurring invoice => flag + org type
+        managed.refresh_from_db()
+        self.assertTrue(managed.is_fully_managed)
+        self.assertEqual(managed.recurring_invoice_count, 1)
+        self.assertEqual(float(managed.recurring_invoice_total), 535.50)
+        self.assertEqual(managed.organization.organization_type, Organization.TYPE_FULLY_MANAGED)
+
+        self.assertFalse(breakfix.is_fully_managed)
+        self.assertNotEqual(breakfix.organization.organization_type, Organization.TYPE_FULLY_MANAGED)
+
+        # Contacts/tickets scoped to the client organization, not the MSP org
+        from .models import PSAContact as _PSAContact, PSATicket as _PSATicket
+        contact = _PSAContact.objects.get(connection=self.connection, external_id='c1')
+        ticket = _PSATicket.objects.get(connection=self.connection, external_id='t1')
+        self.assertEqual(contact.organization, managed.organization)
+        self.assertEqual(ticket.organization, managed.organization)
+        self.assertNotEqual(ticket.organization, self.org)
+
+        self.assertEqual(stats['sites']['created'], 1)
+        self.assertEqual(stats['contracts']['created'], 1)
+        self.assertEqual(stats['recurring_invoices']['created'], 1)
+
+    def test_recurring_invoice_removal_clears_flag(self):
+        self._run_sync()
+
+        # Second sync with no recurring invoices left in the PSA
+        provider = self.FakeProvider()
+        provider.list_recurring_invoices = lambda: []
+
+        from unittest.mock import patch
+        from .sync import PSASync
+        with patch('integrations.sync.get_provider', return_value=provider):
+            PSASync(self.connection).sync_all()
+
+        managed = PSACompany.objects.get(connection=self.connection, external_id='100')
+        self.assertFalse(managed.is_fully_managed)
+        self.assertEqual(managed.recurring_invoice_count, 0)

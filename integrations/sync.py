@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.db import transaction
 from .models import (
     PSAConnection, PSACompany, PSAContact, PSATicket,
+    PSASite, PSAContract, PSARecurringInvoice,
     RMMConnection, RMMDevice, RMMAlert, RMMSoftware,
     ExternalObjectMap
 )
@@ -32,15 +33,22 @@ class PSASync:
     Synchronizes data from a PSA connection to local database.
     """
 
-    def __init__(self, connection):
+    def __init__(self, connection, full_details=False):
         self.connection = connection
         self.provider = get_provider(connection)
         self.organization = connection.organization
         self.sync_start = timezone.now()
+        # full_details: also fetch per-record detail payloads (e.g. site
+        # delivery addresses) — slower, meant for a daily full sync
+        self.full_details = full_details
         self.stats = {
             'companies': {'created': 0, 'updated': 0, 'errors': 0},
             'contacts': {'created': 0, 'updated': 0, 'errors': 0},
             'tickets': {'created': 0, 'updated': 0, 'errors': 0},
+            'sites': {'created': 0, 'updated': 0, 'errors': 0},
+            'contracts': {'created': 0, 'updated': 0, 'errors': 0},
+            'recurring_invoices': {'created': 0, 'updated': 0, 'errors': 0},
+            'fully_managed': {'flagged': 0, 'unflagged': 0},
             'organizations': {'created': 0, 'updated': 0, 'errors': 0},
         }
 
@@ -55,15 +63,25 @@ class PSASync:
             if not self.provider.test_connection():
                 raise SyncError("Connection test failed")
 
-            # Sync in order (companies -> contacts -> tickets)
+            # Sync in order (companies -> sites -> contacts -> tickets -> billing)
             if self.connection.sync_companies:
                 self.sync_companies()
+
+            if self.connection.sync_sites and getattr(self.provider, 'supports_sites', False):
+                self.sync_sites()
 
             if self.connection.sync_contacts:
                 self.sync_contacts()
 
             if self.connection.sync_tickets:
                 self.sync_tickets()
+
+            if self.connection.sync_contracts and getattr(self.provider, 'supports_contracts', False):
+                self.sync_contracts()
+
+            if self.connection.sync_recurring_invoices and getattr(self.provider, 'supports_recurring_invoices', False):
+                self.sync_recurring_invoices()
+                self.apply_fully_managed_flags()
 
             # Update connection status
             self.connection.last_sync_at = self.sync_start
@@ -196,6 +214,8 @@ class PSASync:
                 'phone': company_data.get('phone', ''),
                 'website': company_data.get('website', ''),
                 'address': company_data.get('address', ''),
+                'customer_type': company_data.get('customer_type', ''),
+                'notes': company_data.get('notes', ''),
                 'raw_data': company_data.get('raw_data', {}),
             }
         )
@@ -295,11 +315,15 @@ class PSASync:
             except PSACompany.DoesNotExist:
                 pass
 
+        # Scope the contact to its company's client organization so it is
+        # visible in that client's context (not just the connection org)
+        target_org = company.organization if company else self.organization
+
         contact, created = PSAContact.objects.update_or_create(
             connection=self.connection,
             external_id=external_id,
             defaults={
-                'organization': self.organization,
+                'organization': target_org,
                 'company': company,
                 'first_name': contact_data['first_name'],
                 'last_name': contact_data['last_name'],
@@ -323,7 +347,7 @@ class PSASync:
             external_type='contact',
             external_id=external_id,
             defaults={
-                'organization': self.organization,
+                'organization': target_org,
                 'local_type': 'psa_contact',
                 'local_id': contact.id,
                 'external_hash': data_hash,
@@ -358,11 +382,15 @@ class PSASync:
             except PSAContact.DoesNotExist:
                 pass
 
+        # Scope the ticket to its company's client organization so per-client
+        # service history is visible in that client's context
+        target_org = company.organization if company else self.organization
+
         ticket, created = PSATicket.objects.update_or_create(
             connection=self.connection,
             external_id=external_id,
             defaults={
-                'organization': self.organization,
+                'organization': target_org,
                 'company': company,
                 'contact': contact,
                 'ticket_number': ticket_data.get('ticket_number', external_id),
@@ -389,7 +417,7 @@ class PSASync:
             external_type='ticket',
             external_id=external_id,
             defaults={
-                'organization': self.organization,
+                'organization': target_org,
                 'local_type': 'psa_ticket',
                 'local_id': ticket.id,
                 'external_hash': data_hash,
@@ -397,6 +425,287 @@ class PSASync:
         )
 
         return ticket
+
+    def sync_sites(self):
+        """Sync sites/locations from PSA."""
+        logger.info(f"Syncing sites for {self.connection} (full_details={self.full_details})")
+
+        try:
+            sites_data = self.provider.list_sites(include_details=self.full_details)
+        except Exception as e:
+            logger.error(f"Error listing sites: {e}")
+            raise
+
+        for site_data in sites_data:
+            try:
+                with transaction.atomic():
+                    self._upsert_site(site_data)
+            except Exception as e:
+                logger.error(f"Error syncing site {site_data.get('external_id')}: {e}")
+                self.stats['sites']['errors'] += 1
+
+    def sync_contracts(self):
+        """Sync contracts from PSA."""
+        logger.info(f"Syncing contracts for {self.connection}")
+
+        try:
+            contracts_data = self.provider.list_contracts()
+        except Exception as e:
+            logger.error(f"Error listing contracts: {e}")
+            raise
+
+        for contract_data in contracts_data:
+            try:
+                with transaction.atomic():
+                    self._upsert_contract(contract_data)
+            except Exception as e:
+                logger.error(f"Error syncing contract {contract_data.get('external_id')}: {e}")
+                self.stats['contracts']['errors'] += 1
+
+    def sync_recurring_invoices(self):
+        """Sync recurring invoices from PSA."""
+        logger.info(f"Syncing recurring invoices for {self.connection}")
+
+        try:
+            invoices_data = self.provider.list_recurring_invoices()
+        except Exception as e:
+            logger.error(f"Error listing recurring invoices: {e}")
+            raise
+
+        seen_ids = set()
+        for invoice_data in invoices_data:
+            try:
+                with transaction.atomic():
+                    invoice = self._upsert_recurring_invoice(invoice_data)
+                    if invoice:
+                        seen_ids.add(invoice.id)
+            except Exception as e:
+                logger.error(f"Error syncing recurring invoice {invoice_data.get('external_id')}: {e}")
+                self.stats['recurring_invoices']['errors'] += 1
+
+        # Deactivate local records for invoices that no longer exist in the
+        # PSA. A transient partial fetch can briefly deactivate extras; the
+        # next sync reactivates them, and org typing is never auto-reverted.
+        PSARecurringInvoice.objects.filter(
+            connection=self.connection, is_active=True
+        ).exclude(id__in=seen_ids).update(is_active=False)
+
+    def apply_fully_managed_flags(self):
+        """
+        Business rule: every customer with an active recurring invoice in the
+        PSA is 'fully managed'. Rolls the per-company recurring totals up onto
+        PSACompany and sets organization_type on imported client organizations.
+        """
+        from django.db.models import Sum, Count
+
+        companies = PSACompany.objects.filter(connection=self.connection)
+        for company in companies.iterator():
+            agg = PSARecurringInvoice.objects.filter(
+                company=company, is_active=True
+            ).aggregate(total=Sum('total'), count=Count('id'))
+            total = agg['total'] or 0
+            count = agg['count'] or 0
+            is_managed = count > 0
+
+            update_fields = []
+            if company.recurring_invoice_total != total:
+                company.recurring_invoice_total = total
+                update_fields.append('recurring_invoice_total')
+            if company.recurring_invoice_count != count:
+                company.recurring_invoice_count = count
+                update_fields.append('recurring_invoice_count')
+            if company.is_fully_managed != is_managed:
+                company.is_fully_managed = is_managed
+                update_fields.append('is_fully_managed')
+            if update_fields:
+                company.save(update_fields=update_fields)
+
+            # Mark the client organization fully managed. Never re-type the
+            # connection's own organization (the MSP itself), and don't
+            # un-set a type on orgs that lose their recurring invoices —
+            # that stays a manual decision.
+            org = company.organization
+            if is_managed and org and org.id != self.organization.id:
+                if org.organization_type != org.TYPE_FULLY_MANAGED:
+                    org.organization_type = org.TYPE_FULLY_MANAGED
+                    org.save(update_fields=['organization_type'])
+                    self.stats['fully_managed']['flagged'] += 1
+            elif not is_managed and 'is_fully_managed' in update_fields:
+                self.stats['fully_managed']['unflagged'] += 1
+
+    def _upsert_site(self, site_data):
+        """Create or update a PSA site and its native Location record."""
+        external_id = site_data['external_id']
+
+        company = None
+        if site_data.get('company_id'):
+            try:
+                company = PSACompany.objects.get(
+                    connection=self.connection,
+                    external_id=site_data['company_id']
+                )
+            except PSACompany.DoesNotExist:
+                pass
+
+        target_org = company.organization if company else self.organization
+
+        # Preserve a previously synced address when this pass ran without
+        # per-site details (the list payload carries no address)
+        defaults = {
+            'organization': target_org,
+            'company': company,
+            'name': site_data['name'],
+            'phone': site_data.get('phone', ''),
+            'timezone': site_data.get('timezone', ''),
+            'notes': site_data.get('notes', ''),
+            'is_active': site_data.get('is_active', True),
+            'is_invoice_site': site_data.get('is_invoice_site', False),
+            'raw_data': site_data.get('raw_data', {}),
+        }
+        if site_data.get('address'):
+            defaults['address'] = site_data['address']
+
+        site, created = PSASite.objects.update_or_create(
+            connection=self.connection,
+            external_id=external_id,
+            defaults=defaults
+        )
+
+        if created:
+            self.stats['sites']['created'] += 1
+        else:
+            self.stats['sites']['updated'] += 1
+
+        # Maintain a native Location record for client-org sites
+        if company and target_org.id != self.organization.id and site.is_active:
+            self._sync_site_location(site, target_org)
+
+        # Enrich the client organization's address/phone from its invoice site
+        if company and site.is_invoice_site and site.address:
+            org = target_org
+            org_updates = []
+            if not org.street_address:
+                lines = site.address.splitlines()
+                org.street_address = lines[0][:255]
+                org_updates.append('street_address')
+            if not org.phone and site.phone:
+                org.phone = site.phone[:50]
+                org_updates.append('phone')
+            if org_updates:
+                org.save(update_fields=org_updates)
+
+        return site
+
+    def _sync_site_location(self, site, target_org):
+        """Create or update the native Location linked to a PSA site."""
+        from locations.models import Location
+
+        address_lines = site.address.splitlines() if site.address else []
+        loc_fields = {
+            'name': site.name[:255],
+            'street_address': address_lines[0][:255] if address_lines else '',
+            'street_address_2': address_lines[1][:255] if len(address_lines) > 1 else '',
+            'status': 'active' if site.is_active else 'inactive',
+        }
+
+        if site.linked_location:
+            location = site.linked_location
+            update_fields = []
+            for field, value in loc_fields.items():
+                # Don't blank out data someone entered manually
+                if value and getattr(location, field) != value:
+                    setattr(location, field, value)
+                    update_fields.append(field)
+            if update_fields:
+                location.save(update_fields=update_fields)
+        else:
+            location = Location.objects.create(
+                organization=target_org,
+                location_type='office',
+                city='',
+                postal_code='',
+                **loc_fields
+            )
+            site.linked_location = location
+            site.save(update_fields=['linked_location'])
+
+    def _upsert_contract(self, contract_data):
+        """Create or update a PSA contract."""
+        external_id = contract_data['external_id']
+
+        company = None
+        if contract_data.get('company_id'):
+            try:
+                company = PSACompany.objects.get(
+                    connection=self.connection,
+                    external_id=contract_data['company_id']
+                )
+            except PSACompany.DoesNotExist:
+                pass
+
+        target_org = company.organization if company else self.organization
+
+        contract, created = PSAContract.objects.update_or_create(
+            connection=self.connection,
+            external_id=external_id,
+            defaults={
+                'organization': target_org,
+                'company': company,
+                'ref': contract_data.get('ref', ''),
+                'contract_type': contract_data.get('contract_type', ''),
+                'status': contract_data.get('status', ''),
+                'start_date': contract_data.get('start_date'),
+                'end_date': contract_data.get('end_date'),
+                'billing_period': contract_data.get('billing_period', ''),
+                'period_charge_amount': contract_data.get('period_charge_amount'),
+                'is_active': contract_data.get('is_active', True),
+                'raw_data': contract_data.get('raw_data', {}),
+            }
+        )
+
+        if created:
+            self.stats['contracts']['created'] += 1
+        else:
+            self.stats['contracts']['updated'] += 1
+
+        return contract
+
+    def _upsert_recurring_invoice(self, invoice_data):
+        """Create or update a PSA recurring invoice."""
+        external_id = invoice_data['external_id']
+
+        company = None
+        if invoice_data.get('company_id'):
+            try:
+                company = PSACompany.objects.get(
+                    connection=self.connection,
+                    external_id=invoice_data['company_id']
+                )
+            except PSACompany.DoesNotExist:
+                pass
+
+        target_org = company.organization if company else self.organization
+
+        invoice, created = PSARecurringInvoice.objects.update_or_create(
+            connection=self.connection,
+            external_id=external_id,
+            defaults={
+                'organization': target_org,
+                'company': company,
+                'contract_ref': invoice_data.get('contract_ref', ''),
+                'total': invoice_data.get('total') or 0,
+                'next_creation_date': invoice_data.get('next_creation_date'),
+                'is_active': invoice_data.get('is_active', True),
+                'raw_data': invoice_data.get('raw_data', {}),
+            }
+        )
+
+        if created:
+            self.stats['recurring_invoices']['created'] += 1
+        else:
+            self.stats['recurring_invoices']['updated'] += 1
+
+        return invoice
 
     def _hash_data(self, data):
         """Generate hash of data for change detection."""

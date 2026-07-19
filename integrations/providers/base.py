@@ -42,6 +42,9 @@ class BaseProvider:
     supports_projects = False
     supports_agreements = False
     supports_webhooks = False
+    supports_sites = False
+    supports_contracts = False
+    supports_recurring_invoices = False
 
     def __init__(self, connection):
         """

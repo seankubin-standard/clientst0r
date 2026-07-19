@@ -22,12 +22,19 @@ class HaloPSAProvider(BaseProvider):
     supports_tickets = True
     supports_projects = True
     supports_agreements = True
+    supports_sites = True
+    supports_contracts = True
+    supports_recurring_invoices = True
+
+    # Halo lookup table id for the client "Customer Type" field
+    CUSTOMER_TYPE_LOOKUP_ID = 33
 
     def __init__(self, connection):
         super().__init__(connection)
         self._access_token = None
         self._token_expires_at = None
         self._status_names = None
+        self._customer_types = None
 
     def _get_access_token(self):
         """
@@ -103,6 +110,9 @@ class HaloPSAProvider(BaseProvider):
                 'pageinate': 'true',
                 'page_size': page_size,
                 'page_no': page_no,
+                # includedetails on the list endpoint adds notes/customertype
+                # without a per-client detail request
+                'includedetails': 'true',
             }
 
             if updated_since:
@@ -233,14 +243,198 @@ class HaloPSAProvider(BaseProvider):
             logger.error(f"Error fetching HaloPSA ticket {ticket_id}: {e}")
             raise ProviderError(f"Failed to fetch ticket: {e}")
 
+    def list_sites(self, page_size=100, include_details=False) -> List[Dict]:
+        """
+        List sites from HaloPSA. With include_details=True, fetch each site's
+        detail record to capture the delivery address (not present on the
+        list payload) — slower, intended for the daily --full sync.
+        """
+        sites = []
+        page_no = 1
+
+        while True:
+            params = {
+                'pageinate': 'true',
+                'page_size': page_size,
+                'page_no': page_no,
+            }
+            try:
+                response = self._make_request('GET', '/api/Site', params=params)
+                data = response.json()
+                raw_sites = data.get('sites', [])
+                if not raw_sites:
+                    break
+                for raw_site in raw_sites:
+                    if include_details and raw_site.get('id') is not None:
+                        try:
+                            detail = self._make_request(
+                                'GET', f"/api/Site/{int(raw_site['id'])}",
+                                params={'includedetails': 'true'}
+                            ).json()
+                            raw_site = {**raw_site, **detail}
+                        except Exception as e:
+                            logger.warning(f"Failed to fetch HaloPSA site detail {raw_site.get('id')}: {e}")
+                    sites.append(self.normalize_site(raw_site))
+                if len(sites) >= data.get('record_count', 0):
+                    break
+                page_no += 1
+            except Exception as e:
+                logger.error(f"Error fetching HaloPSA sites page {page_no}: {e}")
+                break
+
+        return sites
+
+    def list_contracts(self, page_size=100) -> List[Dict]:
+        """List client contracts from HaloPSA."""
+        contracts = []
+        page_no = 1
+
+        while True:
+            params = {
+                'pageinate': 'true',
+                'page_size': page_size,
+                'page_no': page_no,
+            }
+            try:
+                response = self._make_request('GET', '/api/ClientContract', params=params)
+                data = response.json()
+                raw_contracts = data.get('contracts', [])
+                if not raw_contracts:
+                    break
+                for raw_contract in raw_contracts:
+                    contracts.append(self.normalize_contract(raw_contract))
+                if len(contracts) >= data.get('record_count', 0):
+                    break
+                page_no += 1
+            except Exception as e:
+                logger.error(f"Error fetching HaloPSA contracts page {page_no}: {e}")
+                break
+
+        return contracts
+
+    def list_recurring_invoices(self, page_size=100) -> List[Dict]:
+        """List recurring invoices from HaloPSA."""
+        invoices = []
+        page_no = 1
+
+        while True:
+            params = {
+                'pageinate': 'true',
+                'page_size': page_size,
+                'page_no': page_no,
+            }
+            try:
+                response = self._make_request('GET', '/api/RecurringInvoice', params=params)
+                data = response.json()
+                raw_invoices = data.get('invoices', [])
+                if not raw_invoices:
+                    break
+                for raw_invoice in raw_invoices:
+                    invoices.append(self.normalize_recurring_invoice(raw_invoice))
+                if len(invoices) >= data.get('record_count', 0):
+                    break
+                page_no += 1
+            except Exception as e:
+                logger.error(f"Error fetching HaloPSA recurring invoices page {page_no}: {e}")
+                break
+
+        return invoices
+
+    def _get_customer_types(self) -> Dict:
+        """id -> name map for the Customer Type lookup, cached per instance."""
+        if self._customer_types is None:
+            try:
+                response = self._make_request(
+                    'GET', '/api/Lookup',
+                    params={'lookupid': self.CUSTOMER_TYPE_LOOKUP_ID}
+                )
+                self._customer_types = {
+                    item.get('id'): (item.get('name') or '')
+                    for item in response.json()
+                    if isinstance(item, dict)
+                }
+            except Exception as e:
+                logger.warning(f"Failed to fetch HaloPSA customer types: {e}")
+                self._customer_types = {}
+        return self._customer_types
+
+    @staticmethod
+    def _ext_id(value) -> str:
+        """Normalize a Halo id (may arrive as int, float like 12.0, or str)."""
+        if value is None or value == '':
+            return ''
+        try:
+            return str(int(float(value)))
+        except (ValueError, TypeError):
+            return str(value)
+
     def normalize_company(self, raw_data: Dict) -> Dict:
         """Normalize HaloPSA client to standard format."""
+        customer_type = ''
+        type_id = raw_data.get('customertype')
+        if type_id:
+            customer_type = self._get_customer_types().get(type_id, '')
+
         return {
             'external_id': str(raw_data.get('id', '')),
             'name': raw_data.get('name', ''),
             'phone': raw_data.get('phone', ''),
             'website': raw_data.get('website', ''),
             'address': self._format_address(raw_data),
+            'customer_type': customer_type,
+            'notes': raw_data.get('notes') or '',
+            'is_inactive': bool(raw_data.get('inactive')),
+            'raw_data': raw_data,
+        }
+
+    def normalize_site(self, raw_data: Dict) -> Dict:
+        """Normalize HaloPSA site to standard format."""
+        address_lines = []
+        delivery = raw_data.get('delivery_address') or {}
+        for key in ('line1', 'line2', 'line3', 'line4'):
+            if delivery.get(key):
+                address_lines.append(delivery[key])
+        if delivery.get('postcode'):
+            address_lines.append(delivery['postcode'])
+
+        return {
+            'external_id': self._ext_id(raw_data.get('id')),
+            'company_id': self._ext_id(raw_data.get('client_id')) or None,
+            'name': raw_data.get('name', ''),
+            'phone': raw_data.get('phonenumber', '') or '',
+            'timezone': raw_data.get('timezone', '') or '',
+            'address': '\n'.join(address_lines),
+            'notes': raw_data.get('notes') or '',
+            'is_active': not raw_data.get('inactive'),
+            'is_invoice_site': bool(raw_data.get('isinvoicesite')),
+            'raw_data': raw_data,
+        }
+
+    def normalize_contract(self, raw_data: Dict) -> Dict:
+        """Normalize HaloPSA client contract to standard format."""
+        return {
+            'external_id': self._ext_id(raw_data.get('id')),
+            'company_id': self._ext_id(raw_data.get('client_id')) or None,
+            'ref': raw_data.get('ref', '') or '',
+            'contract_type': raw_data.get('contracttype_name', '') or '',
+            'status': raw_data.get('contract_status', '') or '',
+            'start_date': self._parse_datetime(raw_data.get('start_date')),
+            'end_date': self._parse_datetime(raw_data.get('end_date')),
+            'billing_period': str(raw_data.get('billingperiod', '') or ''),
+            'period_charge_amount': raw_data.get('periodchargeamount'),
+            'is_active': bool(raw_data.get('active', True)) and not raw_data.get('expired'),
+            'raw_data': raw_data,
+        }
+
+    def normalize_recurring_invoice(self, raw_data: Dict) -> Dict:
+        """Normalize HaloPSA recurring invoice to standard format."""
+        return {
+            'external_id': self._ext_id(raw_data.get('id')),
+            'company_id': self._ext_id(raw_data.get('client_id')) or None,
+            'contract_ref': raw_data.get('contract_ref', '') or '',
+            'total': raw_data.get('total') or 0,
+            'next_creation_date': self._parse_datetime(raw_data.get('nextcreationdate')),
+            'is_active': not raw_data.get('disabled'),
             'raw_data': raw_data,
         }
 

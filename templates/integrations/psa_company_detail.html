@@ -51,14 +51,60 @@
                     <dd><pre class="small mb-0">{{ company.address }}</pre></dd>
                     {% endif %}
 
+                    {% if company.customer_type %}
+                    <dt>Customer Type:</dt>
+                    <dd><span class="badge bg-secondary">{{ company.customer_type }}</span></dd>
+                    {% endif %}
+
+                    <dt>Service Level:</dt>
+                    <dd>
+                        {% if company.is_fully_managed %}
+                        <span class="badge bg-success">Fully Managed</span>
+                        {% else %}
+                        <span class="badge bg-light text-dark">Not Managed</span>
+                        {% endif %}
+                    </dd>
+
+                    {% if company.is_fully_managed %}
+                    <dt>Recurring Billing:</dt>
+                    <dd>${{ company.recurring_invoice_total|floatformat:2 }} across {{ company.recurring_invoice_count }} recurring invoice{{ company.recurring_invoice_count|pluralize }}</dd>
+                    {% endif %}
+
                     <dt>External ID:</dt>
                     <dd><code>{{ company.external_id }}</code></dd>
 
                     <dt>Last Synced:</dt>
                     <dd>{{ company.last_synced_at|date:"F j, Y g:i A" }}</dd>
                 </dl>
+
+                {% if company.notes %}
+                <hr>
+                <h6>PSA Notes</h6>
+                <pre class="small mb-0">{{ company.notes }}</pre>
+                {% endif %}
             </div>
         </div>
+
+        {% if sites %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-map-marker-alt"></i> Sites ({{ sites.count }})</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    {% for site in sites %}
+                    <li class="mb-2">
+                        <strong>{{ site.name }}</strong>
+                        {% if site.is_invoice_site %}<span class="badge bg-info">Invoice Site</span>{% endif %}
+                        {% if not site.is_active %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+                        {% if site.address %}<br><small class="text-muted">{{ site.address|linebreaksbr }}</small>{% endif %}
+                        {% if site.phone %}<br><small><a href="tel:{{ site.phone }}">{{ site.phone }}</a></small>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <div class="col-md-8">
@@ -110,6 +156,66 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- Contracts & Recurring Billing -->
+        {% if contracts or recurring_invoices %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-file-contract"></i> Contracts &amp; Recurring Billing</h5>
+            </div>
+            <div class="card-body">
+                {% if contracts %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Ref</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Start</th>
+                                <th>End</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for contract in contracts %}
+                            <tr>
+                                <td>{{ contract.ref|default:contract.external_id }}</td>
+                                <td>{{ contract.contract_type|default:"—" }}</td>
+                                <td>{{ contract.status|default:"—" }}</td>
+                                <td>{{ contract.start_date|date:"Y-m-d"|default:"—" }}</td>
+                                <td>{{ contract.end_date|date:"Y-m-d"|default:"—" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+                {% if recurring_invoices %}
+                <h6 class="mt-2">Recurring Invoices</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Contract Ref</th>
+                                <th>Amount</th>
+                                <th>Next Invoice</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for invoice in recurring_invoices %}
+                            <tr>
+                                <td>{{ invoice.contract_ref|default:"—" }}</td>
+                                <td>${{ invoice.total|floatformat:2 }}</td>
+                                <td>{{ invoice.next_creation_date|date:"Y-m-d"|default:"—" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Recent Tickets -->
         <div class="card">

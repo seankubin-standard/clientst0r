@@ -25,16 +25,22 @@ class Command(BaseCommand):
             action='store_true',
             help='Force sync even if recently synced'
         )
+        parser.add_argument(
+            '--full',
+            action='store_true',
+            help='Also fetch per-record details (e.g. site addresses) — slower'
+        )
 
     def handle(self, *args, **options):
         connection_id = options.get('connection_id')
         force = options.get('force', False)
+        full = options.get('full', False)
 
         if connection_id:
             # Sync specific connection
             try:
                 connection = PSAConnection.objects.get(id=connection_id)
-                self.sync_connection(connection, force)
+                self.sync_connection(connection, force, full)
             except PSAConnection.DoesNotExist:
                 self.stdout.write(self.style.ERROR(f'Connection {connection_id} not found'))
                 return
@@ -50,9 +56,9 @@ class Command(BaseCommand):
                 return
 
             for connection in connections:
-                self.sync_connection(connection, force)
+                self.sync_connection(connection, force, full)
 
-    def sync_connection(self, connection, force=False):
+    def sync_connection(self, connection, force=False, full=False):
         """Sync a single connection."""
         self.stdout.write(f'Processing: {connection.name} ({connection.get_provider_type_display()})')
 
@@ -64,7 +70,7 @@ class Command(BaseCommand):
                 return
 
         try:
-            syncer = PSASync(connection)
+            syncer = PSASync(connection, full_details=full)
             stats = syncer.sync_all()
 
             self.stdout.write(self.style.SUCCESS(f'  Success: {stats}'))

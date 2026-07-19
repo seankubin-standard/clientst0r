@@ -459,14 +459,20 @@ def psa_company_detail(request, pk):
     org = get_request_organization(request)
     company = get_object_or_404(PSACompany, pk=pk, organization=org)
 
-    # Get related contacts and tickets
+    # Get related contacts, tickets, sites, contracts and recurring invoices
     contacts = company.contacts.all()
     tickets = company.tickets.order_by('-external_updated_at')[:20]
+    sites = company.sites.all()
+    contracts = company.contracts.all()
+    recurring_invoices = company.recurring_invoices.filter(is_active=True)
 
     return render(request, 'integrations/psa_company_detail.html', {
         'company': company,
         'contacts': contacts,
         'tickets': tickets,
+        'sites': sites,
+        'contracts': contracts,
+        'recurring_invoices': recurring_invoices,
     })
 
 
